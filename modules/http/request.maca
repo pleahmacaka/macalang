@@ -1,19 +1,19 @@
 import { split_once, index_of_from } from std/text
 
-/// One request, parsed.
+/** One request, parsed. */
 Request = {
     method:  str
-    /// The path with the query string removed, and percent-escapes decoded.
+    /** The path with the query string removed, and percent-escapes decoded. */
     path:    str
-    /// Everything after `?`, undecoded.
+    /** Everything after `?`, undecoded. */
     query:   str
     version: str
-    /// The header block, still raw.
+    /** The header block, still raw. */
     headers: str
     body:    str
 }
 
-/// Parse a raw request.
+/** Parse a raw request. */
 parse_request(raw: str) -> Request {
     split = split_head(raw)
     head = normalize_endings(split.get(0))
@@ -49,7 +49,7 @@ split_head(raw: str) -> str[] {
 normalize_endings(raw: str) -> str =>
     raw.replace("\r\n", "\n")
 
-/// A header's value, or "" when it is absent.
+/** A header's value, or "" when it is absent. */
 header(r: Request, name: str) -> str =>
     scan_headers(r.headers.split("\n"), 0, name.lower())
 
@@ -69,11 +69,11 @@ header_name(line: str) -> str =>
 header_value(line: str) -> str =>
     split_once(line, ":").get(1).trim()
 
-/// A query parameter's value, or "" when absent.
+/** A query parameter's value, or "" when absent. */
 query_value(r: Request, name: str) -> str =>
     scan_pairs(r.query.split("&"), 0, name)
 
-/// The same, over a form-encoded body: `application/x-www-form-urlencoded`.
+/** The same, over a form-encoded body: `application/x-www-form-urlencoded`. */
 form_value(r: Request, name: str) -> str =>
     scan_pairs(r.body.split("&"), 0, name)
 
@@ -87,7 +87,7 @@ scan_pairs(pairs: str[], i: int, want: str) -> str {
     }
 }
 
-/// Decode `%XX` escapes.
+/** Decode `%XX` escapes. */
 percent_decode(s: str) -> str =>
     decode_from(s, 0, "")
 

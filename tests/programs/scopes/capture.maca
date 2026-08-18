@@ -1,4 +1,4 @@
-/// Every line of `s` with `column` in front of it, joined with a bar.
+/** Every line of `s` with `column` in front of it, joined with a bar. */
 indent_lines(s: str, column: str) -> str =>
     s.split("\n").map(l => prefixed(l, column)).join("|")
 

@@ -1,4 +1,4 @@
-/// One more than the length of `s`.
+/** One more than the length of `s`. */
 alpha_reading(s: str) -> int => reading(s) + 1
 
 reading(s: str) -> int => s.length()

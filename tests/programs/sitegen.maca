@@ -100,7 +100,9 @@ test_titles_are_whole_and_translated() {
 title_of(page: str) -> str =>
     between(page, "<title>", "</title>")
 
-/// The front page shows one line per platform; the script behind it is what has to name an asset the release builds.
+/** The front page shows one line per platform; the script behind it is what has
+ * to name an asset the release builds.
+ */
 test_the_front_page_offers_the_installer_the_release_builds() {
     root = read_file(join(front_page_dir(), "index.html"))
     workflow = read_file(".github/workflows/release.yml")
@@ -127,7 +129,9 @@ test_the_front_page_offers_the_installer_the_release_builds() {
 }
 
 
-/// The cards and the caveats each have their own document now, so each is counted where it lives.
+/** The cards and the caveats each have their own document now, so each is
+ * counted where it lives.
+ */
 test_both_languages_carry_every_card() {
     dir = front_page_dir()
 
@@ -267,7 +271,9 @@ font_resolves(dir: str, page: str) -> bool {
     href != "" && file_exists(normalize(join(dirname(at), href)))
 }
 
-/// A back end may write a JavaScript string in either quote, so the href is read inside it.
+/** A back end may write a JavaScript string in either quote, so the href is
+ * read inside it.
+ */
 unquoted(lit: str) -> str =>
     lit.length() < 2 ? "" : lit.slice(1, lit.length() - 1)
 

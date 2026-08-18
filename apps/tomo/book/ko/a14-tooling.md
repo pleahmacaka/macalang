@@ -123,12 +123,13 @@ HTML 레퍼런스를 씁니다.
 maca run apps/macadoc/macadoc.maca site/api std/text.maca std/list.maca
 ```
 
-Maca에는 `export` 키워드가 없습니다. 어떤 항목을 API로 만드는 것은 슬래시 세
-개로 쓰는 **문서 주석**입니다.
+Maca에는 `export` 키워드가 없습니다. 어떤 항목을 API로 만드는 것은 별표
+블록으로 쓰는 **문서 주석**입니다.
 
 ```maca
-/// *첫* 번째 등장에서만 자릅니다: `split_once("a=b=c", "=")`는
-/// `["a", "b=c"]`입니다. 구분자가 없으면 문자열 전체와 ""를 줍니다.
+/** *첫* 번째 등장에서만 자릅니다: `split_once("a=b=c", "=")`는
+ * `["a", "b=c"]`입니다. 구분자가 없으면 문자열 전체와 ""를 줍니다.
+ */
 split_once(s: str, sep: str) -> str[] {
     …
 }
@@ -138,7 +139,7 @@ split_once(s: str, sep: str) -> str[] {
 clamp(n: int, len: int) -> int {
 ```
 
-컴파일러에게 `///` 줄은 다른 주석과 똑같습니다. 세 번째 슬래시는 MacaDoc이 읽는
+컴파일러에게 문서 블록은 다른 주석과 똑같습니다. 세 번째 슬래시는 MacaDoc이 읽는
 관례입니다.
 
 문서 주석 안에서 백틱은 코드가 되고 `*별표*`는 강조가 됩니다. 빈 줄은 문단을

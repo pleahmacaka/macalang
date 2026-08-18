@@ -28,7 +28,9 @@ TwSide = "|pt=top|pr=right|pb=bottom|pl=left|mt=top|mr=right|mb=bottom|ml=left|"
 
 TwReset = "*,*::before,*::after{{box-sizing:border-box}}\\nhtml,body{{margin:0}}\\n"
 
-/// The value a `|key=value|` table holds for this key, empty when it holds none.
+/** The value a `|key=value|` table holds for this key, empty when it holds
+ * none.
+ */
 tw_look(table: str, key: str) -> str {
     at = table.index_of("|{key}=")
 
@@ -73,7 +75,7 @@ tw_digits(cs: str[], i: int, acc: int) -> int {
     }
 }
 
-/// The number this text spells, or -1 when it spells no whole number.
+/** The number this text spells, or -1 when it spells no whole number. */
 tw_int(s: str) -> int {
     if s == "" {
         -1
@@ -82,7 +84,7 @@ tw_int(s: str) -> int {
     }
 }
 
-/// A signed number, normalised, or empty when the text is not one.
+/** A signed number, normalised, or empty when the text is not one. */
 tw_signed(s: str) -> str {
     if s.starts_with("-") {
         n = tw_int(s.slice(1, s.length()))
@@ -103,7 +105,8 @@ tw_pow10(k: int) -> int {
     }
 }
 
-/// A decimal in thousandths, so `1.5` is 1500, or -1 when the text is not one.
+/** A decimal in thousandths, so `1.5` is 1500, or -1 when the text is not one.
+ */
 tw_thou(s: str) -> int {
     dot = s.index_of(".")
 
@@ -142,7 +145,8 @@ tw_pad(n: int, width: int) -> str {
     }
 }
 
-/// Thousandths written the shortest way that means the same, so 1250 is `1.25`.
+/** Thousandths written the shortest way that means the same, so 1250 is `1.25`.
+ */
 tw_dec(n: int) -> str {
     if n % 1000 == 0 {
         "{n / 1000}"
@@ -151,7 +155,9 @@ tw_dec(n: int) -> str {
     }
 }
 
-/// Tailwind's spacing scale as a length, so `4` is one rem and `px` is one pixel.
+/** Tailwind's spacing scale as a length, so `4` is one rem and `px` is one
+ * pixel.
+ */
 tw_space(v: str) -> str {
     if v == "0" {
         "0"
@@ -180,7 +186,7 @@ tw_ratio(v: str) -> str {
     }
 }
 
-/// A width or height: the spacing scale, plus the named sizes and fractions.
+/** A width or height: the spacing scale, plus the named sizes and fractions. */
 tw_size(v: str) -> str {
     if v == "none" || v == "auto" {
         v
@@ -226,7 +232,7 @@ tw_last_dash(cs: str[], i: int, at: int) -> int {
     }
 }
 
-/// A class written with its value in brackets, which any property can take.
+/** A class written with its value in brackets, which any property can take. */
 tw_arbitrary(c: str) -> str {
     open = c.index_of("[")
 
@@ -251,7 +257,7 @@ tw_bracket(pre: str, raw: str) -> str {
     }
 }
 
-/// `border-t-2` and its siblings: an edge, and how many pixels wide it is.
+/** `border-t-2` and its siblings: an edge, and how many pixels wide it is. */
 tw_edges(c: str) -> str {
     at = tw_last_dash(c.chars(), 0, -1)
 
@@ -283,7 +289,7 @@ tw_offsets(c: str) -> str {
     }
 }
 
-/// Where a cell sits in a grid, which a column count alone cannot say.
+/** Where a cell sits in a grid, which a column count alone cannot say. */
 tw_track(c: str) -> str {
     at = tw_last_dash(c.chars(), 0, -1)
 
@@ -362,7 +368,7 @@ tw_repeat(prop: str, v: str) -> str {
     }
 }
 
-/// The body of one utility class, empty when this is no class of ours.
+/** The body of one utility class, empty when this is no class of ours. */
 tw_body(c: str) -> str {
     fixed = tw_look(TwFixed, c)
 
@@ -531,7 +537,7 @@ tw_opacity(v: str) -> str {
     }
 }
 
-/// `dark:hover:bg-x` as its variants and, last, the utility they modify.
+/** `dark:hover:bg-x` as its variants and, last, the utility they modify. */
 tw_parts(c: str, acc: str[]) -> str[] {
     at = c.index_of(":")
 
@@ -574,7 +580,7 @@ tw_queries(parts: str[], i: int, n: int, acc: str[]) -> str[] {
     }
 }
 
-/// A class name as a CSS selector spells it, with its punctuation escaped.
+/** A class name as a CSS selector spells it, with its punctuation escaped. */
 tw_escape(c: str) -> str =>
     tw_escaped(c.chars(), 0, "")
 
@@ -588,7 +594,7 @@ tw_escaped(cs: str[], i: int, acc: str) -> str {
     }
 }
 
-/// The whole rule one class stands for, empty when it stands for none.
+/** The whole rule one class stands for, empty when it stands for none. */
 tw_rule(c: str) -> str {
     parts = tw_parts(c, [])
     n = parts.length() - 1
@@ -613,7 +619,7 @@ tw_wrapped(media: str[], rule: str) -> str {
     }
 }
 
-/// Where a class's rule belongs in the sheet, since the later of two wins.
+/** Where a class's rule belongs in the sheet, since the later of two wins. */
 tw_order(c: str) -> int {
     parts = tw_parts(c, [])
 
@@ -672,7 +678,9 @@ tw_in_expr(e: Expr, acc: str[]) -> str[] {
     tw_in_stmts(e.stmts, 0, tw_in_exprs(e.children, from, got))
 }
 
-/// A tag or an attribute is named, not classed, however much `table` looks like one.
+/** A tag or an attribute is named, not classed, however much `table` looks like
+ * one.
+ */
 tw_tagged(e: Expr) -> bool =>
     e.kind == ECall
         && (e.text == "maca_element" || e.text == "maca_attr"
@@ -700,7 +708,7 @@ tw_unique(cs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// A rule sits inside a C string, where a backslash has to be written twice.
+/** A rule sits inside a C string, where a backslash has to be written twice. */
 tw_quoted(s: str) -> str =>
     s.replace("\\", "\\\\")
 
@@ -724,7 +732,8 @@ tw_rules(cs: str[], i: int, rank: int, acc: str) -> str {
     }
 }
 
-/// The stylesheet a program's own class names ask for, as a C string spells it.
+/** The stylesheet a program's own class names ask for, as a C string spells it.
+ */
 style_sheet(items: Stmt[]) -> str =>
     TwReset
         ++ tw_sheet(tw_unique(tw_in_stmts(items, 0, []).sort(), 0, []), 0, "")

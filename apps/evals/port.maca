@@ -5,7 +5,7 @@ import std/text
 import std/list
 import { bold, dim, ok, bad } from cli/style
 
-/// One problem, as far as it survives translation.
+/** One problem, as far as it survives translation. */
 Problem = {
     id: str,
     entry: str,
@@ -14,7 +14,9 @@ Problem = {
     cases: str[],
 }
 
-/// Why a problem was left behind, so the list is a work queue rather than a silence.
+/** Why a problem was left behind, so the list is a work queue rather than a
+ * silence.
+ */
 Skipped = { id: str, why: str }
 
 Quote = "\""
@@ -22,7 +24,7 @@ Backslash = "\\"
 Open = "\{"
 Close = "\}"
 
-/// A Python type as Maca writes it, or "" when Maca has no word for it.
+/** A Python type as Maca writes it, or "" when Maca has no word for it. */
 maca_type(py: str) -> str {
     t = py.trim()
 
@@ -42,7 +44,7 @@ maca_type(py: str) -> str {
     }
 }
 
-/// A Python literal as Maca writes it, or "" when Maca has no form for it.
+/** A Python literal as Maca writes it, or "" when Maca has no form for it. */
 maca_value(py: str) -> str {
     v = py.trim()
 
@@ -85,7 +87,7 @@ all_digits_or_dot(cs: str[], i: int) -> bool {
     }
 }
 
-/// Split on commas that are not inside a bracket or a quote.
+/** Split on commas that are not inside a bracket or a quote. */
 split_top(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
     cs = s.chars()
 
@@ -106,7 +108,9 @@ split_top(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
     }
 }
 
-/// The `def` line of a HumanEval prompt, as a Maca signature, or "" when a type has no Maca word.
+/** The `def` line of a HumanEval prompt, as a Maca signature, or "" when a type
+ * has no Maca word.
+ */
 port_signature(prompt: str, entry: str) -> str {
     marker = "def " ++ entry ++ "("
     at = prompt.index_of(marker)
@@ -136,7 +140,7 @@ port_param(p: str) -> str {
     }
 }
 
-/// The `assert candidate(…) == …` lines, as `assert_eq` calls.
+/** The `assert candidate(…) == …` lines, as `assert_eq` calls. */
 port_cases(test: str, entry: str) -> str[] =>
     ported_lines(read_lines_of(test), 0, entry, [])
 
@@ -166,7 +170,9 @@ port_case(line: str, entry: str) -> str {
     }
 }
 
-/// One assertion, wrapped when it would run past the width the linter holds every file to.
+/** One assertion, wrapped when it would run past the width the linter holds
+ * every file to.
+ */
 one_case(entry: str, args: str, want: str) -> str {
     flat = "    assert_eq(" ++ entry ++ "(" ++ args ++ "), " ++ want
         ++ ", \"case\")"
@@ -185,7 +191,7 @@ after_last(line: str, sep: str) -> str {
     parts.get(parts.length() - 1).trim()
 }
 
-/// The first line of the docstring, which is what the problem asks for.
+/** The first line of the docstring, which is what the problem asks for. */
 port_doc(prompt: str) -> str {
     fence = Quote ++ Quote ++ Quote
     body = between(prompt, fence, fence)
@@ -194,7 +200,7 @@ port_doc(prompt: str) -> str {
     first.length() == 0 ? "" : first.get(0).trim()
 }
 
-/// One problem as the `.maca` file the harness hands a model and then runs.
+/** One problem as the `.maca` file the harness hands a model and then runs. */
 render(p: Problem) -> str =>
     "// " ++ p.id ++ ": " ++ p.doc ++ "\n"
         ++ "// Write it, and leave the test below alone.\n\n"
@@ -283,7 +289,9 @@ parse_row(line: str) -> Problem {
     }
 }
 
-/// One string field out of a JSON object line, with the escapes HumanEval actually uses.
+/** One string field out of a JSON object line, with the escapes HumanEval
+ * actually uses.
+ */
 json_string(line: str, key: str) -> str {
     marker = Quote ++ key ++ Quote ++ ": " ++ Quote
     at = line.index_of(marker)

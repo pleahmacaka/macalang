@@ -1,4 +1,4 @@
-/// The value of a `key = value` entry, unquoted.
+/** The value of a `key = value` entry, unquoted. */
 conf_value(toml: str, key: str) -> str =>
     conf_scan(toml.split("\n"), 0, key)
 

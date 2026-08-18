@@ -80,7 +80,7 @@ version_asked(a: str) -> bool =>
 help_asked(a: str) -> bool =>
     a == "--help" || a == "-h" || a == "help"
 
-/// The commands this binary serves, which is the first thing anyone reads.
+/** The commands this binary serves, which is the first thing anyone reads. */
 usage() -> int {
     info("maca {Version}\n"
          ++ "\nusage: maca <command> [args]\n"
@@ -120,7 +120,9 @@ usage() -> int {
     0
 }
 
-/// A `[scripts]` name in the manifest here is a command, so `maca <name>` runs what it names.
+/** A `[scripts]` name in the manifest here is a command, so `maca <name>` runs
+ * what it names.
+ */
 unknown_cmd(name: str) -> int {
     script = chain_value(here_chain(), 0, "[scripts]", name)
 
@@ -191,7 +193,7 @@ leaf_of(root: str) -> str {
     }
 }
 
-/// `[format]` says what one level of indentation is written with.
+/** `[format]` says what one level of indentation is written with. */
 indent_unit(chain: str[]) -> str {
     size = chain_value(chain, 0, "[format]", "indent_size")
     wide = size == "" ? 4 : int(size)
@@ -204,7 +206,9 @@ indent_unit(chain: str[]) -> str {
 space_run(n: int) -> str =>
     n <= 0 ? "" : " " ++ space_run(n - 1)
 
-/// The file states its own step by the narrowest indent it uses, and the declared unit replaces it.
+/** The file states its own step by the narrowest indent it uses, and the
+ * declared unit replaces it.
+ */
 reindent(text: str, unit: str) -> str {
     lines = text.split("\n")
     step = indent_step(lines)
@@ -254,7 +258,9 @@ indent_step(lines: str[]) -> int {
     best == 0 ? 4 : best
 }
 
-/// A line the step does not divide was aligned by hand, and stays where it was put.
+/** A line the step does not divide was aligned by hand, and stays where it was
+ * put.
+ */
 reindent_line(line: str, unit: str, step: int) -> str {
     lead = indent_width(line, 0)
 
@@ -312,7 +318,7 @@ format_file(src: str, only_check: bool) -> int {
     }
 }
 
-/// `fmt` formats every file it is given, and `--check` reports instead.
+/** `fmt` formats every file it is given, and `--check` reports instead. */
 fmt_cmd(args: str[]) -> int {
     files = fix_files(args, 1, [])
 
@@ -334,7 +340,7 @@ fmt_each(files: str[], i: int, only_check: bool, acc: int) -> int {
     }
 }
 
-/// `fix` deletes a keyword Maca has no word for, the one edit safe unread.
+/** `fix` deletes a keyword Maca has no word for, the one edit safe unread. */
 fix_cmd(args: str[]) -> int {
     files = fix_files(args, 1, [])
 
@@ -391,7 +397,8 @@ fix_lexed(path: str, src: str, dry: bool) -> int {
 fix_said(dry: bool) -> str =>
     dry ? "would delete" : "deleted"
 
-/// A word from another language, with a name of its own on the line behind it.
+/** A word from another language, with a name of its own on the line behind it.
+ */
 phantom_at(ts: Token[], i: int) -> bool =>
     i + 1 < ts.length() && phantom_word(ts.get(i))
         && ts.get(i + 1).kind == TIdent && !ts.get(i + 1).fresh
@@ -415,7 +422,8 @@ phantom_count(ts: Token[], i: int, n: int) -> int {
     seen
 }
 
-/// Cutting from the back is what leaves every position ahead of it still true.
+/** Cutting from the back is what leaves every position ahead of it still true.
+ */
 cut_all(cs: str[], ts: Token[], i: int) -> str[] {
     if i < 0 {
         cs
@@ -440,7 +448,9 @@ space_end(cs: str[], i: int) -> int {
 
 WatchPollMs = 300
 
-/// `watch` rebuilds and reruns a file every time it changes, until the shell stops it.
+/** `watch` rebuilds and reruns a file every time it changes, until the shell
+ * stops it.
+ */
 watch_cmd(args: str[]) -> int {
     src = first_named(args)
 
@@ -479,7 +489,7 @@ watched(src: str, rest: str[]) -> int {
     0
 }
 
-/// An imported file is part of the program, so a change there rebuilds too.
+/** An imported file is part of the program, so a change there rebuilds too. */
 newest_ms(files: str[], i: int, best: int) -> int {
     if i >= files.length() {
         best
@@ -499,7 +509,9 @@ Entry = {
     path:   str
 }
 
-/// `maca -m std.text.lines` runs one function of a module, found the way an import finds it.
+/** `maca -m std.text.lines` runs one function of a module, found the way an
+ * import finds it.
+ */
 module_cmd(args: str[]) -> int {
     if args.length() < 2 {
         err("-m: expected a module, e.g. `maca -m http.serve`")
@@ -542,7 +554,7 @@ empty_segment(ps: str[], i: int) -> bool {
     }
 }
 
-/// The last dot names a function, unless the whole spec is itself a module.
+/** The last dot names a function, unless the whole spec is itself a module. */
 module_entry(spec: str) -> Entry {
     cut = last_of(spec.chars(), ".", spec.length() - 1)
     head = cut <= 0 ? "" : spec.slice(0, cut).replace(".", "/")
@@ -593,7 +605,9 @@ module_entered(at: Entry, rest: str[]) -> int {
     }
 }
 
-/// `main` is what a module is run by, and a module with none is run by its own name.
+/** `main` is what a module is run by, and a module with none is run by its own
+ * name.
+ */
 entry_fn(items: Stmt[], own: str) -> str {
     if fn_at(items, "main", 0) >= 0 {
         "main"
@@ -629,7 +643,8 @@ module_calling(at: Entry, def: Stmt, want: str, rest: str[]) -> int {
     }
 }
 
-/// An entry point takes nothing, or the leftover command line as one `str[]`.
+/** An entry point takes nothing, or the leftover command line as one `str[]`.
+ */
 call_shape(def: Stmt) -> str {
     if def.params.length() == 0 {
         "()"
@@ -669,7 +684,8 @@ entry_source(module: str, call: str, ret: str) -> str =>
     "import {module}\n\nmain(args: str[]) -> int \{\n"
         ++ entry_body(call, ret) ++ "\}\n"
 
-/// A declared `int` is the exit status itself, a `bool` is the shell's 0 and 1.
+/** A declared `int` is the exit status itself, a `bool` is the shell's 0 and 1.
+ */
 entry_body(call: str, ret: str) -> str {
     if ret == "int" {
         "    {call}\n"
@@ -690,7 +706,9 @@ flag_after(args: str[], name: str) -> str {
     }
 }
 
-/// The jvm target compiles what it emits, so `-o` names the directory the class files land in.
+/** The jvm target compiles what it emits, so `-o` names the directory the class
+ * files land in.
+ */
 build_classes(src: str, out: str, cp: str) -> int {
     name = jvm_class(src)
     java = "{out}/{name}.java"
@@ -712,14 +730,18 @@ build_classes(src: str, out: str, cp: str) -> int {
     }
 }
 
-/// The JVM looks a class up under the name of its file, so the public class carries the source's stem.
+/** The JVM looks a class up under the name of its file, so the public class
+ * carries the source's stem.
+ */
 jvm_class(src: str) -> str {
     stem = stem_of(src)
 
     stem == "" ? "Main" : stem.at(0).upper() ++ stem.slice(1, stem.length())
 }
 
-/// Java resolves no name by itself, so every class a Java import named is imported into the emitted unit.
+/** Java resolves no name by itself, so every class a Java import named is
+ * imported into the emitted unit.
+ */
 java_imports(src: str) -> str =>
     java_named(unit_of(src).seen, 0, "")
 
@@ -760,7 +782,9 @@ on_path(cmd: str) -> bool =>
 
 CargoName = "maca_app"
 
-/// The rust target compiles what it emits, so `-o` names the binary and the source lands beside it.
+/** The rust target compiles what it emits, so `-o` names the binary and the
+ * source lands beside it.
+ */
 build_rust(src: str, out: str) -> int {
     rs = out ++ ".rs"
     errs = compile_file([src, rs, "rust"])
@@ -779,7 +803,9 @@ build_rust(src: str, out: str) -> int {
     }
 }
 
-/// A program that names a crate is built as a Cargo project beside the binary, because Cargo is what resolves a dependency.
+/** A program that names a crate is built as a Cargo project beside the binary,
+ * because Cargo is what resolves a dependency.
+ */
 cargo_built(src: str, rs: str, out: str, deps: str[]) -> int {
     chain = chain_of(src)
     proj = out ++ "-cargo"
@@ -830,11 +856,15 @@ cargo_entries(chain: str[], table: str, ks: str[], i: int, acc: str) -> str {
     }
 }
 
-/// An inline table reaches Cargo as it was written, and anything else is a version string.
+/** An inline table reaches Cargo as it was written, and anything else is a
+ * version string.
+ */
 cargo_value(v: str) -> str =>
     v.starts_with("{{") ? v : "\"{v}\""
 
-/// The keys of one manifest table, off the nearest manifest on the chain that states it.
+/** The keys of one manifest table, off the nearest manifest on the chain that
+ * states it.
+ */
 manifest_keys(chain: str[], table: str, i: int) -> str[] {
     if i >= chain.length() {
         []
@@ -845,11 +875,14 @@ manifest_keys(chain: str[], table: str, i: int) -> str[] {
     }
 }
 
-/// `lint`, `doc` and `bindgen` are tools of the toolchain rather than targets.
+/** `lint`, `doc` and `bindgen` are tools of the toolchain rather than targets.
+ */
 tooled(name: str) -> bool =>
     name == "lint" || name == "doc" || name == "bindgen"
 
-/// The tools are Maca programs of their own, so the CLI runs them rather than linking them.
+/** The tools are Maca programs of their own, so the CLI runs them rather than
+ * linking them.
+ */
 tool_path(name: str) -> str {
     if name == "lint" {
         "apps/lint/lint.maca"
@@ -885,7 +918,8 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
     }
 }
 
-/// The js and tauri targets are a directory, and every other target is a name.
+/** The js and tauri targets are a directory, and every other target is a name.
+ */
 default_out(src: str, target: str) -> str {
     if target == "js" {
         stem_of(src) ++ "-web"
@@ -914,11 +948,13 @@ Found = {
 NpmPrefix = "npm:"
 PackageJson = "package.json"
 
-/// `[page]` in `maca.toml` says what the page is, as against what its file is called.
+/** `[page]` in `maca.toml` says what the page is, as against what its file is
+ * called.
+ */
 page_keys() -> str[] =>
     ["title", "lang", "description"]
 
-/// A misspelled `[page]` key is silently nothing, so it is named instead.
+/** A misspelled `[page]` key is silently nothing, so it is named instead. */
 stray_page_key(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
@@ -936,7 +972,10 @@ page_setting(chain: str[], key: str, dflt: str) -> str {
     got == "" ? dflt : got
 }
 
-/// The js target is a directory that opens with no server: an `index.html` carrying every asset the program named, beside the `app.js` it was built from.
+/** The js target is a directory that opens with no server: an `index.html`
+ * carrying every asset the program named, beside the `app.js` it was built
+ * from.
+ */
 build_page(src: str, dir: str) -> int {
     chain = chain_of(src)
     stray = stray_page_key(chain, 0)
@@ -972,7 +1011,9 @@ page_written(src: str, dir: str, chain: str[]) -> int {
     }
 }
 
-/// Every asset the files of a program import, in the order the page inlines them.
+/** Every asset the files of a program import, in the order the page inlines
+ * them.
+ */
 page_assets(files: str[], i: int, acc: PageAsset[]) -> PageAsset[] {
     if i >= files.length() {
         acc
@@ -1000,7 +1041,10 @@ assets_in(src: str, ts: Token[], i: int, acc: PageAsset[]) -> PageAsset[] {
     out
 }
 
-/// A quoted import is a file the page carries, a tagged block is source the page carries as written, and a selective one from a script binds the names it asked that script for.
+/** A quoted import is a file the page carries, a tagged block is source the
+ * page carries as written, and a selective one from a script binds the names
+ * it asked that script for.
+ */
 asset_at(src: str, ts: Token[], i: int) -> PageAsset[] {
     at = ts.get(i).kind == LBrace ? selection_end(ts, i + 1) + 2 : i
 
@@ -1018,12 +1062,14 @@ asset_at(src: str, ts: Token[], i: int) -> PageAsset[] {
     }
 }
 
-/// A named import is a block when what follows the name opens with `"""`.
+/** A named import is a block when what follows the name opens with `"""`. */
 raw_block_at(src: str, ts: Token[], i: int) -> bool =>
     ts.get(i).kind == TStr
         && src.slice(ts.get(i).pos, ts.get(i).pos + 3) == "\"\"\""
 
-/// The block as it was written, taken off the source rather than the token, whose text is escaped for a string literal.
+/** The block as it was written, taken off the source rather than the token,
+ * whose text is escaped for a string literal.
+ */
 raw_block(src: str, at: int) -> str {
     rest = src.slice(at + 3, src.length())
     ends = rest.index_of("\"\"\"")
@@ -1041,7 +1087,7 @@ asked_names(ts: Token[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// What slot of the page a name asks for, which its extension is what says.
+/** What slot of the page a name asks for, which its extension is what says. */
 asset_kind(spec: str) -> str {
     path = spec.split("?").get(0).split("#").get(0)
 
@@ -1078,7 +1124,9 @@ asset_errors(xs: Found[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The file an asset import names: a package's own entry point after `npm:`, and otherwise a path beside the program.
+/** The file an asset import names: a package's own entry point after `npm:`,
+ * and otherwise a path beside the program.
+ */
 resolved_asset(src: str, a: PageAsset) -> Found {
     file = dir_of(src) ++ a.spec
 
@@ -1119,7 +1167,9 @@ package_found(src: str, spec: str, kind: str) -> Found {
     }
 }
 
-/// The entry point a package states, best first, which is the one it leads with.
+/** The entry point a package states, best first, which is the one it leads
+ * with.
+ */
 package_entry(dir: str, name: str, said: str) -> Found {
     entry = first_entry(read_file("{dir}/{PackageJson}"), entry_keys(), 0)
     file = "{dir}/" ++ (entry.starts_with("./")
@@ -1140,7 +1190,8 @@ package_entry(dir: str, name: str, said: str) -> Found {
     }
 }
 
-/// The `package.json` keys a package states an entry point under, best first.
+/** The `package.json` keys a package states an entry point under, best first.
+ */
 entry_keys() -> str[] =>
     ["style", "browser", "module", "main"]
 
@@ -1154,7 +1205,8 @@ first_entry(text: str, keys: str[], i: int) -> str {
     }
 }
 
-/// One string value of a `package.json`, which is as much JSON as an entry is.
+/** One string value of a `package.json`, which is as much JSON as an entry is.
+ */
 pkg_entry(text: str, key: str) -> str {
     cs = text.chars()
     at = text.index_of("\"{key}\"")
@@ -1181,7 +1233,9 @@ quoted_upto(cs: str[], i: int, acc: str[]) -> str {
     }
 }
 
-/// The directory `maca add` left a package in, found from the file importing it.
+/** The directory `maca add` left a package in, found from the file importing
+ * it.
+ */
 installed_at(dir: str, name: str) -> str {
     at = "{dir}{DepsDir}/{name}"
 
@@ -1194,7 +1248,9 @@ installed_at(dir: str, name: str) -> str {
     }
 }
 
-/// A package is installed under the name `maca add` gave it, which drops the scope.
+/** A package is installed under the name `maca add` gave it, which drops the
+ * scope.
+ */
 package_name(spec: str) -> str =>
     unscoped(spec).split("/").get(0)
 
@@ -1236,13 +1292,17 @@ page_html(src: str, chain: str[], assets: PageAsset[], found: Found[],
         ++ "<script>\n{js}\n</script>\n</body>\n</html>\n"
 }
 
-/// A block a module supplies runs before the program, so the registry it writes to has to exist first.
+/** A block a module supplies runs before the program, so the registry it writes
+ * to has to exist first.
+ */
 MacaBridge = "<script>\nglobalThis.maca = globalThis.maca || {{\n"
     ++ "  _hosts: Object.create(null),\n"
     ++ "  provide(fns) {{ for (const k of Object.keys(fns))"
     ++ " this._hosts[k] = fns[k]; }},\n}};\n</script>\n"
 
-/// A stylesheet belongs in the head, and a script after the element it mounts into.
+/** A stylesheet belongs in the head, and a script after the element it mounts
+ * into.
+ */
 inlined(assets: PageAsset[], found: Found[], i: int, acc: str[],
         head: bool) -> str {
     if i >= assets.length() {
@@ -1273,12 +1333,16 @@ one_inlined(a: PageAsset, f: Found) -> str {
     }
 }
 
-/// A block written in the program is a plain script; a file is whatever node would call it.
+/** A block written in the program is a plain script; a file is whatever node
+ * would call it.
+ */
 script_open(a: PageAsset, f: Found) -> str =>
     a.text == "" && es_module(f.file) ? "<script type=\"module\">\n"
         : "<script>\n"
 
-/// Node's own rule for what a script is: the extension, and otherwise the `type` the nearest `package.json` declares.
+/** Node's own rule for what a script is: the extension, and otherwise the
+ * `type` the nearest `package.json` declares.
+ */
 es_module(path: str) -> bool {
     if path.ends_with(".mjs") {
         true
@@ -1301,7 +1365,9 @@ module_package(dir: str) -> bool {
     }
 }
 
-/// Text inlined into a `<style>` or a `<script>`, with what would end that element early escaped.
+/** Text inlined into a `<style>` or a `<script>`, with what would end that
+ * element early escaped.
+ */
 close_safe(text: str) -> str {
     parts = text.split("</")
 
@@ -1320,12 +1386,14 @@ rejoined(parts: str[], i: int, acc: str[]) -> str {
     }
 }
 
-/// A manifest value escaped for HTML text or for an attribute value.
+/** A manifest value escaped for HTML text or for an attribute value. */
 html_text(s: str) -> str =>
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         .replace("\"", "&quot;").replace("'", "&#39;")
 
-/// `const x = <the first spelling the script exposes>;` for each name asked for.
+/** `const x = <the first spelling the script exposes>;` for each name asked
+ * for.
+ */
 named_bindings(names: str[], i: int, acc: str[]) -> str {
     if i >= names.length() {
         acc.join("")
@@ -1345,7 +1413,9 @@ first_there(ss: str[], i: int, acc: str[]) -> str {
     }
 }
 
-/// Maca is snake_case and JavaScript is camelCase, so a named import tries the name as written, then camelCase, then kebab-case.
+/** Maca is snake_case and JavaScript is camelCase, so a named import tries the
+ * name as written, then camelCase, then kebab-case.
+ */
 spellings(name: str) -> str[] {
     camel = camel_of(name.chars(), 0, [], false)
     kebab = name.replace("_", "-")
@@ -1366,11 +1436,13 @@ camel_of(cs: str[], i: int, acc: str[], up: bool) -> str {
     }
 }
 
-/// A Maca string stops at a NUL, so a wasm module's bytes are encoded before read.
+/** A Maca string stops at a NUL, so a wasm module's bytes are encoded before
+ * read.
+ */
 base64_of(file: str) -> str =>
     capture("sh", ["-c", "base64 \"$0\" | tr -d '\\n'", file]).trim()
 
-/// The wasm target is the C back end linked by `zig cc` against wasi-libc.
+/** The wasm target is the C back end linked by `zig cc` against wasi-libc. */
 build_wasm(src: str, out: str) -> int {
     wasm = out.ends_with(".wasm") ? out : out ++ ".wasm"
     cfile = wasm ++ ".c"
@@ -1399,7 +1471,9 @@ build_wasm(src: str, out: str) -> int {
     }
 }
 
-/// Firmware is three files: the freestanding C, the memory map it is placed by, and the image clang links from the two.
+/** Firmware is three files: the freestanding C, the memory map it is placed by,
+ * and the image clang links from the two.
+ */
 build_firmware(src: str, dir: str, mcu: str) -> int {
     m = emb_mcu(mcu)
 
@@ -1446,14 +1520,18 @@ cross_compile(m: Mcu, dir: str) -> int {
     }
 }
 
-/// The tauri target is the built page beside the Rust shell that hosts it in a desktop window.
+/** The tauri target is the built page beside the Rust shell that hosts it in a
+ * desktop window.
+ */
 build_tauri(src: str, dir: str) -> int {
     built = build_page(src, "{dir}/dist")
 
     built > 0 ? built : tauri_shell(src, dir)
 }
 
-/// The shell is a webview and a bridge, so the whole app is the Maca page it loads and the Maca binary it invokes.
+/** The shell is a webview and a bridge, so the whole app is the Maca page it
+ * loads and the Maca binary it invokes.
+ */
 tauri_shell(src: str, dir: str) -> int {
     st = "{dir}/src-tauri"
     index = "{dir}/dist/index.html"
@@ -1477,7 +1555,9 @@ tauri_shell(src: str, dir: str) -> int {
     built > 0 ? built : tauri_scaffolded(src, dir, st)
 }
 
-/// The `backend.maca` beside the page is the native command the bridge invokes, so a desktop app's back end is Maca too.
+/** The `backend.maca` beside the page is the native command the bridge invokes,
+ * so a desktop app's back end is Maca too.
+ */
 tauri_backend(src: str, st: str) -> int {
     backend = dir_of(src) ++ "backend.maca"
 
@@ -1490,7 +1570,10 @@ tauri_backend(src: str, st: str) -> int {
     }
 }
 
-/// This compiler writes the scaffold and stops there, because turning it into a desktop app is `cargo tauri build`, which needs the Tauri CLI and a system webview.
+/** This compiler writes the scaffold and stops there, because turning it into a
+ * desktop app is `cargo tauri build`, which needs the Tauri CLI and a system
+ * webview.
+ */
 tauri_scaffolded(src: str, dir: str, st: str) -> int {
     note = file_exists(dir_of(src) ++ "backend.maca") ? ""
         : " (no backend.maca beside it, so `maca_run` has nothing to run)"
@@ -1549,7 +1632,9 @@ tauri_main_rs() -> str =>
         ++ "        .run(tauri::generate_context!())\n"
         ++ "        .expect(\"error while running tauri application\");\n}}\n"
 
-/// A crate name is the file stem with every character but a letter or a digit turned into `_`.
+/** A crate name is the file stem with every character but a letter or a digit
+ * turned into `_`.
+ */
 crate_ident(stem: str) -> str {
     id = ident_chars(stem.chars(), 0, [])
 
@@ -1572,7 +1657,9 @@ ident_chars(cs: str[], i: int, acc: str[]) -> str {
     }
 }
 
-/// A program built before and unchanged since is copied out of the cache instead of compiled again.
+/** A program built before and unchanged since is copied out of the cache
+ * instead of compiled again.
+ */
 build_binary(src: str, out: str) -> int {
     key = cache_key(src)
     hit = key == "" ? "" : "{cache_dir()}/{key}"
@@ -1606,7 +1693,9 @@ cache_home() -> str {
     }
 }
 
-/// The cache is `$MACA_CACHE`, else the XDG cache directory, else `~/.cache/maca`.
+/** The cache is `$MACA_CACHE`, else the XDG cache directory, else
+ * `~/.cache/maca`.
+ */
 cache_dir() -> str {
     given = env("MACA_CACHE")
     xdg = env("XDG_CACHE_HOME")
@@ -1623,7 +1712,9 @@ cache_dir() -> str {
     }
 }
 
-/// A digest of every file the program is made of, of the compiler about to build it and of the flags it will be linked with.
+/** A digest of every file the program is made of, of the compiler about to
+ * build it and of the flags it will be linked with.
+ */
 cache_key(src: str) -> str {
     off = env("MACA_NO_CACHE")
 
@@ -1638,7 +1729,9 @@ cache_key(src: str) -> str {
     }
 }
 
-/// Every file `data(...)` reads while the program is built, and the `.local` name that would shadow it.
+/** Every file `data(...)` reads while the program is built, and the `.local`
+ * name that would shadow it.
+ */
 embedded_files(src: str, ts: Token[]) -> str[] {
     names: str[] = []
     texts: str[] = []
@@ -1681,7 +1774,9 @@ data_spec(ts: Token[], i: int, at: Assets) -> str {
     }
 }
 
-/// The path a `data(...)` argument names, written out or bound to a constant beside it.
+/** The path a `data(...)` argument names, written out or bound to a constant
+ * beside it.
+ */
 spec_token(t: Token, at: Assets) -> str {
     if t.kind == TStr {
         t.text
@@ -1692,7 +1787,9 @@ spec_token(t: Token, at: Assets) -> str {
     }
 }
 
-/// No digest without sha512sum and without the compiler's own timestamp, because a key that answers for neither would serve a stale binary.
+/** No digest without sha512sum and without the compiler's own timestamp,
+ * because a key that answers for neither would serve a stale binary.
+ */
 cache_probe() -> str =>
     "command -v sha512sum >/dev/null || exit 0; "
         ++ "exe=$(stat -Lc %Y /proc/$PPID/exe 2>/dev/null); "
@@ -1700,11 +1797,15 @@ cache_probe() -> str =>
         ++ "sha512sum \"$@\" 2>/dev/null | cut -d\" \" -f1 ) "
         ++ "| sha512sum | cut -d\" \" -f1"
 
-/// A cached binary is copied out with the executable bit a fresh build would have left on it.
+/** A cached binary is copied out with the executable bit a fresh build would
+ * have left on it.
+ */
 cache_take(from: str, out: str) -> bool =>
     copy_bytes(from, out) && exec("chmod", ["755", out]) == 0
 
-/// A copy and then a rename, so a build interrupted half way cannot leave a truncated binary under a good key.
+/** A copy and then a rename, so a build interrupted half way cannot leave a
+ * truncated binary under a good key.
+ */
 cache_store(key: str, out: str) -> bool {
     dir = cache_dir()
     tmp = "{dir}/{key}.{str(now_ms())}.tmp"
@@ -1714,7 +1815,9 @@ cache_store(key: str, out: str) -> bool {
     copy_bytes(out, tmp) && exec("mv", [tmp, "{dir}/{key}"]) == 0
 }
 
-/// Which foreign header the emitted C reaches for is which library the link is told about.
+/** Which foreign header the emitted C reaches for is which library the link is
+ * told about.
+ */
 link_flags(code: str) -> str[] {
     sq = code.index_of("#include <sqlite3.h>") >= 0
     py = code.index_of("#include <Python.h>") >= 0
@@ -1730,7 +1833,9 @@ link_flags(code: str) -> str[] {
     }
 }
 
-/// `pkg-config` describes a library where there is one, and `nix` on a machine that keeps its libraries out of the compiler's path.
+/** `pkg-config` describes a library where there is one, and `nix` on a machine
+ * that keeps its libraries out of the compiler's path.
+ */
 sqlite_flags() -> str[] {
     pkg = capture("pkg-config", ["--cflags", "--libs", "sqlite3"]).trim()
     dev = pkg != "" ? "" : nix_path("nixpkgs#sqlite.dev")
@@ -1749,7 +1854,9 @@ sqlite_flags() -> str[] {
 nix_path(attr: str) -> str =>
     capture("nix", ["build", "--no-link", "--print-out-paths", attr]).trim()
 
-/// `python3-config` is what a Python installation says about its own headers and library.
+/** `python3-config` is what a Python installation says about its own headers
+ * and library.
+ */
 python_flags() -> str[] {
     inc = capture("python3-config", ["--includes"]).trim()
     embed = capture("python3-config", ["--ldflags", "--embed"]).trim()
@@ -1769,7 +1876,9 @@ build_fresh(src: str, out: str) -> int {
     }
 }
 
-/// The C compiler is `$MACA_CC`, else `cc`, which is what lets one machine build for another.
+/** The C compiler is `$MACA_CC`, else `cc`, which is what lets one machine
+ * build for another.
+ */
 cc_run(args: str[]) -> int {
     named = env("MACA_CC")
     argv = named == "" ? ["cc"] : nonempty(named.split(" "), 0, [])
@@ -1777,13 +1886,15 @@ cc_run(args: str[]) -> int {
     exec(argv.get(0), argv.slice(1, argv.length()) ++ args)
 }
 
-/// `[build] cflags` in the manifest here, the flags a program needs to link.
+/** `[build] cflags` in the manifest here, the flags a program needs to link. */
 cc_flags() -> str[] =>
     windows_stack()
         ++ nonempty(chain_value(here_chain(), 0, "[build]", "cflags")
                         .split(" "), 0, [])
 
-/// The compiler asks for a 64 MB stack at run time through `setrlimit`, which Windows has no equivalent of, so there it is asked for at link time instead.
+/** The compiler asks for a 64 MB stack at run time through `setrlimit`, which
+ * Windows has no equivalent of, so there it is asked for at link time instead.
+ */
 windows_stack() -> str[] =>
     env("OS") == "Windows_NT" ? ["-Wl,--stack,67108864"] : []
 
@@ -1812,14 +1923,18 @@ build_cmd(args: str[]) -> int {
     }
 }
 
-/// `--cp` names the same jars as `--classpath`, and either beats what `[build]` declared.
+/** `--cp` names the same jars as `--classpath`, and either beats what `[build]`
+ * declared.
+ */
 declared_cp(args: str[], chain: str[]) -> str {
     short = flag_after(args, "--cp")
 
     short != "" ? short : build_setting(args, chain, "--classpath", "classpath")
 }
 
-/// A flag on the line wins, and `[build]` is what the project declares without one.
+/** A flag on the line wins, and `[build]` is what the project declares without
+ * one.
+ */
 build_setting(args: str[], chain: str[], flag: str, key: str) -> str {
     given = flag_after(args, flag)
 
@@ -1832,7 +1947,9 @@ build_setting(args: str[], chain: str[], flag: str, key: str) -> str {
     }
 }
 
-/// `out` names a path the manifest that declared it is the root of, not the directory the command was typed in.
+/** `out` names a path the manifest that declared it is the root of, not the
+ * directory the command was typed in.
+ */
 declared_out(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
@@ -1846,7 +1963,7 @@ declared_out(chain: str[], i: int) -> str {
 build_keys() -> str[] =>
     ["target", "out", "mcu", "classpath", "cflags", "bin"]
 
-/// A misspelled `[build]` key is silently nothing, so it is named instead.
+/** A misspelled `[build]` key is silently nothing, so it is named instead. */
 stray_build_key(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
@@ -1868,7 +1985,9 @@ stray_of(keys: str[], known: str[], i: int) -> str {
     }
 }
 
-/// Whatever is left once the flags and their values are taken out is the file to build.
+/** Whatever is left once the flags and their values are taken out is the file
+ * to build.
+ */
 build_src(args: str[], i: int, held: str) -> str {
     if i >= args.length() {
         held
@@ -1883,7 +2002,9 @@ takes_value(a: str) -> bool =>
     a == "-o" || a == "--target" || a == "--bin"
         || a == "--mcu" || a == "--cp" || a == "--classpath"
 
-/// A target nobody named is read off the source, and the note says how to override that.
+/** A target nobody named is read off the source, and the note says how to
+ * override that.
+ */
 sniffed(src: str, asked: str) -> str {
     found = asked != "" ? "" : detected_target(src)
 
@@ -1895,7 +2016,9 @@ sniffed(src: str, asked: str) -> str {
     found != "" ? found : asked
 }
 
-/// A source that imports nixpkgs is config, and one whose view answers an Element is a page.
+/** A source that imports nixpkgs is config, and one whose view answers an
+ * Element is a page.
+ */
 detected_target(src: str) -> str {
     ts = lex(read_file(src))
 
@@ -1956,7 +2079,8 @@ test_cmd(args: str[]) -> int {
     named != "" ? test_file(named) : test_package(here_chain())
 }
 
-/// `maca test` with no file is every suite the package's test directory holds.
+/** `maca test` with no file is every suite the package's test directory holds.
+ */
 test_package(chain: str[]) -> int {
     if chain.length() == 0 {
         err("test: no maca.toml here, so there is no package to test; "
@@ -1977,14 +2101,14 @@ test_package(chain: str[]) -> int {
     }
 }
 
-/// The package a bare `maca test` is testing, and the version it carries.
+/** The package a bare `maca test` is testing, and the version it carries. */
 package_heading(chain: str[]) -> str {
     got = chain_value(chain, 0, "[package]", "version")
 
     got == "" ? package_of(chain) : package_of(chain) ++ " " ++ got
 }
 
-/// `[package] tests` renames the directory the suites live in.
+/** `[package] tests` renames the directory the suites live in. */
 tests_dir(chain: str[]) -> str {
     named = chain_value(chain, 0, "[package]", "tests")
 
@@ -2024,7 +2148,8 @@ ran_suites(suites: str[], i: int, failed: int) -> int {
     }
 }
 
-/// A file nobody named a target for is checked as what building it would pick.
+/** A file nobody named a target for is checked as what building it would pick.
+ */
 checked_target(src: str, asked: str) -> str {
     found = asked != "" || src == "" ? "" : detected_target(src)
 
@@ -2056,7 +2181,9 @@ check_cmd(args: str[]) -> int {
     }
 }
 
-/// `maca check <file> --json`: the diagnostics, shaped as check-json.schema.json promises.
+/** `maca check <file> --json`: the diagnostics, shaped as
+ * check-json.schema.json promises.
+ */
 check_json(path: str, target: str) -> int {
     unit = unit_of(path)
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
@@ -2073,7 +2200,8 @@ check_json(path: str, target: str) -> int {
     said.length() == 0 ? 0 : 1
 }
 
-/// A file the program embeds that the build could not read is its own defect.
+/** A file the program embeds that the build could not read is its own defect.
+ */
 unread(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= xs.length() {
         acc
@@ -2086,7 +2214,7 @@ unread(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     }
 }
 
-/// Nothing after a scan or parse failure was checked, and the note says so.
+/** Nothing after a scan or parse failure was checked, and the note says so. */
 unparsed(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= xs.length() {
         acc
@@ -2129,7 +2257,8 @@ diag_json(path: str, text: str, d: Diagnostic) -> str {
 note_json(note: str) -> str =>
     note == "" ? "null" : json_text(note)
 
-/// The one edit `maca fix` makes unread, so a reader of the JSON sees it too.
+/** The one edit `maca fix` makes unread, so a reader of the JSON sees it too.
+ */
 fix_suggestions(text: str, d: Diagnostic, lo: int, hi: int) -> str {
     name = quoted_name(d.message)
 
@@ -2167,7 +2296,8 @@ col_at(text: str, at: int) -> int {
     before.get(before.length() - 1).length() + 1
 }
 
-/// The name a message is about, which is the first thing it puts in backticks.
+/** The name a message is about, which is the first thing it puts in backticks.
+ */
 quoted_name(msg: str) -> str {
     open = msg.index_of("`")
     rest = open < 0 ? "" : msg.slice(open + 1, msg.length())
@@ -2176,7 +2306,9 @@ quoted_name(msg: str) -> str {
     shut < 0 ? "" : rest.slice(0, shut)
 }
 
-/// The name's first whole word at or after the statement it came from, or -1 when this file has none.
+/** The name's first whole word at or after the statement it came from, or -1
+ * when this file has none.
+ */
 anchor_at(text: str, name: str, from: int) -> int {
     ahead = name == "" ? -1 : word_from(text, name, at_or_zero(text, from))
 
@@ -2244,14 +2376,17 @@ stem_of(src: str) -> str {
 
 Manifest = "maca.toml"
 
-/// Every directory at or above `from` holding a manifest, nearest first, ending at the workspace root.
+/** Every directory at or above `from` holding a manifest, nearest first, ending
+ * at the workspace root.
+ */
 manifest_chain(from: str) -> str[] {
     dirs = manifest_dirs(rooted(from), [])
 
     upto(dirs, workspace_at(dirs, dirs.length() - 1), 0, [])
 }
 
-/// A relative directory has no ancestors, so the walk starts from the real one.
+/** A relative directory has no ancestors, so the walk starts from the real one.
+ */
 rooted(from: str) -> str {
     at = real_path(from == "" ? "." : from)
 
@@ -2268,7 +2403,9 @@ manifest_dirs(dir: str, acc: str[]) -> str[] {
     }
 }
 
-/// The chain ends at the outermost `[workspace]`, and at the nearest manifest when no workspace holds it.
+/** The chain ends at the outermost `[workspace]`, and at the nearest manifest
+ * when no workspace holds it.
+ */
 workspace_at(dirs: str[], i: int) -> int {
     if i < 0 {
         dirs.length() == 0 ? -1 : 0
@@ -2306,7 +2443,7 @@ here_chain() -> str[] =>
 chain_of(src: str) -> str[] =>
     manifest_chain(dir_of(src))
 
-/// One key, off the nearest manifest on the chain that states it.
+/** One key, off the nearest manifest on the chain that states it. */
 chain_value(chain: str[], i: int, table: str, key: str) -> str {
     if i >= chain.length() {
         ""
@@ -2317,7 +2454,9 @@ chain_value(chain: str[], i: int, table: str, key: str) -> str {
     }
 }
 
-/// A workspace whose list and whose tree disagree is a wrong answer waiting to happen, so it is refused first.
+/** A workspace whose list and whose tree disagree is a wrong answer waiting to
+ * happen, so it is refused first.
+ */
 workspace_ok(chain: str[]) -> bool {
     why = workspace_problem(chain)
 
@@ -2333,7 +2472,9 @@ workspace_ok(chain: str[]) -> bool {
 workspace_problem(chain: str[]) -> str =>
     each_workspace(chain, 0)
 
-/// Every workspace on the chain answers for its own members, so one may hold another.
+/** Every workspace on the chain answers for its own members, so one may hold
+ * another.
+ */
 each_workspace(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
@@ -2353,7 +2494,7 @@ members_problem(root: str, ms: str[]) -> str {
     listed != "" ? listed : stray_in(root, ms, parents_of(ms, 0, []), 0)
 }
 
-/// A member says what it is, in a manifest of its own.
+/** A member says what it is, in a manifest of its own. */
 member_refusal(root: str, ms: str[], i: int) -> str {
     if i >= ms.length() {
         ""
@@ -2370,7 +2511,9 @@ member_refusal(root: str, ms: str[], i: int) -> str {
 named_package(file: str) -> bool =>
     toml_value(read_file(file), "[package]", "name") != ""
 
-/// The directories the member list reaches into, which is where a package it forgot would sit.
+/** The directories the member list reaches into, which is where a package it
+ * forgot would sit.
+ */
 parents_of(ms: str[], i: int, acc: str[]) -> str[] {
     if i >= ms.length() {
         acc
@@ -2404,7 +2547,7 @@ stray_at(root: str, ms: str[], parent: str, names: str[], i: int) -> str {
     }
 }
 
-/// `members = ["a", "b"]`, however many lines the list is written across.
+/** `members = ["a", "b"]`, however many lines the list is written across. */
 members_of(toml: str) -> str[] {
     lines = toml.split("\n")
     at = key_line(lines, 0, "", "[workspace]", "members")
@@ -2455,7 +2598,9 @@ Bin = {
     path: str
 }
 
-/// The file a command works on when the command line named none: a `[[bin]]` of the package here.
+/** The file a command works on when the command line named none: a `[[bin]]` of
+ * the package here.
+ */
 declared_bin(cmd: str, want: str) -> str {
     chain = here_chain()
 
@@ -2551,7 +2696,9 @@ bins_of(lines: str[], i: int, acc: Bin[]) -> Bin[] {
     }
 }
 
-/// A `[[bin]]` that names no path is not a binary anyone can build, so it is not one.
+/** A `[[bin]]` that names no path is not a binary anyone can build, so it is
+ * not one.
+ */
 with_bin(acc: Bin[], b: Bin) -> Bin[] =>
     b.path == "" ? acc : acc ++ [b]
 
@@ -2587,7 +2734,9 @@ keys_in(lines: str[], i: int, at: str, table: str, acc: str[]) -> str[] {
     }
 }
 
-/// One `key = value` of one table, which is as much TOML as a manifest is asked for.
+/** One `key = value` of one table, which is as much TOML as a manifest is asked
+ * for.
+ */
 toml_value(toml: str, table: str, key: str) -> str =>
     table_value(toml.split("\n"), 0, "", table, key)
 
@@ -2708,7 +2857,9 @@ run_tests(src: str, names: str[]) -> int {
     code
 }
 
-/// A suite supplies its tests, and the runner supplies the entry point, so an own `main` is dropped.
+/** A suite supplies its tests, and the runner supplies the entry point, so an
+ * own `main` is dropped.
+ */
 without_main(src: str) -> str {
     items = parse_module(lex(src), 0, []).items
     at = main_item(items, 0)
@@ -2791,7 +2942,9 @@ compile_file(args: str[]) -> int {
     wrong == 0 ? written_to(args.get(1), emitted) : wrong
 }
 
-/// A write that went nowhere is a wrong answer, so the directory is made first and the file is looked for after.
+/** A write that went nowhere is a wrong answer, so the directory is made first
+ * and the file is looked for after.
+ */
 written_to(at: str, text: str) -> int {
     dir = dir_of(at)
 
@@ -2810,7 +2963,9 @@ written_to(at: str, text: str) -> int {
     }
 }
 
-/// A target names what it cannot lower rather than emitting a file that pretends.
+/** A target names what it cannot lower rather than emitting a file that
+ * pretends.
+ */
 refused_here(asked: str, m: Module) -> int {
     if asked == "embedded" {
         report_all("embedded", eemit_errors(m), 0)
@@ -2831,7 +2986,10 @@ refused_here(asked: str, m: Module) -> int {
 target_notes(m: Module, asked: str) -> str[] =>
     target_errors(m, asked == "" ? "native" : asked).map(diag_message)
 
-/// A bodyless function is C the runtime supplies, and on the BEAM that is a NIF this compiler does not write, so it is named rather than emitted as a function answering nothing.
+/** A bodyless function is C the runtime supplies, and on the BEAM that is a NIF
+ * this compiler does not write, so it is named rather than emitted as a
+ * function answering nothing.
+ */
 foreign_bodies(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
@@ -2848,7 +3006,9 @@ foreign_bodies(items: Stmt[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The rust and jvm targets have no C ABI bridge and no function pointer, so each is named here.
+/** The rust and jvm targets have no C ABI bridge and no function pointer, so
+ * each is named here.
+ */
 ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
@@ -2858,7 +3018,10 @@ ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {
     }
 }
 
-/// Does anything here reach for that name? A declaration nobody calls is not refused for a body it never needed, and asking per declaration keeps this a scan rather than a set nobody can afford to build.
+/** Does anything here reach for that name? A declaration nobody calls is not
+ * refused for a body it never needed, and asking per declaration keeps this a
+ * scan rather than a set nobody can afford to build.
+ */
 reaches(items: Stmt[], name: str) -> bool {
     i = 0
 
@@ -2922,7 +3085,7 @@ fn_fields(rec: str, fs: Expr[], i: int, target: str, acc: str[]) -> str[] {
     }
 }
 
-/// A foreign import the target cannot honour is named rather than emitted.
+/** A foreign import the target cannot honour is named rather than emitted. */
 foreign_errors(asked: str, src: str, u: Unit) -> str[] {
     js = browser_errors(asked, u)
 
@@ -2936,7 +3099,9 @@ foreign_errors(asked: str, src: str, u: Unit) -> str[] {
     }
 }
 
-/// A module implemented by a JavaScript block reaches a browser and nothing else, so every other target names it.
+/** A module implemented by a JavaScript block reaches a browser and nothing
+ * else, so every other target names it.
+ */
 browser_errors(asked: str, u: Unit) -> str[] {
     if asked == "js" || !js_import_in(u.toks, 0) {
         []
@@ -2956,7 +3121,8 @@ target_named(asked: str) -> str =>
 js_import_in(ts: Token[], i: int) -> bool =>
     foreign_first(ts, i, "js") >= 0
 
-/// Where the first `import <lang>` block is, or -1 when the file carries none.
+/** Where the first `import <lang>` block is, or -1 when the file carries none.
+ */
 foreign_first(ts: Token[], i: int, lang: str) -> int {
     at = i
 
@@ -2971,21 +3137,25 @@ foreign_first(ts: Token[], i: int, lang: str) -> int {
     0 - 1
 }
 
-/// The two tokens a foreign import is written in, as in `import "gpui::div"`.
+/** The two tokens a foreign import is written in, as in `import "gpui::div"`.
+ */
 foreign_at(ts: Token[], i: int, lang: str) -> bool =>
     ts.get(i).kind == KwImport && ts.get(i + 1).kind == TStr
         && foreign_lang(ts.get(i + 1).text) == lang
 
-/// A body written where the name was quoted, as in `import "shim.c" """…"""`.
+/** A body written where the name was quoted, as in `import "shim.c" """…"""`.
+ */
 foreign_body_at(ts: Token[], i: int) -> bool =>
     i + 2 < ts.length() && ts.get(i + 2).kind == TStr
         && !ts.get(i + 2).fresh
 
-/// How far past a foreign import the next one starts.
+/** How far past a foreign import the next one starts. */
 foreign_step(ts: Token[], i: int) -> int =>
     foreign_body_at(ts, i) ? 3 : 2
 
-/// The language a foreign import names, which its own string says and no keyword repeats.
+/** The language a foreign import names, which its own string says and no
+ * keyword repeats.
+ */
 foreign_lang(spec: str) -> str {
     ext = spec.split("?").get(0).split("#").get(0)
 
@@ -3014,7 +3184,8 @@ foreign_lang(spec: str) -> str {
     }
 }
 
-/// A dotted name ending in a capital is a JVM class, which no extension spells.
+/** A dotted name ending in a capital is a JVM class, which no extension spells.
+ */
 jvm_named(spec: str) -> bool {
     parts = spec.split(".")
 
@@ -3022,7 +3193,9 @@ jvm_named(spec: str) -> bool {
         && leads_capital(parts.get(parts.length() - 1))
 }
 
-/// A crate is written as its bare name, and it is the only foreign import that is.
+/** A crate is written as its bare name, and it is the only foreign import that
+ * is.
+ */
 crate_named(spec: str) -> bool =>
     spec != "" && crate_chars(spec.chars(), 0)
 
@@ -3058,7 +3231,9 @@ browser_file(files: str[], i: int) -> str {
     }
 }
 
-/// A module file as an import writes it: the path under the search root that answers for it.
+/** A module file as an import writes it: the path under the search root that
+ * answers for it.
+ */
 module_named(path: str) -> str {
     stem = path.ends_with(".maca") ? path.slice(0, path.length() - 5) : path
     parts = stem.split("/")
@@ -3078,7 +3253,9 @@ last_root(ps: str[], i: int, acc: int) -> int {
     }
 }
 
-/// A foreign value a method takes belongs to its caller, so the call site lends it rather than handing it over.
+/** A foreign value a method takes belongs to its caller, so the call site lends
+ * it rather than handing it over.
+ */
 rust_borrows(m: Module) -> Module {
     own = declared_types(m.items, 0, [])
 
@@ -3164,7 +3341,9 @@ borrowed_args(name: str, cs: Expr[], marks: str[], i: int,
     }
 }
 
-/// A tag a raw Rust block declares as a function is that function, so check sees the declaration and no back end does.
+/** A tag a raw Rust block declares as a function is that function, so check
+ * sees the declaration and no back end does.
+ */
 tag_stubs(ts: Token[], i: int, acc: Stmt[]) -> Stmt[] {
     out = acc
     at = i
@@ -3229,7 +3408,9 @@ stub_of(part: str) -> Stmt[] {
     }
 }
 
-/// What a Rust signature answers, which is the only thing a caller of it can be told.
+/** What a Rust signature answers, which is the only thing a caller of it can be
+ * told.
+ */
 stub_ret(part: str) -> str {
     body = part.index_of("{{")
     head = body < 0 ? part : part.slice(0, body)
@@ -3246,7 +3427,9 @@ stub_params(n: int, i: int, acc: Expr[]) -> Expr[] {
     }
 }
 
-/// How many parameters a Rust signature declares, counting the commas no nesting hides.
+/** How many parameters a Rust signature declares, counting the commas no
+ * nesting hides.
+ */
 stub_arity(cs: str[], i: int, depth: int, seen: int) -> int {
     if i >= cs.length() || (cs.get(i) == ")" && depth == 1) {
         seen
@@ -3263,7 +3446,7 @@ stub_arity(cs: str[], i: int, depth: int, seen: int) -> int {
     }
 }
 
-/// A name a raw Rust block declares is not a name this file forgot to write.
+/** A name a raw Rust block declares is not a name this file forgot to write. */
 checked_with_foreign(m: Module, ts: Token[]) -> str[] {
     ds = check_diagnostics(m)
 
@@ -3283,7 +3466,9 @@ written_names(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
 rust_import_in(ts: Token[], i: int) -> bool =>
     foreign_first(ts, i, "rust") >= 0
 
-/// Rust resolves no name by itself, so every Rust import is written into the emitted unit.
+/** Rust resolves no name by itself, so every Rust import is written into the
+ * emitted unit.
+ */
 rust_prelude(ts: Token[], i: int, acc: str) -> str {
     if i + 1 >= ts.length() {
         acc == "" ? "" : acc ++ "\n"
@@ -3296,7 +3481,9 @@ rust_prelude(ts: Token[], i: int, acc: str) -> str {
     }
 }
 
-/// `import "shim.c" """…"""` is C the emitted file carries as written, after everything Maca declared, which is how a foreign ABI is met.
+/** `import "shim.c" """…"""` is C the emitted file carries as written, after
+ * everything Maca declared, which is how a foreign ABI is met.
+ */
 c_prelude_blocks(src: str, ts: Token[], i: int, acc: str) -> str {
     out = acc
     at = i
@@ -3313,14 +3500,17 @@ c_prelude_blocks(src: str, ts: Token[], i: int, acc: str) -> str {
     out == "" ? "" : out
 }
 
-/// A spec that is a path names a crate item to use, where a block is Rust as written.
+/** A spec that is a path names a crate item to use, where a block is Rust as
+ * written.
+ */
 rust_item(spec: str) -> str {
     text = rust_source(spec)
 
     path_like(text.chars(), 0) ? "use {text};\n" : text ++ "\n"
 }
 
-/// A raw block is held as a Maca literal, so what it stood for is written back.
+/** A raw block is held as a Maca literal, so what it stood for is written back.
+ */
 rust_source(spec: str) -> str =>
     raw_text(spec).replace("{{{{", "{{").replace("}}}}", "}}").trim()
 
@@ -3331,7 +3521,9 @@ raw_text(s: str) -> str =>
      .replace("\\\"", "\"")
      .replace("\\\\", "\\")
 
-/// A crate the rust target calls must be one the manifest declared, and no other language reaches that target at all.
+/** A crate the rust target calls must be one the manifest declared, and no
+ * other language reaches that target at all.
+ */
 rust_import_errors(ts: Token[], i: int, deps: str[], acc: str[]) -> str[] {
     if i + 2 >= ts.length() {
         acc
@@ -3369,7 +3561,7 @@ rust_builtin(name: str) -> bool =>
     name == "std" || name == "core" || name == "alloc" || name == "crate"
         || name == "self" || name == "super"
 
-/// A spec that is a path names a crate, where a block of Rust names none.
+/** A spec that is a path names a crate, where a block of Rust names none. */
 crate_of(spec: str) -> str {
     s = spec.trim()
     cut = s.index_of("::")
@@ -3404,7 +3596,9 @@ Asked = {
     pairs:  str[]
 }
 
-/// Every name some `import { … } from p` asks the file `p` for, gathered before a line of it is spliced.
+/** Every name some `import { … } from p` asks the file `p` for, gathered before
+ * a line of it is spliced.
+ */
 asks_of(entry: str) -> str[] =>
     walk_asks(entry, Asked { walked = [], pairs = [] }).pairs
 
@@ -3457,7 +3651,9 @@ selected(ts: Token[], i: int, at: str, acc: str[]) -> str[] {
     }
 }
 
-/// `import "f.nix"` binds what that file evaluates to, under the name it is called.
+/** `import "f.nix"` binds what that file evaluates to, under the name it is
+ * called.
+ */
 nix_valued(path: str, src: str) -> str =>
     src.index_of(".nix\"") < 0
         ? src
@@ -3505,7 +3701,9 @@ load_unit(path: str, u: Unit) -> Unit {
     }
 }
 
-/// A name two files define stays with the one an import asked for it by name, and the loser moves.
+/** A name two files define stays with the one an import asked for it by name,
+ * and the loser moves.
+ */
 spliced(deps: Unit, path: str, whole: Token[], errs: str[]) -> Unit {
     mine = fn_names(parse_module(whole, 0, []).items, 0, [])
     clash = clashing(mine, deps.names, 0, [])
@@ -3532,7 +3730,9 @@ holding(u: Unit, path: str, clash: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The program's own file keeps every name it writes, and so does the file an import named.
+/** The program's own file keeps every name it writes, and so does the file an
+ * import named.
+ */
 keeps(u: Unit, path: str, name: str) -> bool =>
     path == u.seen.get(0)
         || (wanted(u.asks, path, name)
@@ -3612,7 +3812,9 @@ renamed(ts: Token[], taken: str[], tag: str, i: int) -> Token[] {
     out
 }
 
-/// A brace holds fields when the name after it is given a type or a value, and a block's never is.
+/** A brace holds fields when the name after it is given a type or a value, and
+ * a block's never is.
+ */
 opens_a_record(ts: Token[], j: int, depth: int) -> bool {
     if j == 0 || j + 2 >= ts.length() || ts.get(j + 1).kind != TIdent {
         false
@@ -3632,7 +3834,9 @@ opens_a_record(ts: Token[], j: int, depth: int) -> bool {
     }
 }
 
-/// A field belongs to its record, not to the module, so a clash between modules never reaches it.
+/** A field belongs to its record, not to the module, so a clash between modules
+ * never reaches it.
+ */
 names_a_field(ts: Token[], at: int, recs: bool[]) -> bool {
     held = recs.length()
 
@@ -3679,7 +3883,9 @@ interp_mentions(raw: str, taken: str[]) -> bool {
     false
 }
 
-/// An interpolation holds code, so a name that moved has to move inside the string too.
+/** An interpolation holds code, so a name that moved has to move inside the
+ * string too.
+ */
 renamed_interp(raw: str, taken: str[], tag: str) -> str {
     cs = raw.chars()
     out = ""
@@ -3813,7 +4019,9 @@ import_path(ts: Token[], i: int, acc: str) -> str {
     }
 }
 
-/// A bare filename has no directory to walk up from, so the real one it sits in is used.
+/** A bare filename has no directory to walk up from, so the real one it sits in
+ * is used.
+ */
 resolved(by: str, want: str) -> str {
     from = dir_of(by)
     here = search_up(from == "" ? rooted("") : from, want ++ ".maca")
@@ -3821,7 +4029,9 @@ resolved(by: str, want: str) -> str {
     here != "" ? here : carried(want ++ ".maca")
 }
 
-/// The last place asked is what `MACA_STDLIB` names, else the library the compiler carries.
+/** The last place asked is what `MACA_STDLIB` names, else the library the
+ * compiler carries.
+ */
 carried(want: str) -> str {
     root = env("MACA_STDLIB")
 
@@ -3834,7 +4044,9 @@ carried(want: str) -> str {
 
 CarriedPackages = ["std", "cli", "web", "http", "signal", "profile"]
 
-/// The library the compiler travels with, written out once so an import finds a file like any other.
+/** The library the compiler travels with, written out once so an import finds a
+ * file like any other.
+ */
 carried_root() -> str {
     root = "{cache_home()}/stdlib/{Version}"
 
@@ -4009,7 +4221,7 @@ SpecHeading = "## Language cheatsheet"
 SpecBudget = 15000
 Carried = "a package this tree carries"
 
-/// `spec` prints the language as one document, sized for a model's context.
+/** `spec` prints the language as one document, sized for a model's context. */
 spec_cmd(args: str[]) -> int {
     if args.index_of("--help") >= 0 || args.index_of("-h") >= 0 {
         info("usage: maca spec --llm [--package <name>]\n"
@@ -4039,7 +4251,8 @@ spec_asked(root: str, pkg: str) -> int {
     }
 }
 
-/// The tree the document is read out of, found by walking up as an import does.
+/** The tree the document is read out of, found by walking up as an import does.
+ */
 spec_root() -> str =>
     root_above(cwd() ++ "/")
 
@@ -4053,7 +4266,8 @@ root_above(dir: str) -> str {
     }
 }
 
-/// The document is only useful if it fits beside the code a model is writing.
+/** The document is only useful if it fits beside the code a model is writing.
+ */
 printed_spec(text: str) -> int {
     used = (text.length() + 2) / 3
 
@@ -4101,7 +4315,7 @@ llm_spec(root: str) -> str =>
         ++ indexed(root ++ "modules/std", "std", false)
         ++ other_packages(root)
 
-/// The one normative section, up to the next heading of its own depth.
+/** The one normative section, up to the next heading of its own depth. */
 cheatsheet(spec: str) -> str {
     at = spec.index_of(SpecHeading)
     rest = at < 0 ? "" : spec.slice(at + SpecHeading.length(), spec.length())
@@ -4123,7 +4337,7 @@ example(root: str, what: str, name: str) -> str =>
     "\n### {what}\n\n```maca\n"
         ++ read_file("{root}apps/examples/{name}.maca") ++ "```\n"
 
-/// Every `///` item of a package, by file, summary only when asked.
+/** Every `///` item of a package, by file, summary only when asked. */
 indexed(dir: str, pkg: str, full: bool) -> str =>
     index_files(dir, pkg, list_dir(dir), 0, full, "")
 
@@ -4152,12 +4366,14 @@ index_file(dir: str, pkg: str, name: str, full: bool) -> str {
     }
 }
 
-/// One `///` line and the item under it, which is what marks that item as API.
+/** One `///` line and the item under it, which is what marks that item as API.
+ */
 documented(lines: str[], i: int, doc: str, full: bool, acc: str) -> str {
     if i >= lines.length() {
         acc
-    } else if lines.get(i).trim().starts_with("///") {
-        documented(lines, i + 1, summary_of(lines.get(i)), full, acc)
+    } else if lines.get(i).trim().starts_with("/**") {
+        documented(lines, doc_shut(lines, i) + 1, summary_of(lines.get(i)),
+                   full, acc)
     } else if doc == "" {
         documented(lines, i + 1, "", full, acc)
     } else {
@@ -4166,10 +4382,21 @@ documented(lines: str[], i: int, doc: str, full: bool, acc: str) -> str {
     }
 }
 
+/** The index wants one sentence an item, and a block's first line is the sentence. */
 summary_of(line: str) -> str {
-    t = line.trim()
+    t = line.trim().slice(3, line.trim().length()).trim()
 
-    t.slice(3, t.length()).trim()
+    t.ends_with("*/") ? t.slice(0, t.length() - 2).trim() : t
+}
+
+doc_shut(lines: str[], i: int) -> int {
+    j = i
+
+    while j < lines.length() && lines.get(j).index_of("*/") < 0 {
+        j = j + 1
+    }
+
+    j
 }
 
 signature_of(line: str) -> str {
@@ -4224,19 +4451,20 @@ first_maca(names: str[], i: int) -> str {
     }
 }
 
-/// The first `//` line of a module file, which is the blurb its index prints.
+/** The first `//` line of a module file, which is the blurb its index prints.
+ */
 blurb(src: str) -> str {
     lines = src.split("\n")
     head = lines.length() == 0 ? "" : lines.get(0).trim()
 
-    if head.starts_with("//") && !head.starts_with("///") {
+    if head.starts_with("//") && !head.starts_with("/**") {
         head.slice(2, head.length()).trim()
     } else {
         Carried
     }
 }
 
-/// The forms a reader reaches for that Maca does not have.
+/** The forms a reader reaches for that Maca does not have. */
 mistakes() -> str =>
     "\nThese are the five the checker sees most, and it rejects each by "
         ++ "name.\n\n"
@@ -4258,7 +4486,7 @@ mistakes() -> str =>
         ++ "- **A block after `=>` is a record literal.** `f() => \{ a = 1 \}` "
         ++ "builds a record. Use `f() \{ … \}` when you meant a body.\n"
 
-/// What each target carries, which is what `--target` is checked against.
+/** What each target carries, which is what `--target` is checked against. */
 targets_table() -> str =>
     "\n`maca check --target <t>` refuses a program that performs an effect "
         ++ "its target cannot carry. With no `--target` a program is held to "
@@ -4277,7 +4505,7 @@ targets_table() -> str =>
         ++ "`int / int` truncates natively and does not on `js`, and a "
         ++ "function-typed record field is refused on `rust` and `jvm`.\n"
 
-/// The methods a receiver accepts, which are builtins rather than exports.
+/** The methods a receiver accepts, which are builtins rather than exports. */
 builtin_methods() -> str =>
     "\nThese are builtins on the receiver, not module exports: write "
         ++ "`s.trim()`, never `import \{ trim \} from std/text`.\n\n"
@@ -4298,7 +4526,9 @@ ProfileDepth = 40
 
 ProfileRows = 12
 
-/// `profile` runs the program under callgrind and says where its instructions went.
+/** `profile` runs the program under callgrind and says where its instructions
+ * went.
+ */
 profile_cmd(args: str[]) -> int {
     src = build_src(args, 1, "")
     out = flag_after(args, "-o")
@@ -4319,7 +4549,9 @@ profile_built(src: str, svg: str) -> int {
     built != 0 ? built : profile_measured(src, bin, svg)
 }
 
-/// Callgrind counts every instruction the run executes, so it is slow and exactly repeatable.
+/** Callgrind counts every instruction the run executes, so it is slow and
+ * exactly repeatable.
+ */
 profile_measured(src: str, bin: str, svg: str) -> int {
     cg = "{bin}.callgrind"
 
@@ -4363,7 +4595,9 @@ Scan = {
     callee: str
 }
 
-/// A callgrind dump: what each function spent on itself, and what every call it makes carries.
+/** A callgrind dump: what each function spent on itself, and what every call it
+ * makes carries.
+ */
 costs_in(text: str) -> Dump {
     lines = text.split("\n")
     table = name_table(lines)
@@ -4418,7 +4652,9 @@ owned(d: Dump, name: str, ir: int) -> Dump {
     }
 }
 
-/// A cost line opens with a position: a number, or a `*`/`+`/`-` step from the last one.
+/** A cost line opens with a position: a number, or a `*`/`+`/`-` step from the
+ * last one.
+ */
 is_cost_line(line: str) -> bool {
     c = line.slice(0, 1)
 
@@ -4431,7 +4667,9 @@ cost_in(line: str) -> int {
     fs.length() < 2 ? 0 : int(fs.get(1))
 }
 
-/// Callgrind writes each name once as `(id) name` and then refers back to it by `(id)`.
+/** Callgrind writes each name once as `(id) name` and then refers back to it by
+ * `(id)`.
+ */
 name_table(lines: str[]) -> str[] {
     acc: str[] = []
     i = 0
@@ -4493,7 +4731,7 @@ table_name(table: str[], id: str, i: int) -> str {
     }
 }
 
-/// The heaviest functions by self cost, which is what a profile is read for.
+/** The heaviest functions by self cost, which is what a profile is read for. */
 cost_table(d: Dump) -> str =>
     cost_rows(d, own_order(d, 0, []), 0,
               ["  self%  " ++ "Ir".pad_start(9) ++ "  function"]).join("\n")
@@ -4549,7 +4787,9 @@ Frame = {
     parent: int
 }
 
-/// The call graph as flame graph frames, laid out from the entry point outwards.
+/** The call graph as flame graph frames, laid out from the entry point
+ * outwards.
+ */
 frames_of(d: Dump) -> Span[] {
     root = root_name(d)
 
@@ -4572,7 +4812,9 @@ frames_at(d: Dump, f: Call, at: Frame, path: str[], acc: Span[]) -> Span[] {
              path ++ [f.to], acc.push(box))
 }
 
-/// Each call gets the width its cost asks for, or whatever is left of its caller.
+/** Each call gets the width its cost asks for, or whatever is left of its
+ * caller.
+ */
 laid_out(d: Dump, kids: Call[], i: int, stop: int, at: Frame, path: str[],
          acc: Span[]) -> Span[] {
     if i >= kids.length() || at.x >= stop {
@@ -4588,7 +4830,7 @@ laid_out(d: Dump, kids: Call[], i: int, stop: int, at: Frame, path: str[],
     }
 }
 
-/// The entry point, or the heaviest function when the run had no `main`.
+/** The entry point, or the heaviest function when the run had no `main`. */
 root_name(d: Dump) -> str {
     if d.fns.index_of("main") >= 0 {
         "main"
@@ -4609,7 +4851,9 @@ heaviest(d: Dump, i: int, best: int) -> int {
     }
 }
 
-/// What a function costs in full: its own instructions, plus what its calls carry.
+/** What a function costs in full: its own instructions, plus what its calls
+ * carry.
+ */
 inclusive_of(d: Dump, name: str) -> int =>
     own_of(d, name) + edge_sum(d, "{name}\n", 0, 0)
 
@@ -4676,7 +4920,9 @@ StarterDev = "    import nixpkgs\n\n    dev.name     = \"myapp\"\n"
     ++ "    dev.packages = rustc, cargo\n"
     ++ "    dev.env      = \{ RUST_BACKTRACE = \"1\" \}\n"
 
-/// `dev` turns the `dev.*` bindings of a config file into the flake `nix develop` enters.
+/** `dev` turns the `dev.*` bindings of a config file into the flake `nix
+ * develop` enters.
+ */
 dev_cmd(args: str[]) -> int {
     named = build_src(args, 1, "")
     src = named == "" ? DevFile : named
@@ -4816,7 +5062,9 @@ Ver = {
     ok:    bool
 }
 
-/// `maca add <spec>…`: add one or more dependencies to the manifest and fetch them.
+/** `maca add <spec>…`: add one or more dependencies to the manifest and fetch
+ * them.
+ */
 add_cmd(args: str[]) -> int {
     specs = nonflags(args, 1, [])
 
@@ -4858,7 +5106,9 @@ add_one(spec: str, registry: str) -> int {
     }
 }
 
-/// `maca install`: put every dependency the manifest names where the compiler looks for it, at the version the lock pinned.
+/** `maca install`: put every dependency the manifest names where the compiler
+ * looks for it, at the version the lock pinned.
+ */
 install_cmd() -> int {
     deps = manifest_deps()
 
@@ -4903,7 +5153,8 @@ installed(d: Dep, p: Pin) -> int {
     }
 }
 
-/// `maca update`: re-resolve every dependency, ignoring what the lock pinned.
+/** `maca update`: re-resolve every dependency, ignoring what the lock pinned.
+ */
 update_cmd() -> int {
     deps = manifest_deps()
 
@@ -4939,7 +5190,9 @@ update_one(d: Dep, registry: str) -> int {
     }
 }
 
-/// One dependency resolved, unpacked under `maca_modules`, and written back to the lock.
+/** One dependency resolved, unpacked under `maca_modules`, and written back to
+ * the lock.
+ */
 brought(s: Spec, spec: str, registry: str, want: Pin) -> Pin {
     p = want.version == "" ? resolve_dep(s, registry) : want
 
@@ -4958,7 +5211,7 @@ landed(s: Spec, spec: str, p: Pin) -> Pin {
     }
 }
 
-/// `maca upgrade`: replace this toolchain with the newest published release.
+/** `maca upgrade`: replace this toolchain with the newest published release. */
 upgrade_cmd() -> int {
     doc = http_get(Releases)
     tag = json_str(doc, "tag_name")
@@ -4983,7 +5236,9 @@ upgrade_cmd() -> int {
     }
 }
 
-/// The download URL of the asset the platform asks for, found by name because a release asset URL ends in it.
+/** The download URL of the asset the platform asks for, found by name because a
+ * release asset URL ends in it.
+ */
 asset_url(doc: str, want: str) -> str {
     key = "\"browser_download_url\""
     at = doc.index_of(key)
@@ -5032,7 +5287,9 @@ swapped(exe: str, url: str, want: str) -> int {
     }
 }
 
-/// The platform a release asset is named after, read from `uname` rather than from how this binary was built.
+/** The platform a release asset is named after, read from `uname` rather than
+ * from how this binary was built.
+ */
 host_triple() -> str {
     named = capture("uname", ["-sm"]).trim()
     machine = named.index_of("arm64") >= 0 || named.index_of("aarch64") >= 0
@@ -5049,7 +5306,9 @@ host_triple() -> str {
 
 JsonWindow = 512
 
-/// The string `key` names in a registry or release answer, read without a parser because both documents are flat and every value wanted is short.
+/** The string `key` names in a registry or release answer, read without a
+ * parser because both documents are flat and every value wanted is short.
+ */
 json_str(src: str, key: str) -> str {
     at = src.index_of("\"{key}\"")
     from = at + key.length() + 2
@@ -5085,7 +5344,9 @@ nonflags(args: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// `npm:<pkg>[@<req>]` is the npm registry, `git+<url>[#<ref>]` any git remote, and a bare `<name>[@<req>]` the maca registry.
+/** `npm:<pkg>[@<req>]` is the npm registry, `git+<url>[#<ref>]` any git remote,
+ * and a bare `<name>[@<req>]` the maca registry.
+ */
 parse_spec(spec: str) -> Spec {
     s = spec.trim()
 
@@ -5122,7 +5383,9 @@ reg_spec(s: str) -> Spec {
            req = cut < 0 ? "latest" : s.slice(cut + 1, s.length()) }
 }
 
-/// The `@` that opens a version, which is never the `@` a scoped npm name starts with.
+/** The `@` that opens a version, which is never the `@` a scoped npm name
+ * starts with.
+ */
 version_cut(s: str) -> int {
     at = last_of(s.chars(), "@", s.length() - 1)
 
@@ -5149,7 +5412,9 @@ git_name(url: str) -> str {
     tail.ends_with(".git") ? tail.slice(0, tail.length() - 4) : tail
 }
 
-/// A dependency is unpacked into a directory of its own, so its name has to be one path segment.
+/** A dependency is unpacked into a directory of its own, so its name has to be
+ * one path segment.
+ */
 bad_name(name: str) -> bool =>
     name == "" || name == "." || name == ".." || name.index_of("/") >= 0
 
@@ -5209,7 +5474,9 @@ ver_cmp(a: Ver, b: Ver) -> int {
     }
 }
 
-/// Does a published version answer the range the manifest wrote, in the dialect npm speaks?
+/** Does a published version answer the range the manifest wrote, in the dialect
+ * npm speaks?
+ */
 satisfies(version: str, range: str) -> bool {
     v = ver_of(version)
 
@@ -5263,7 +5530,9 @@ comparator(v: Ver, part: str) -> bool {
 caret(v: Ver, lo: Ver) -> bool =>
     lo.ok && ver_cmp(v, lo) >= 0 && ver_cmp(v, caret_hi(lo)) < 0
 
-/// `^0.9.1` allows 0.9.x and `^1.2.3` allows 1.x, because before 1.0.0 a minor is a breaking change.
+/** `^0.9.1` allows 0.9.x and `^1.2.3` allows 1.x, because before 1.0.0 a minor
+ * is a breaking change.
+ */
 caret_hi(lo: Ver) -> Ver {
     if lo.major > 0 {
         Ver { major = lo.major + 1, minor = 0, patch = 0, ok = true }
@@ -5307,7 +5576,7 @@ wild(v: Ver, parts: str[]) -> bool =>
 wild_part(part: str, have: int) -> bool =>
     part == "x" || part == "*" || (digits(part) && int(part) == have)
 
-/// The maca registry, which `[registry] url` in the manifest replaces.
+/** The maca registry, which `[registry] url` in the manifest replaces. */
 registry_url() -> str {
     named = toml_value(read_file(Manifest), "[registry]", "url")
 
@@ -5343,7 +5612,9 @@ first_sha(out: str) -> str {
     tab < 0 ? t : t.slice(0, tab)
 }
 
-/// A tag or an exact version is one small document; a range is answered by `latest` alone, because the whole packument is more than this reads.
+/** A tag or an exact version is one small document; a range is answered by
+ * `latest` alone, because the whole packument is more than this reads.
+ */
 registry_pin(base: str, pkg: str, req: str) -> Pin {
     tag = req == "" ? "latest" : req
     ranged = tag != "latest" && !ver_of(tag).ok
@@ -5401,7 +5672,9 @@ git_into(url: str, sha: str, dir: str) -> str {
     }
 }
 
-/// An npm tarball wraps everything in `package/`, which is the directory level `--strip-components` drops.
+/** An npm tarball wraps everything in `package/`, which is the directory level
+ * `--strip-components` drops.
+ */
 tgz_into(url: str, integrity: str, dir: str) -> str {
     tgz = "{dir}/.pkg.tgz"
 
@@ -5429,7 +5702,9 @@ unpacked(tgz: str, integrity: str, dir: str) -> str {
     }
 }
 
-/// What `integrity` in the lockfile promises about the bytes, checked before anything is unpacked.
+/** What `integrity` in the lockfile promises about the bytes, checked before
+ * anything is unpacked.
+ */
 mismatch(file: str, want: str) -> str {
     if !want.starts_with("sha512-") {
         "integrity `{want}` is not a sha512 digest; delete {LockFile} to "
@@ -5455,7 +5730,7 @@ digested(file: str, want: str) -> str {
     }
 }
 
-/// A sha512 in hex, out of whichever of the three tools this machine has.
+/** A sha512 in hex, out of whichever of the three tools this machine has. */
 digest_of(file: str) -> str {
     tools = "if command -v sha512sum >/dev/null; then sha512sum -b \"$0\";"
         ++ " elif command -v shasum >/dev/null; then shasum -a 512 -b \"$0\";"
@@ -5464,13 +5739,15 @@ digest_of(file: str) -> str {
     capture("sh", ["-c", "{tools} | cut -d\" \" -f1", file]).trim()
 }
 
-/// The base64 digest the lock wrote, in the hex those tools print.
+/** The base64 digest the lock wrote, in the hex those tools print. */
 hex_of(b64: str) -> str =>
     capture("sh", ["-c", "printf %s \"$0\" | base64 -d 2>/dev/null"
                              ++ " | od -An -tx1 | tr -d \"[:space:]\"",
                    b64]).trim()
 
-/// Every `name = "spec"` under `[dependencies]`, which is what `install` and `update` are about.
+/** Every `name = "spec"` under `[dependencies]`, which is what `install` and
+ * `update` are about.
+ */
 manifest_deps() -> Dep[] {
     lines = read_file(Manifest).split("\n")
     at = table_at(lines, 0, "[dependencies]")
@@ -5490,7 +5767,9 @@ deps_in(lines: str[], i: int, end: int, acc: Dep[]) -> Dep[] {
     }
 }
 
-/// Insert or replace one `name = "spec"` inside `[dependencies]`, writing the table when it is not there yet.
+/** Insert or replace one `name = "spec"` inside `[dependencies]`, writing the
+ * table when it is not there yet.
+ */
 manifest_put(name: str, spec: str) -> bool {
     lines = read_file(Manifest).split("\n")
 
@@ -5543,7 +5822,9 @@ block_end(lines: str[], i: int) -> int {
     }
 }
 
-/// A blank line before the next table belongs to the file rather than to the table, so a new key lands above it.
+/** A blank line before the next table belongs to the file rather than to the
+ * table, so a new key lands above it.
+ */
 tight_end(lines: str[], from: int, end: int) -> int {
     if end <= from || lines.get(end - 1).trim() != "" {
         end
@@ -5590,7 +5871,9 @@ noise(line: str) -> bool {
 lock_name(line: str, held: str) -> str =>
     toml_key(line) == "name" ? toml_val(line) : held
 
-/// What the lock pinned for one dependency, and only while it still answers the request the manifest makes.
+/** What the lock pinned for one dependency, and only while it still answers the
+ * request the manifest makes.
+ */
 pinned(entries: Pkg[], name: str, spec: str) -> Pin {
     at = pkg_at(entries, name, 0)
     block = at < 0 ? "" : entries.get(at).block
@@ -5653,7 +5936,9 @@ lock_text(entries: Pkg[], i: int, acc: str) -> str {
     }
 }
 
-/// The lock stays sorted by name, so which dependency was added first is not a diff.
+/** The lock stays sorted by name, so which dependency was added first is not a
+ * diff.
+ */
 inserted(xs: Pkg[], p: Pkg, i: int, acc: Pkg[]) -> Pkg[] {
     if i >= xs.length() {
         acc ++ [p]

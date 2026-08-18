@@ -6,7 +6,7 @@ maca_bin() -> str {
     named.starts_with("/") ? named : cwd() ++ "/" ++ named
 }
 
-/// A scratch project of its own, so one case cannot read what another wrote.
+/** A scratch project of its own, so one case cannot read what another wrote. */
 project(name: str) -> str {
     dir = "{env_or("TMPDIR", "/tmp")}/maca-page/{name}"
 
@@ -21,7 +21,7 @@ put(dir: str, rel: str, text: str) {
     write_file("{dir}/{rel}", text)
 }
 
-/// The UI every case below builds.
+/** The UI every case below builds. */
 app(dir: str, imports: str) {
     put(dir, "home.maca",
         imports ++ "\nmain() -> Element =>\n"
@@ -53,7 +53,7 @@ carries(page: str, want: str, why: str) {
     assert(page.index_of(want) >= 0, "{why}\nlooked for: {want}")
 }
 
-/// The tag that opened the element `want` sits inside.
+/** The tag that opened the element `want` sits inside. */
 opening(page: str, want: str) -> str {
     at = page.index_of(want)
 
@@ -444,7 +444,9 @@ test_the_desktop_window_takes_the_page_title_too() {
 said_by(dir: str, cmd: str) -> str =>
     capture("sh", ["-c", "cd \"$0\" && \"$1\" {cmd} 2>&1", dir, maca_bin()])
 
-/// `maca install` is what a checkout runs before it builds: the packages the manifest names, at the versions the lock pinned.
+/** `maca install` is what a checkout runs before it builds: the packages the
+ * manifest names, at the versions the lock pinned.
+ */
 test_install_says_so_when_the_manifest_names_nothing() {
     dir = project("install-empty")
     put(dir, "maca.toml", "[package]\nname = \"page\"\n")
@@ -455,7 +457,9 @@ test_install_says_so_when_the_manifest_names_nothing() {
            "an empty manifest is said so, not installed: {said}")
 }
 
-/// A package already in `maca_modules` is left alone, so a second run costs nothing and a vendored copy is not overwritten.
+/** A package already in `maca_modules` is left alone, so a second run costs
+ * nothing and a vendored copy is not overwritten.
+ */
 test_install_leaves_a_package_that_is_already_there() {
     dir = project("install-present")
     put(dir, "maca.toml",
@@ -482,7 +486,9 @@ test_the_source_never_names_the_directory_maca_add_chose() {
            "the program names the package, not where it was installed")
 }
 
-/// A bridge module's block provides every declaration it writes, so naming one of them in the import must not slice the rest out of the page.
+/** A bridge module's block provides every declaration it writes, so naming one
+ * of them in the import must not slice the rest out of the page.
+ */
 test_a_selective_import_keeps_every_declaration_its_block_provides() {
     dir = project("bridge")
 
@@ -504,7 +510,9 @@ test_a_selective_import_keeps_every_declaration_its_block_provides() {
             "and the one it did not, because one block provides both")
 }
 
-/// The checker runs on the way to a page, so what it refuses is refused here too.
+/** The checker runs on the way to a page, so what it refuses is refused here
+ * too.
+ */
 test_a_call_to_a_name_nothing_defines_is_refused() {
     dir = project("undefined")
     put(dir, "home.maca", "main() -> int => nowhere()\n")
@@ -513,7 +521,9 @@ test_a_call_to_a_name_nothing_defines_is_refused() {
            "the name nothing defines is the one named")
 }
 
-/// A view's locals are that view instance's state, so a sibling that reads one hears about it here rather than as a `ReferenceError` in the browser.
+/** A view's locals are that view instance's state, so a sibling that reads one
+ * hears about it here rather than as a `ReferenceError` in the browser.
+ */
 test_reading_another_function_s_local_is_refused_by_name() {
     dir = project("sibling")
     put(dir, "home.maca",
@@ -531,7 +541,9 @@ test_reading_another_function_s_local_is_refused_by_name() {
            "and says where state two functions share belongs: {said}")
 }
 
-/// A handler's own scratch local is the same mistake one level down, and gets the same answer.
+/** A handler's own scratch local is the same mistake one level down, and gets
+ * the same answer.
+ */
 test_reading_a_nested_handler_s_own_local_is_refused_by_name() {
     dir = project("nested-local")
     put(dir, "home.maca",
@@ -543,7 +555,9 @@ test_reading_a_nested_handler_s_own_local_is_refused_by_name() {
            "a name bound inside a nested function is one of its locals")
 }
 
-/// Calling another function's nested handler is one diagnostic, not the call check and the read check both.
+/** Calling another function's nested handler is one diagnostic, not the call
+ * check and the read check both.
+ */
 test_calling_another_function_s_nested_handler_is_named_once() {
     dir = project("named-once")
     put(dir, "home.maca",
@@ -557,7 +571,9 @@ test_calling_another_function_s_nested_handler_is_named_once() {
               "one name, one complaint: {said}")
 }
 
-/// The same shape with the state left where both can see it is the fix, and has to keep building.
+/** The same shape with the state left where both can see it is the fix, and has
+ * to keep building.
+ */
 test_top_level_state_two_functions_share_still_builds() {
     dir = project("shared-state")
     put(dir, "home.maca",
@@ -571,7 +587,9 @@ test_top_level_state_two_functions_share_still_builds() {
     carries(page_of(dir), "<div id=\"app\">", "the page was written")
 }
 
-/// A name a view keeps to itself is still ordinary: nothing outside reads it, and it compiles.
+/** A name a view keeps to itself is still ordinary: nothing outside reads it,
+ * and it compiles.
+ */
 test_a_view_local_only_its_own_handler_writes_still_builds() {
     dir = project("view-local")
     put(dir, "home.maca",
@@ -604,7 +622,9 @@ test_writing_a_constant_is_refused() {
            "the constant written twice is named")
 }
 
-/// `--target tauri` reaches the same emitter, so it must not be a way around the checker.
+/** `--target tauri` reaches the same emitter, so it must not be a way around
+ * the checker.
+ */
 test_the_desktop_target_is_checked_too() {
     dir = project("tauri-checked")
     put(dir, "home.maca", "main() -> int => nowhere()\n")

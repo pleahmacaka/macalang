@@ -1,12 +1,14 @@
-/// A store: every key's value, and the bookkeeping that makes a change to one of them observable.
+/** A store: every key's value, and the bookkeeping that makes a change to one
+ * of them observable.
+ */
 Store = {
     values: Map str str,
-    /// Bumped only when a write really changed a value.
+    /** Bumped only when a write really changed a value. */
     versions: Map str int,
     deps: Map str str,
-    /// For a computed, the dependency versions at its last recomputation.
+    /** For a computed, the dependency versions at its last recomputation. */
     basis: Map str str,
-    /// Computed keys in declaration order, which `refresh` relies on.
+    /** Computed keys in declaration order, which `refresh` relies on. */
     computeds: str[],
     dirty: str[],
     watchers: Map str str,
@@ -17,7 +19,7 @@ Sep = "\n"
 
 Unseen = "?"
 
-/// An empty store.
+/** An empty store. */
 store() -> Store {
     values: Map str str = map()
     versions: Map str int = map()
@@ -38,23 +40,23 @@ store() -> Store {
     }
 }
 
-/// The value of `key`, or "" when it was never written.
+/** The value of `key`, or "" when it was never written. */
 get(s: Store, key: str) -> str => s.values.get(key, "")
 
-/// The value of `key`, or `fallback` when it was never written.
+/** The value of `key`, or `fallback` when it was never written. */
 value(s: Store, key: str, fallback: str) -> str =>
     s.values.get(key, fallback)
 
-/// Has `key` ever been written?
+/** Has `key` ever been written? */
 has(s: Store, key: str) -> bool => s.values.has(key)
 
-/// Every key the store holds, atoms and computeds alike.
+/** Every key the store holds, atoms and computeds alike. */
 keys(s: Store) -> str[] => s.values.keys()
 
-/// How many times `key` has actually changed.
+/** How many times `key` has actually changed. */
 version(s: Store, key: str) -> int => s.versions.get(key, 0)
 
-/// `key` read as a number, or `fallback` when it was never written.
+/** `key` read as a number, or `fallback` when it was never written. */
 num(s: Store, key: str, fallback: int) -> int {
     if has(s, key) {
         int(get(s, key))
@@ -63,7 +65,7 @@ num(s: Store, key: str, fallback: int) -> int {
     }
 }
 
-/// Write `key`.
+/** Write `key`. */
 set(s: Store, key: str, v: str) -> Store {
     settled = is_computed(s, key) ? mark_fresh(s, key) : s
     seen = version(settled, key)
@@ -81,10 +83,10 @@ set(s: Store, key: str, v: str) -> Store {
     }
 }
 
-/// `set`, spelled for a number.
+/** `set`, spelled for a number. */
 set_num(s: Store, key: str, n: int) -> Store => set(s, key, str(n))
 
-/// Declare `key` as derived from `deps`.
+/** Declare `key` as derived from `deps`. */
 computed(s: Store, key: str, deps: str[]) -> Store {
     known = is_computed(s, key)
 
@@ -95,16 +97,16 @@ computed(s: Store, key: str, deps: str[]) -> Store {
     }
 }
 
-/// Was `key` declared with `computed`?
+/** Was `key` declared with `computed`? */
 is_computed(s: Store, key: str) -> bool => s.deps.has(key)
 
-/// Every computed, in declaration order.
+/** Every computed, in declaration order. */
 derived(s: Store) -> str[] => s.computeds
 
-/// What `key` was declared to derive from, in declared order.
+/** What `key` was declared to derive from, in declared order. */
 deps_of(s: Store, key: str) -> str[] => unpack(s.deps.get(key, ""))
 
-/// The current values of `key`'s dependencies, in declared order.
+/** The current values of `key`'s dependencies, in declared order. */
 inputs(s: Store, key: str) -> str[] => values_of(s, deps_of(s, key), 0, [])
 
 values_of(s: Store, ks: str[], i: int, acc: str[]) -> str[] {
@@ -115,7 +117,7 @@ values_of(s: Store, ks: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// Does `key` need recomputing?
+/** Does `key` need recomputing? */
 stale(s: Store, key: str) -> bool {
     if !is_computed(s, key) {
         false
@@ -124,7 +126,9 @@ stale(s: Store, key: str) -> bool {
     }
 }
 
-/// The first computed in declaration order that needs recomputing, or "" when the graph has settled.
+/** The first computed in declaration order that needs recomputing, or "" when
+ * the graph has settled.
+ */
 next_stale(s: Store) -> str => first_stale(s, 0)
 
 first_stale(s: Store, i: int) -> str {
@@ -137,7 +141,9 @@ first_stale(s: Store, i: int) -> str {
     }
 }
 
-/// Recompute `key` if a dependency has changed since it was last computed, and do nothing at all otherwise.
+/** Recompute `key` if a dependency has changed since it was last computed, and
+ * do nothing at all otherwise.
+ */
 refresh(s: Store, key: str, f) -> Store {
     if !stale(s, key) {
         s
@@ -160,33 +166,37 @@ versions_of(s: Store, ks: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The keys that changed since the last `clear_changed`, in the order they changed, each appearing once.
+/** The keys that changed since the last `clear_changed`, in the order they
+ * changed, each appearing once.
+ */
 changed(s: Store) -> str[] => s.dirty
 
-/// Did `key` change since the last `clear_changed`?
+/** Did `key` change since the last `clear_changed`? */
 touched(s: Store, key: str) -> bool => s.dirty.contains(key)
 
-/// Forget the changed keys.
+/** Forget the changed keys. */
 clear_changed(s: Store) -> Store => s with { dirty = [] }
 
-/// Subscribe `name` to `keys`.
+/** Subscribe `name` to `keys`. */
 watch(s: Store, name: str, keys: str[]) -> Store =>
     s with {
         watchers = s.watchers.set(name, pack(keys)),
         acked = s.acked.set(name, fingerprint(s, keys)),
     }
 
-/// Drop a subscriber.
+/** Drop a subscriber. */
 unwatch(s: Store, name: str) -> Store =>
     s with {
         watchers = s.watchers.remove(name),
         acked = s.acked.remove(name),
     }
 
-/// Is `name` subscribed?
+/** Is `name` subscribed? */
 watching(s: Store, name: str) -> bool => s.watchers.has(name)
 
-/// The keys `name` watches that have changed since it last looked, in the order it named them.
+/** The keys `name` watches that have changed since it last looked, in the order
+ * it named them.
+ */
 pending(s: Store, name: str) -> str[] {
     keys = unpack(s.watchers.get(name, ""))
     seen = unpack(s.acked.get(name, ""))
@@ -203,7 +213,7 @@ behind(s: Store, ks: str[], seen: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// Mark `name` as having seen the current values.
+/** Mark `name` as having seen the current values. */
 ack(s: Store, name: str) -> Store {
     if !watching(s, name) {
         s

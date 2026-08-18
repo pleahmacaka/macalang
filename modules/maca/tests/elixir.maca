@@ -101,7 +101,9 @@ test_what_the_beam_has_no_shape_for_is_named_rather_than_emitted() {
            "the refusal names it: {early.get(0)}")
 }
 
-/// The same file through two back ends has to answer the same thing, or there is no language.
+/** The same file through two back ends has to answer the same thing, or there
+ * is no language.
+ */
 test_the_capstone_answers_the_same_through_the_beam_as_it_does_natively() {
     if !elixir_here() {
         assert(true, "running what was emitted needs elixir, which this host "

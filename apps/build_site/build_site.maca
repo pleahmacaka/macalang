@@ -114,7 +114,9 @@ build_api_reference() -> bool {
               ++ std_modules())
 }
 
-/// The compiler as `apps/playground` reaches it, which an absolute path already is.
+/** The compiler as `apps/playground` reaches it, which an absolute path already
+ * is.
+ */
 from_playground(bin: str) -> str =>
     bin.starts_with("/") ? bin : "../../" ++ bin
 
@@ -236,10 +238,12 @@ escape_chars(cs: str[], i: int, out: str) -> str {
 needs_escape(c: str) -> bool =>
     "/.:[]()," .contains(c) || "#%'\"!$&*+;<=>?@^`\{|\}~".contains(c)
 
-/// Every class named on the page, which is what the stylesheet has to answer for.
-///
-/// A class attribute that ends in a space splits into an empty token, and an
-/// empty token has no rule, so the gate used to fail while naming nothing.
+/** Every class named on the page, which is what the stylesheet has to answer
+ * for.
+ *
+ * A class attribute that ends in a space splits into an empty token, and an
+ * empty token has no rule, so the gate used to fail while naming nothing.
+ */
 classes_in(src: str) -> str[] =>
     str_unique(str_flatten(attr_values(without_scripts(src))
                                .map(v => v.split(" "))))

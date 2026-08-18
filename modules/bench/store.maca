@@ -1,9 +1,9 @@
 import { Result } from bench/time
 
-/// Bumped when the stored shape changes.
+/** Bumped when the stored shape changes. */
 Version = 1
 
-/// A run as a JSON document: a version, and the results in the order given.
+/** A run as a JSON document: a version, and the results in the order given. */
 to_json(rs: Result[]) -> str =>
     "\{\"version\":{Version},\"results\":["
         ++ encoded(rs, 0, []).join(",") ++ "]\}"
@@ -29,7 +29,7 @@ int_csv(xs: int[], i: int, acc: str[]) -> str {
     }
 }
 
-/// A JSON string literal.
+/** A JSON string literal. */
 encode_str(s: str) -> str =>
     "\"" ++ s.replace("\\", "\\\\")
              .replace("\"", "\\\"")
@@ -37,7 +37,7 @@ encode_str(s: str) -> str =>
              .replace("\r", "\\r")
              .replace("\t", "\\t") ++ "\""
 
-/// The results in a document written by `to_json`.
+/** The results in a document written by `to_json`. */
 from_json(src: str) -> Result[] {
     if field_int(src, "version", 0) != Version {
         []
@@ -71,7 +71,7 @@ int_list(raw: str[], i: int, acc: int[]) -> int[] {
     }
 }
 
-/// The raw text of `key`'s value in a JSON object, or "" when it is absent.
+/** The raw text of `key`'s value in a JSON object, or "" when it is absent. */
 field(src: str, key: str) -> str {
     marker = "\"" ++ key ++ "\":"
     at = src.index_of(marker)
@@ -83,11 +83,13 @@ field(src: str, key: str) -> str {
     }
 }
 
-/// `field`, with the quotes taken off and the escapes undone: what a string value actually says.
+/** `field`, with the quotes taken off and the escapes undone: what a string
+ * value actually says.
+ */
 field_str(src: str, key: str) -> str =>
     bare(field(src, key))
 
-/// `field`, read as an integer, with `fallback` when the key is absent.
+/** `field`, read as an integer, with `fallback` when the key is absent. */
 field_int(src: str, key: str, fallback: int) -> int {
     raw = field(src, key)
 
@@ -148,7 +150,7 @@ scalar_end(s: str, i: int) -> int {
     }
 }
 
-/// The elements of a JSON array, each as raw text, strings unquoted.
+/** The elements of a JSON array, each as raw text, strings unquoted. */
 elements(src: str) -> str[] {
     body = src.trim()
 
@@ -192,7 +194,7 @@ bare(s: str) -> str {
     }
 }
 
-/// Undo `encode_str`.
+/** Undo `encode_str`. */
 decode_str(s: str) -> str =>
     unescaped(s, 0, "")
 
@@ -220,11 +222,11 @@ unescape_one(c: str) -> str {
     }
 }
 
-/// Write a run to `path`.
+/** Write a run to `path`. */
 save(path: str, rs: Result[]) -> bool =>
     write_file(path, to_json(rs) ++ "\n")
 
-/// Read a run from `path`, or an empty list when there is nothing there.
+/** Read a run from `path`, or an empty list when there is nothing there. */
 load(path: str) -> Result[] {
     if !file_exists(path) {
         []
@@ -233,7 +235,7 @@ load(path: str) -> Result[] {
     }
 }
 
-/// The index of the result named `name`, or -1.
+/** The index of the result named `name`, or -1. */
 find(rs: Result[], name: str) -> int =>
     scan_for(rs, name, 0)
 

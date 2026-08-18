@@ -1,10 +1,11 @@
 import { join } from std/path
 import { between, split_once, strip_prefix, strip_suffix } from std/text
 
-/// A number the site states, and the committed file it was computed from.
-///
-/// Nothing goes on this site as a bare figure. A reader who wants to check a
-/// claim is told where to look in the same breath as the claim.
+/** A number the site states, and the committed file it was computed from.
+ *
+ * Nothing goes on this site as a bare figure. A reader who wants to check a
+ * claim is told where to look in the same breath as the claim.
+ */
 Reading = {
     value: str
     unit:  str
@@ -21,7 +22,7 @@ StdDir = "modules/std"
 
 BookDir = "apps/tomo/book"
 
-/// pass@1 under one condition, as the committed baseline states it.
+/** pass@1 under one condition, as the committed baseline states it. */
 Score = {
     condition: str
     passed:    int
@@ -29,7 +30,7 @@ Score = {
     percent:   int
 }
 
-/// Every row of the baseline table, in the order the run wrote them.
+/** Every row of the baseline table, in the order the run wrote them. */
 scores() -> Score[] =>
     rows(read_file(Baseline).split("\n"), 0, [])
 
@@ -61,11 +62,13 @@ rows(lines: str[], i: int, acc: Score[]) -> Score[] {
     }))
 }
 
-/// The condition the site leads with, which is the specification without the retry.
-///
-/// The retry column is deliberately not the headline: the project's own README
-/// says its three results straddle the plain `spec` column, so quoting it as
-/// the best number would be quoting noise.
+/** The condition the site leads with, which is the specification without the
+ * retry.
+ *
+ * The retry column is deliberately not the headline: the project's own README
+ * says its three results straddle the plain `spec` column, so quoting it as
+ * the best number would be quoting noise.
+ */
 WithSpec = "spec"
 
 with_spec() -> Score {
@@ -78,7 +81,7 @@ with_spec() -> Score {
     found.get(0)
 }
 
-/// pass@1 with the specification, as a reading.
+/** pass@1 with the specification, as a reading. */
 eval_reading() -> Reading {
     s = with_spec()
 
@@ -86,11 +89,12 @@ eval_reading() -> Reading {
               from = Baseline }
 }
 
-/// A manifest value without the quotes it is written inside.
+/** A manifest value without the quotes it is written inside. */
 unquote(s: str) -> str =>
     strip_suffix(strip_prefix(s, "\""), "\"")
 
-/// The languages the handbook ships in, read from the book's own configuration.
+/** The languages the handbook ships in, read from the book's own configuration.
+ */
 book_languages() -> str[] {
     line = read_file(BookConfig).split("\n")
         .filter(l => l.trim().starts_with("languages"))
@@ -104,7 +108,7 @@ book_languages() -> str[] {
     inside.split(",").map(c => unquote(c.trim())).filter(c => c.length() > 0)
 }
 
-/// How many chapters the handbook has in its default language.
+/** How many chapters the handbook has in its default language. */
 chapter_count() -> int {
     langs = book_languages()
 
@@ -116,7 +120,7 @@ chapter_count() -> int {
         .length()
 }
 
-/// The handbook's size, as a reading.
+/** The handbook's size, as a reading. */
 handbook_reading() -> Reading {
     n = chapter_count()
 
@@ -129,12 +133,14 @@ handbook_reading() -> Reading {
               from = BookConfig }
 }
 
-/// The modules the standard library ships, which are the pages the reference has.
+/** The modules the standard library ships, which are the pages the reference
+ * has.
+ */
 std_modules() -> str[] =>
     list_dir(StdDir).filter(f => f.ends_with(".maca"))
         .map(f => f.slice(0, f.length() - 5))
 
-/// The reference's size, as a reading.
+/** The reference's size, as a reading. */
 reference_reading() -> Reading {
     n = std_modules().length()
 
@@ -146,7 +152,9 @@ reference_reading() -> Reading {
               from = StdDir }
 }
 
-/// The version the workspace manifest states, which is the one release the site may name.
+/** The version the workspace manifest states, which is the one release the site
+ * may name.
+ */
 release_version() -> str {
     line = read_file(Manifest).split("\n")
         .filter(l => l.trim().starts_with("version"))
@@ -164,7 +172,7 @@ release_version() -> str {
     unquote(got.get(1).trim())
 }
 
-/// The current release, as a reading.
+/** The current release, as a reading. */
 release_reading() -> Reading =>
     Reading { value = release_version(), unit = "current release",
               from = Manifest }

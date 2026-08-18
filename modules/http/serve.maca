@@ -16,7 +16,7 @@ serve(args: str[]) -> int {
     }
 }
 
-/// One file out of `root`, chosen by the request path.
+/** One file out of `root`, chosen by the request path. */
 serve_file(root: str, req: Request) -> Response {
     if req.method != "GET" && req.method != "HEAD" {
         status(405)

@@ -3,14 +3,14 @@
 import chaski/ask
 import std/json
 
-/// One turn of the conversation, as the wire format names it.
+/** One turn of the conversation, as the wire format names it. */
 Turn = {
     role:    str
     content: str
     call_id: str
 }
 
-/// Where to ask, as whom, and with what.
+/** Where to ask, as whom, and with what. */
 Chat = {
     key:      str
     base:     str
@@ -20,14 +20,17 @@ Chat = {
     seconds:  int
 }
 
-/// A tool the model asked for, with the arguments it filled in, as JSON text.
+/** A tool the model asked for, with the arguments it filled in, as JSON text.
+ */
 Call = {
     id:        str
     name:      str
     arguments: str
 }
 
-/// What came back: the text, any tools it asked for, what it cost, and why it failed.
+/** What came back: the text, any tools it asked for, what it cost, and why it
+ * failed.
+ */
 Answer = {
     text:  str
     model: str
@@ -39,11 +42,13 @@ Answer = {
 
 OpenAiBase = "https://api.openai.com/v1"
 
-/// Pointed at OpenAI itself.
+/** Pointed at OpenAI itself. */
 openai(key: str) -> Chat =>
     compatible(key, OpenAiBase)
 
-/// Pointed anywhere else that answers the same wire format, OpenRouter and Ollama among them.
+/** Pointed anywhere else that answers the same wire format, OpenRouter and
+ * Ollama among them.
+ */
 compatible(key: str, base: str) -> Chat =>
     Chat { key = key, base = base, model = "gpt-4o-mini", warmth = 0.0,
            ceiling = 0, seconds = 120 }
@@ -51,11 +56,11 @@ compatible(key: str, base: str) -> Chat =>
 with_model(c: Chat, name: str) -> Chat =>
     c with { model = name }
 
-/// How far the model may wander, where 0 is as little as it can manage.
+/** How far the model may wander, where 0 is as little as it can manage. */
 with_warmth(c: Chat, t: float) -> Chat =>
     c with { warmth = t }
 
-/// The most tokens the answer may run to, where 0 leaves it to the host.
+/** The most tokens the answer may run to, where 0 leaves it to the host. */
 with_ceiling(c: Chat, n: int) -> Chat =>
     c with { ceiling = n }
 
@@ -71,11 +76,15 @@ user_turn(text: str) -> Turn =>
 assistant_turn(text: str) -> Turn =>
     turn("assistant", text)
 
-/// One completion. The key never appears in a message, only in the header that carries it.
+/** One completion. The key never appears in a message, only in the header that
+ * carries it.
+ */
 complete(c: Chat, ts: Turn[]) -> Answer =>
     complete_with(c, ts, [], [])
 
-/// The same, with whatever else the wire format wants, as pairs beside the standing ones.
+/** The same, with whatever else the wire format wants, as pairs beside the
+ * standing ones.
+ */
 complete_with(c: Chat, ts: Turn[], more_keys: str[],
               more_values: str[]) -> Answer {
     if c.key == "" {
@@ -97,7 +106,9 @@ chat_failed(why: str) -> Answer =>
     Answer { text = "", model = "", sent = 0, got = 0, error = why,
              calls = [] }
 
-/// A host that refuses says why in the body, and that sentence is worth more than the number.
+/** A host that refuses says why in the body, and that sentence is worth more
+ * than the number.
+ */
 chat_refusal(r: Reply) -> str {
     said = get(get(r.body, "error"), "message")
 
@@ -108,7 +119,9 @@ chat_refusal(r: Reply) -> str {
 chat_body(c: Chat, ts: Turn[]) -> str =>
     chat_body_with(c, ts, [], [])
 
-/// The body is pairs handed to `object_of`, so no field is ever spelled as escaped braces, and a setting left alone is a pair never pushed.
+/** The body is pairs handed to `object_of`, so no field is ever spelled as
+ * escaped braces, and a setting left alone is a pair never pushed.
+ */
 chat_body_with(c: Chat, ts: Turn[], more_keys: str[],
                more_values: str[]) -> str {
     ks = ["model", "messages"]
@@ -130,7 +143,9 @@ chat_body_with(c: Chat, ts: Turn[], more_keys: str[],
 turns_json(ts: Turn[]) -> str =>
     "[" ++ ts.map(t => turn_json(t)).join(",") ++ "]"
 
-/// A turn that answers a tool call says which one, or the model cannot pair them.
+/** A turn that answers a tool call says which one, or the model cannot pair
+ * them.
+ */
 turn_json(t: Turn) -> str {
     ks = ["role", "content"]
     vs = [quote(t.role), quote(t.content)]
@@ -140,7 +155,9 @@ turn_json(t: Turn) -> str {
         : object_of(ks.push("tool_call_id"), vs.push(quote(t.call_id)))
 }
 
-/// The answer is the first choice's message, and the usage beside it is what it cost.
+/** The answer is the first choice's message, and the usage beside it is what it
+ * cost.
+ */
 chat_read(body: str) -> Answer {
     picks = items(get(body, "choices"))
 
@@ -159,7 +176,9 @@ chat_read(body: str) -> Answer {
              calls = chat_calls(items(get(said, "tool_calls")), 0, []) }
 }
 
-/// A tool the model asked for is a name and the arguments it filled in, still as JSON text.
+/** A tool the model asked for is a name and the arguments it filled in, still
+ * as JSON text.
+ */
 chat_calls(xs: str[], i: int, acc: Call[]) -> Call[] {
     if i >= xs.length() {
         acc
@@ -173,7 +192,7 @@ chat_calls(xs: str[], i: int, acc: Call[]) -> Call[] {
     }
 }
 
-/// The models the host will answer for, by name.
+/** The models the host will answer for, by name. */
 models(c: Chat) -> str[] {
     at = with_seconds(with_bearer(client(c.base), c.key), c.seconds)
     got = ask_get(at, "/models")

@@ -1,12 +1,12 @@
 // maca/doc: what a doc comment says past the prose, which is the tags a tool reads.
 
-/// One `@name rest` written in a doc comment.
+/** One `@name rest` written in a doc comment. */
 Tag = {
     name: str
     rest: str
 }
 
-/// The tags a doc comment carries, in the order they were written.
+/** The tags a doc comment carries, in the order they were written. */
 tags(doc: str) -> Tag[] =>
     tag_lines(doc.split("\n"), 0, [])
 
@@ -20,18 +20,22 @@ tag_lines(ls: str[], i: int, acc: Tag[]) -> Tag[] {
     }
 }
 
-/// A tag opens its line, so an `@` inside a sentence is a sentence and not a tag.
+/** A tag opens its line, so an `@` inside a sentence is a sentence and not a
+ * tag.
+ */
 tagged(line: str) -> bool {
     said = trimmed_marks(line)
 
     said.starts_with("@") && said.length() > 1
 }
 
-/// The comment marks a doc line may open with, taken off before the tag is read.
+/** The comment marks a doc line may open with, taken off before the tag is
+ * read.
+ */
 trimmed_marks(line: str) -> str {
-    said = line.trim()
+    said = unshut(line.trim())
 
-    if said.starts_with("///") {
+    if said.starts_with("/**") {
         said.slice(3, said.length()).trim()
     } else if said.starts_with("//") {
         said.slice(2, said.length()).trim()
@@ -42,6 +46,12 @@ trimmed_marks(line: str) -> str {
     }
 }
 
+/** A one-line block carries its own closer, which is a mark and not part of the
+ * sentence.
+ */
+unshut(said: str) -> str =>
+    said.ends_with("*/") ? said.slice(0, said.length() - 2).trim() : said
+
 one_tag(line: str) -> Tag {
     said = trimmed_marks(line).slice(1, trimmed_marks(line).length())
     cut = said.index_of(" ")
@@ -51,7 +61,7 @@ one_tag(line: str) -> Tag {
                     rest = said.slice(cut + 1, said.length()).trim() }
 }
 
-/// The prose with the tag lines taken out, which is what a reader renders.
+/** The prose with the tag lines taken out, which is what a reader renders. */
 prose(doc: str) -> str =>
     kept_prose(doc.split("\n"), 0, []).join("\n")
 
@@ -63,7 +73,9 @@ kept_prose(ls: str[], i: int, acc: str[]) -> str[] {
     kept_prose(ls, i + 1, tagged(ls.get(i)) ? acc : acc.push(ls.get(i)))
 }
 
-/// The first tag by that name, or one that names nothing when the comment carries none.
+/** The first tag by that name, or one that names nothing when the comment
+ * carries none.
+ */
 tag_named(ts: Tag[], name: str) -> Tag =>
     found_tag(ts, 0, name)
 
@@ -77,14 +89,16 @@ found_tag(ts: Tag[], i: int, name: str) -> Tag {
     }
 }
 
-/// What a `@param a = slider(1..10)` binds, which is the name on the left of the `=`.
+/** What a `@param a = slider(1..10)` binds, which is the name on the left of
+ * the `=`.
+ */
 bound_name(t: Tag) -> str {
     cut = t.rest.index_of("=")
 
     cut < 0 ? t.rest.trim() : t.rest.slice(0, cut).trim()
 }
 
-/// And what it binds it to, which is the call on the right.
+/** And what it binds it to, which is the call on the right. */
 bound_call(t: Tag) -> str {
     cut = t.rest.index_of("=")
 

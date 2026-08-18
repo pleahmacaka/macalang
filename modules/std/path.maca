@@ -1,6 +1,6 @@
 // std/path: filesystem paths as strings, handled the way a build tool needs.
 
-/// Join two segments with exactly one separator, whatever each side brought.
+/** Join two segments with exactly one separator, whatever each side brought. */
 join(a: str, b: str) -> str {
     left = drop_trailing_sep(a)
     right = drop_leading_sep(b)
@@ -30,7 +30,7 @@ drop_leading_sep(s: str) -> str {
     }
 }
 
-/// Everything after the last separator.
+/** Everything after the last separator. */
 basename(p: str) -> str {
     at = last_sep(p)
 
@@ -41,7 +41,7 @@ basename(p: str) -> str {
     }
 }
 
-/// Everything before the last separator.
+/** Everything before the last separator. */
 dirname(p: str) -> str {
     at = last_sep(p)
 
@@ -54,7 +54,7 @@ dirname(p: str) -> str {
     }
 }
 
-/// The extension without its dot, or "".
+/** The extension without its dot, or "". */
 extension(p: str) -> str {
     name = basename(p)
     at = last_dot(name)
@@ -66,7 +66,7 @@ extension(p: str) -> str {
     }
 }
 
-/// The basename with its extension removed.
+/** The basename with its extension removed. */
 stem(p: str) -> str {
     name = basename(p)
     at = last_dot(name)
@@ -78,7 +78,7 @@ stem(p: str) -> str {
     }
 }
 
-/// Replace the extension (with or without a leading dot on `ext`).
+/** Replace the extension (with or without a leading dot on `ext`). */
 with_extension(p: str, ext: str) -> str {
     bare_ext = drop_leading_dot(ext)
     dir = dirname(p)
@@ -104,11 +104,11 @@ drop_leading_dot(ext: str) -> str {
     }
 }
 
-/// Does `p` start from the root?
+/** Does `p` start from the root? */
 is_absolute(p: str) -> bool =>
     p.starts_with("/")
 
-/// Collapse `.` and `..` segments textually.
+/** Collapse `.` and `..` segments textually. */
 normalize(p: str) -> str {
     kept = walk_segments(p.split("/"), 0, []).join("/")
 

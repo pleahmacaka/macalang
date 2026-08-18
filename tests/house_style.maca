@@ -3,7 +3,9 @@ import std/text
 
 Banned = { seq: str, what: str }
 
-/// The three characters, written as their bytes, because a table of them would report itself.
+/** The three characters, written as their bytes, because a table of them would
+ * report itself.
+ */
 banned() -> Banned[] => [
     Banned { seq = chr(226) ++ chr(128) ++ chr(148), what = "em dash" },
     Banned { seq = chr(226) ++ chr(128) ++ chr(147), what = "en dash" },

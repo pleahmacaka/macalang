@@ -4,7 +4,7 @@ import std/text
 import std/list
 import std/proc
 import { flat, of_kind, cross_linked, declared, kind_label, is_union,
-         item_href, signature, is_doc, is_plain_comment,
+         item_href, signature, is_plain_comment, opens_block,
          comment_body, first_sentence } from apps/macadoc/macadoc
 
 maca() -> str =>
@@ -12,18 +12,19 @@ maca() -> str =>
 
 Out = "/tmp/maca-macadoc"
 
-test_a_doc_comment_is_three_slashes_and_not_four() {
-    assert(is_doc("/// what it is"), "three slashes is a doc comment")
-    assert(!is_doc("//// a rule someone drew"), "four slashes is not")
-    assert(!is_doc("// a note to the next reader"), "two slashes is not")
+test_every_line_comment_is_plain_and_only_a_block_is_doc() {
     assert(is_plain_comment("// a note"), "two slashes is a plain comment")
-    assert(is_plain_comment("//// a rule"), "and so is a rule")
-    assert(!is_plain_comment("/// what it is"), "a doc comment is not")
+    assert(is_plain_comment("/// what it was"),
+           "three slashes stopped being special when docs became blocks")
+    assert(is_plain_comment("//// a rule"), "and a rule someone drew is one too")
+    assert(opens_block("/** what it is */"), "a doc is a block now")
+    assert(!opens_block("/* an ordinary aside */"),
+           "and a block without the second star is an ordinary comment")
 }
 
 test_a_comment_body_keeps_the_indent_past_the_first_space() {
-    assert_eq(comment_body("/// a sentence"), "a sentence", "one space eaten")
-    assert_eq(comment_body("///     import std/text"), "    import std/text",
+    assert_eq(comment_body("// a sentence"), "a sentence", "one space eaten")
+    assert_eq(comment_body("//     import std/text"), "    import std/text",
               "the rest of the indent kept")
     assert_eq(comment_body("//no space at all"), "no space at all", "no space")
 }
@@ -151,49 +152,50 @@ Shapes = """// Shapes on a grid.
 //
 //     import fx/shapes
 
-/// A point on the grid.
+/** A point on the grid. */
 Point = {
     x: int
     y: int
 }
 
-/// Which way up a point is read.
+/** Which way up a point is read. */
 Facing = Up | Down
 
-/// Where a fresh grid starts.
+/** Where a fresh grid starts. */
 Origin = 0
 
-/// Move a point along x.
+/** Move a point along x. */
 shift(p: Point,
       dx: int) -> Point =>
     p with { x = p.x + dx }
 
-/// Which way a point faces.
+/** Which way a point faces. */
 facing_of(p: Point) -> Facing =>
     p.y > 0 ? Up : Down
 """
 
 Draw = """// Drawing, which names another module's types and declares none.
 
-/// Render a `Point` as text.
+/** Render a `Point` as text. */
 plot(p: Point) -> str =>
     "{p.x},{p.y}"
 """
 
 Corner = """// Corner cases the reader is entitled to have right.
 
-/// A constant whose value holds a pipe. Reading the right-hand side for a `|`
-/// filed this under sum types and made it a link target for every mention of
-/// the name, which is a wrong answer twice over.
+/** A constant whose value holds a pipe. Reading the right-hand side for a `|`
+ * filed this under sum types and made it a link target for every mention of
+ * the name, which is a wrong answer twice over.
+ */
 Pipe = "a|b"
 
-/// A real sum, so the fix cannot be to stop recognising them.
+/** A real sum, so the fix cannot be to stop recognising them. */
 Facing = North | South
 
-/// An item named after the search box.
+/** An item named after the search box. */
 q(n: int) -> int => n
 
-/// An item named after the no-matches line.
+/** An item named after the no-matches line. */
 empty() -> bool => true
 """
 
@@ -201,13 +203,13 @@ Overlay = """// Overlay, which declares a Point of its own.
 //
 //     import fx/overlay
 
-/// A point in pixels, which is not the grid's.
+/** A point in pixels, which is not the grid's. */
 Point = {
     px: int
     py: int
 }
 
-/// Place an overlay point.
+/** Place an overlay point. */
 place(p: Point) -> str =>
     "{p.px}"
 """

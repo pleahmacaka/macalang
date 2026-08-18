@@ -1,19 +1,19 @@
 import { Response, json, status } from http/response
 import { quote, object_of } from std/json
 
-/// I have nothing to say.
+/** I have nothing to say. */
 pass() -> Response =>
     Response { status = 0, headers = [], body = "", close = false }
 
-/// Did this response say nothing?
+/** Did this response say nothing? */
 passed(r: Response) -> bool =>
     r.status == 0
 
-/// Something went wrong.
+/** Something went wrong. */
 broke(note: str) -> Response =>
     Response { status = 500, headers = [], body = note, close = true }
 
-/// Replace the body and headers of a 5xx with the status and its phrase.
+/** Replace the body and headers of a 5xx with the status and its phrase. */
 scrub(r: Response) -> Response {
     if r.status < 500 {
         r
@@ -22,14 +22,16 @@ scrub(r: Response) -> Response {
     }
 }
 
-/// `204 No Content`.
+/** `204 No Content`. */
 no_content() -> Response =>
     Response { status = 204, headers = [], body = "", close = false }
 
-/// A JSON object of strings, from parallel keys and values.
+/** A JSON object of strings, from parallel keys and values. */
 json_of_str(keys: str[], values: str[]) -> Response =>
     json(object_of(keys, values.map(quote)))
 
-/// A JSON object from parallel keys and *already-encoded* values, for an object that mixes kinds.
+/** A JSON object from parallel keys and *already-encoded* values, for an object
+ * that mixes kinds.
+ */
 json_of(keys: str[], values: str[]) -> Response =>
     json(object_of(keys, values))

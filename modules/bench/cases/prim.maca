@@ -1,9 +1,9 @@
 import { ascending, sentence } from bench/cases/data
 
-/// A point, for the record cases.
+/** A point, for the record cases. */
 Pt = { x: int, y: int }
 
-/// Integer add, multiply, divide and remainder, `n` times.
+/** Integer add, multiply, divide and remainder, `n` times. */
 int_arith(n: int) -> int {
     acc = 0
     i = 1
@@ -14,7 +14,9 @@ int_arith(n: int) -> int {
     acc
 }
 
-/// Float conversion, division and addition, `n` times, reported as thousandths so the checksum is an integer without being 0.
+/** Float conversion, division and addition, `n` times, reported as thousandths
+ * so the checksum is an integer without being 0.
+ */
 float_arith(n: int) -> int {
     acc = 0.0
     i = 1
@@ -25,7 +27,7 @@ float_arith(n: int) -> int {
     int(acc * 1000.0)
 }
 
-/// Append a two-byte literal `n` times; returns the length built.
+/** Append a two-byte literal `n` times; returns the length built. */
 str_concat(n: int) -> int {
     out = ""
     i = 0
@@ -36,7 +38,9 @@ str_concat(n: int) -> int {
     out.length()
 }
 
-/// The same, through string interpolation: a number formatted and spliced in `n` times.
+/** The same, through string interpolation: a number formatted and spliced in
+ * `n` times.
+ */
 str_interp(n: int) -> int {
     out = ""
     i = 0
@@ -47,7 +51,9 @@ str_interp(n: int) -> int {
     out.length()
 }
 
-/// Walk `n` bytes classifying each one; returns letters and digits packed into one number.
+/** Walk `n` bytes classifying each one; returns letters and digits packed into
+ * one number.
+ */
 str_scan(n: int) -> int {
     text = sentence(n)
     letters = 0
@@ -65,7 +71,7 @@ str_scan(n: int) -> int {
     letters * 1000 + digits
 }
 
-/// Grow a list one element at a time; returns the sum of what went in.
+/** Grow a list one element at a time; returns the sum of what went in. */
 list_push(n: int) -> int {
     xs: int[] = []
     i = 0
@@ -76,7 +82,7 @@ list_push(n: int) -> int {
     xs.sum()
 }
 
-/// Read `n` elements by subscript.
+/** Read `n` elements by subscript. */
 list_index(n: int) -> int {
     xs = ascending(n)
     acc = 0
@@ -88,7 +94,7 @@ list_index(n: int) -> int {
     acc
 }
 
-/// Read the same `n` elements with `for … in`.
+/** Read the same `n` elements with `for … in`. */
 list_iterate(n: int) -> int {
     acc = 0
     for x in ascending(n) {
@@ -97,7 +103,7 @@ list_iterate(n: int) -> int {
     acc
 }
 
-/// Insert `n` string keys into a map; returns how many landed.
+/** Insert `n` string keys into a map; returns how many landed. */
 map_set(n: int) -> int {
     m: Map str int = map()
     i = 0
@@ -108,7 +114,9 @@ map_set(n: int) -> int {
     m.length()
 }
 
-/// Insert `n` keys and then read every one back; returns the sum of the values that came out.
+/** Insert `n` keys and then read every one back; returns the sum of the values
+ * that came out.
+ */
 map_get(n: int) -> int {
     m: Map str int = map()
     i = 0
@@ -126,7 +134,7 @@ map_get(n: int) -> int {
     acc
 }
 
-/// Construct `n` records, reading both fields of each.
+/** Construct `n` records, reading both fields of each. */
 record_build(n: int) -> int {
     acc = 0
     i = 0
@@ -138,7 +146,9 @@ record_build(n: int) -> int {
     acc
 }
 
-/// Read both fields of one record `n` times, construction held out, so the gap against `record_build` is what building one costs.
+/** Read both fields of one record `n` times, construction held out, so the gap
+ * against `record_build` is what building one costs.
+ */
 record_field(n: int) -> int {
     p = Pt { x = 3, y = 4 }
     acc = 0

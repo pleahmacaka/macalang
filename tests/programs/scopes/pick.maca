@@ -1,5 +1,5 @@
 import gauge
 import snug
 
-/// The gauge's reading of a four-character string.
+/** The gauge's reading of a four-character string. */
 picked() -> int => fits("abcd")

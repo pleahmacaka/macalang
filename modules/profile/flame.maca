@@ -19,7 +19,7 @@ column(sc: Scale, at: int) -> int {
     }
 }
 
-/// The trace as a text flame chart `cols` columns wide.
+/** The trace as a text flame chart `cols` columns wide. */
 flame(t: Trace, cols: int) -> str {
     if span_count(t) == 0 {
         dim("(nothing recorded)")
@@ -109,7 +109,9 @@ inside(name: str, ms: int, room: int) -> str {
     }
 }
 
-/// `s` padded out to `w` columns, counting what shows rather than what is stored.
+/** `s` padded out to `w` columns, counting what shows rather than what is
+ * stored.
+ */
 fit(s: str, n: int) -> str {
     if width(s) <= n {
         s
@@ -148,10 +150,10 @@ sgr(i: int) -> str {
     codes.get(i % codes.length())
 }
 
-/// The same chart as a self-contained SVG `px` pixels wide.
+/** The same chart as a self-contained SVG `px` pixels wide. */
 flame_svg(t: Trace, px: int) -> str => flame_svg_in(t, px, "ms")
 
-/// The same SVG over a run counted in `unit` rather than in milliseconds.
+/** The same SVG over a run counted in `unit` rather than in milliseconds. */
 flame_svg_in(t: Trace, px: int, unit: str) -> str {
     inset = 8
     rows = levels(t)
@@ -242,7 +244,9 @@ svg_tip(t: Trace, i: int, unit: str) -> str {
     escape_html(s.name) ++ ": {duration(s)}{unit} ({share:.1}%), " ++ own
 }
 
-/// `part` as a percentage of `whole`, and zero rather than a division by zero when nothing was measured.
+/** `part` as a percentage of `whole`, and zero rather than a division by zero
+ * when nothing was measured.
+ */
 percent(part: int, whole: int) -> float {
     if whole <= 0 {
         0.0

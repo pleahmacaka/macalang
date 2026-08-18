@@ -82,7 +82,9 @@ test_a_missing_key_never_becomes_a_request() {
     assert_eq(a.text, "", "and nothing was asked of anyone")
 }
 
-/// The key is read from the environment and never written down, so this is skipped without one.
+/** The key is read from the environment and never written down, so this is
+ * skipped without one.
+ */
 test_a_free_model_answers_when_a_key_is_in_the_environment() {
     key = env_or("OPENROUTER_API_KEY", "")
 

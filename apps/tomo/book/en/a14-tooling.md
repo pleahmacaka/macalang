@@ -107,11 +107,12 @@ maca run apps/macadoc/macadoc.maca site/api std/text.maca std/list.maca
 ```
 
 Maca has no `export` keyword. What makes an item part of the API is a **doc
-comment**, written with a third slash:
+comment**, written as a starred block:
 
 ```maca
-/// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
-/// `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
+/** Split on the *first* occurrence only: `split_once("a=b=c", "=")` is
+ * `["a", "b=c"]`. A separator that isn't there gives the whole string and "".
+ */
 split_once(s: str, sep: str) -> str[] {
     …
 }
@@ -122,7 +123,7 @@ split_once(s: str, sep: str) -> str[] {
 clamp(n: int, len: int) -> int {
 ```
 
-To the compiler a `///` line is a comment like any other. Inside one, a backtick
+To the compiler a doc block is a comment like any other. Inside one, a backtick
 span becomes code and a `*starred*` run becomes emphasis; a blank line starts a
 paragraph, and an indented run is a code block. The plain `//` block at the top
 of a file is the module's own description.

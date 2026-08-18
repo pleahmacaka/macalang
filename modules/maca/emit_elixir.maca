@@ -11,7 +11,9 @@ exid(name: str) -> str {
     }
 }
 
-/// A variant is an atom, spelled as it was written so two of them never collide.
+/** A variant is an atom, spelled as it was written so two of them never
+ * collide.
+ */
 exatom(name: str) -> str =>
     ":{name}"
 
@@ -42,7 +44,9 @@ exemit_expr(e: Expr) -> str =>
         _        => "nil"
     }
 
-/// A name that is a nullary variant is that atom, and every other name is a binding.
+/** A name that is a nullary variant is that atom, and every other name is a
+ * binding.
+ */
 exname(e: Expr) -> str {
     if exvariant_ty(e.ty) && exupper(e.text) {
         exatom(e.text)
@@ -57,7 +61,9 @@ exvariant_ty(ty: str) -> bool =>
 exupper(w: str) -> bool =>
     w != "" && ord(w.at(0)) >= ord("A") && ord(w.at(0)) <= ord("Z")
 
-/// Maca flattened its own interpolation already, so a `#` here is text and Elixir must not read it as one.
+/** Maca flattened its own interpolation already, so a `#` here is text and
+ * Elixir must not read it as one.
+ */
 exstr(s: str) -> str =>
     "\"" ++ s.replace("#", "\\#") ++ "\""
 
@@ -118,7 +124,9 @@ exemit_match(e: Expr) -> str =>
     "case {exemit_expr(e.children.get(0))} do\n"
         ++ exemit_arms(e.children, 1) ++ "end"
 
-/// The arms lie flat, a pattern then the body it selects, so the walk steps by two.
+/** The arms lie flat, a pattern then the body it selects, so the walk steps by
+ * two.
+ */
 exemit_arms(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
         ""
@@ -152,7 +160,9 @@ exemit_pat(p: Expr) -> str {
 exemit_record(e: Expr) -> str =>
     "%{e.text}{{{exemit_lit_fields(e.children, 0)}}}"
 
-/// A written field is the `=` that binds it, so its name and its value are its children.
+/** A written field is the `=` that binds it, so its name and its value are its
+ * children.
+ */
 exemit_lit_fields(fs: Expr[], i: int) -> str {
     if i >= fs.length() {
         ""
@@ -166,7 +176,7 @@ exemit_lit_fields(fs: Expr[], i: int) -> str {
     }
 }
 
-/// `r with { f = v }` is what `%{r | f: v}` already means.
+/** `r with { f = v }` is what `%{r | f: v}` already means. */
 exemit_with(e: Expr) -> str =>
     "%{{{exemit_expr(e.children.get(0))} | "
         ++ "{exemit_lit_fields(e.children.slice(1, e.children.length()), 0)}}}"
@@ -175,7 +185,9 @@ exemit_for(e: Expr) -> str =>
     "Enum.each({exemit_expr(e.children.get(0))}, fn {exid(e.text)} ->\n"
         ++ exemit_stmts(e.stmts, 0) ++ "nil\nend)"
 
-/// Integer division and remainder are calls in Elixir, and `++` on text is `<>`.
+/** Integer division and remainder are calls in Elixir, and `++` on text is
+ * `<>`.
+ */
 exemit_binary(e: Expr) -> str {
     l = exemit_expr(e.children.get(0))
     r = exemit_expr(e.children.get(1))
@@ -253,7 +265,9 @@ exmath(name: str, args: str) -> str {
     }
 }
 
-/// A method on a value is the module function the BEAM already has for that shape.
+/** A method on a value is the module function the BEAM already has for that
+ * shape.
+ */
 exemit_method(e: Expr) -> str {
     recv = exemit_expr(e.children.get(0))
     name = e.text
@@ -377,7 +391,8 @@ exemit_last(s: Stmt) -> str {
     }
 }
 
-/// The whole unit is one module, with a struct module ahead of it per record.
+/** The whole unit is one module, with a struct module ahead of it per record.
+ */
 exemit_module(m: Module) -> str =>
     exstructs(m.items, 0) ++ "defmodule Maca do\n" ++ exhelpers()
         ++ exemit_items(m.items, 0) ++ "end\n"
@@ -431,7 +446,7 @@ exemit_fn(s: Stmt) -> str =>
     "def {exid(s.name)}({s.params.map(exbinder).join(", ")})"
         ++ " do\n{exemit_body(s.body)}\nend\n"
 
-/// `main` is what the escript runs, and its result is the process's status.
+/** `main` is what the escript runs, and its result is the process's status. */
 exentry(items: Stmt[], i: int) -> str {
     if i >= items.length() {
         ""
@@ -444,7 +459,9 @@ exentry(items: Stmt[], i: int) -> str {
     }
 }
 
-/// What the BEAM has no shape for is named here rather than emitted as Elixir that pretends.
+/** What the BEAM has no shape for is named here rather than emitted as Elixir
+ * that pretends.
+ */
 exemit_errors(m: Module) -> str[] =>
     exwalk_items(m.items, 0, [])
 

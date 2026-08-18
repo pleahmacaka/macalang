@@ -1,38 +1,45 @@
 import { escape_html, index_of_from } from std/text
 import { Store, get, changed } from signal/store
 
-/// One node to update: the key that changed, its new value, and the selector that finds every node bound to it.
+/** One node to update: the key that changed, its new value, and the selector
+ * that finds every node bound to it.
+ */
 Op = {
     key: str,
     value: str,
     selector: str,
 }
 
-/// A `<tag>` whose text is `key`'s value.
+/** A `<tag>` whose text is `key`'s value. */
 text_node(s: Store, tag: str, key: str) -> str =>
     element(tag, data-signal=key, escape_html(get(s, key)))
 
-/// A `<tag>` whose `class` attribute is `key`'s value, with `body` inside it.
+/** A `<tag>` whose `class` attribute is `key`'s value, with `body` inside it.
+ */
 class_node(s: Store, tag: str, key: str, body: str) -> str =>
     element(tag, data-signal=key, data-signal-as="class", class=get(s, key),
         body)
 
-/// An `<input>` whose value is `key`'s value.
+/** An `<input>` whose value is `key`'s value. */
 value_input(s: Store, key: str) -> str =>
     element("input", data-signal=key, data-signal-as="value",
         value=get(s, key), "")
 
-/// A `<tag>` whose *inner markup* is `key`'s value: a region of the page that a rebuild replaces whole.
+/** A `<tag>` whose *inner markup* is `key`'s value: a region of the page that a
+ * rebuild replaces whole.
+ */
 html_node(s: Store, tag: str, key: str) -> str =>
     element(tag, data-signal=key, data-signal-as="html", get(s, key))
 
-/// The selector matching every node bound to `key`.
+/** The selector matching every node bound to `key`. */
 selector(key: str) -> str => "[data-signal=\"" ++ css_escaped(key) ++ "\"]"
 
 css_escaped(key: str) -> str =>
     key.replace("\\", "\\\\").replace("\"", "\\\"")
 
-/// One op per key that changed since the last `clear_changed`, in the order they changed.
+/** One op per key that changed since the last `clear_changed`, in the order
+ * they changed.
+ */
 patch(s: Store) -> Op[] => ops_from(s, changed(s), 0, [])
 
 ops_from(s: Store, ks: str[], i: int, acc: Op[]) -> Op[] {
@@ -48,11 +55,11 @@ ops_from(s: Store, ks: str[], i: int, acc: Op[]) -> Op[] {
     }
 }
 
-/// One op as a line of text: what a native build prints instead of patching.
+/** One op as a line of text: what a native build prints instead of patching. */
 describe(op: Op) -> str =>
     "{op.key} {op.selector} <- {shown(op.value)}"
 
-/// The whole patch as lines, one per op.
+/** The whole patch as lines, one per op. */
 describe_all(ops: Op[]) -> str[] => lines_from(ops, 0, [])
 
 lines_from(ops: Op[], i: int, acc: str[]) -> str[] {
@@ -63,7 +70,8 @@ lines_from(ops: Op[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The JavaScript that applies the current patch, or "" when nothing changed.
+/** The JavaScript that applies the current patch, or "" when nothing changed.
+ */
 patch_script(s: Store) -> str {
     ops = patch(s)
 
@@ -74,7 +82,7 @@ patch_script(s: Store) -> str {
     }
 }
 
-/// The current patch as a JSON array, `[]` when nothing changed.
+/** The current patch as a JSON array, `[]` when nothing changed. */
 patch_json(s: Store) -> str => ops_json(patch(s))
 
 ops_json(ops: Op[]) -> str => "[" ++ encode(ops, 0, []).join(",") ++ "]"
@@ -101,7 +109,7 @@ shown(v: str) -> str => "\"" ++ escaped_value(v) ++ "\""
 quoted(v: str) -> str =>
     "\"" ++ escaped_value(v).replace("<", "\\u003c") ++ "\""
 
-/// `ops` applied to the markup they were computed against.
+/** `ops` applied to the markup they were computed against. */
 apply_patch(page: str, ops: Op[]) -> str => applied(page, ops, 0)
 
 applied(page: str, ops: Op[], i: int) -> str {
@@ -229,10 +237,10 @@ attr_in(open: str, name: str) -> str {
     }
 }
 
-/// `runtime()` inside a `<script>`, ready to drop into a page's `<head>`.
+/** `runtime()` inside a `<script>`, ready to drop into a page's `<head>`. */
 runtime_script() -> str => element("script", runtime())
 
-/// The patcher, as JavaScript source.
+/** The patcher, as JavaScript source. */
 runtime() -> str => """
 window.macaSignal = function (ops) {
   for (var i = 0; i < ops.length; i++) {
@@ -251,6 +259,6 @@ window.macaSignal = function (ops) {
 };
 """
 
-/// An HTML comment saying the page was rendered once and is not live.
+/** An HTML comment saying the page was rendered once and is not live. */
 static_note() -> str =>
     "<!-- rendered once by a native build; no DOM to patch -->"

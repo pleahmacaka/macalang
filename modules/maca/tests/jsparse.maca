@@ -21,7 +21,7 @@ js_apps() -> str[] =>
      "apps/profile_demo/profile_demo.maca", "apps/cli_tool/cli_tool.maca",
      "apps/tambo_demo/tambo_demo.maca"]
 
-/// Build one source to JS and hand back the directory `app.js` landed in.
+/** Build one source to JS and hand back the directory `app.js` landed in. */
 emitted(src: str, name: str) -> str {
     out = scratch(name)
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o", out])
@@ -74,7 +74,9 @@ test_the_control_flow_fixture_computes_the_same_thing_natively() {
                   ++ "way when it is compiled natively")
 }
 
-/// A suite on the JS target runs the way a native one does: the entry answers with its failure count.
+/** A suite on the JS target runs the way a native one does: the entry answers
+ * with its failure count.
+ */
 holds_on_the_js_target(src: str, name: str) {
     at = emitted(src, name) ++ "/app.js"
     said = capture_err("node", [at])
@@ -133,7 +135,7 @@ PageWithStorage = "import web/storage\n\nnote = stored(\"page.note\", \"hello\")
     ++ "\n\nrename(v: str) -> int {{\n    note = v\n    0\n}}\n\n"
     ++ "main() -> Element => div(span(note))\n"
 
-/// Every `<script>` the page holds, in the order a browser would run them.
+/** Every `<script>` the page holds, in the order a browser would run them. */
 page_scripts(at: str) -> str {
     html = read_file(at)
     out = ""
@@ -251,7 +253,9 @@ test_a_handler_is_attached_to_the_node_and_runs_when_it_fires() {
                                                         [dir ++ "/click.js"]))
 }
 
-/// A page needs somewhere to put nodes, and this is the least of one that still tells them apart.
+/** A page needs somewhere to put nodes, and this is the least of one that still
+ * tells them apart.
+ */
 FakeDom = """
 function _mk(t) {
   return { tag: t, attrs: {}, kids: [], on: {}, nodeType: 1,

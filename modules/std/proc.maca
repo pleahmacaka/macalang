@@ -2,7 +2,7 @@
 
 import std/path
 
-/// Run `cmd`, and stop the whole program if it fails.
+/** Run `cmd`, and stop the whole program if it fails. */
 run(cmd: str, args: str[]) -> bool {
     code = exec(cmd, args)
 
@@ -13,11 +13,11 @@ run(cmd: str, args: str[]) -> bool {
     }
 }
 
-/// Run `cmd` and report whether it succeeded, without stopping.
+/** Run `cmd` and report whether it succeeded, without stopping. */
 try_run(cmd: str, args: str[]) -> bool =>
     exec(cmd, args) == 0
 
-/// Run `cmd` with `dir` as the working directory, then change back.
+/** Run `cmd` with `dir` as the working directory, then change back. */
 run_in(dir: str, cmd: str, args: str[]) -> bool {
     back = cwd()
 
@@ -35,11 +35,11 @@ run_in(dir: str, cmd: str, args: str[]) -> bool {
     }
 }
 
-/// The trimmed stdout of `cmd`.
+/** The trimmed stdout of `cmd`. */
 output(cmd: str, args: str[]) -> str =>
     capture(cmd, args).trim()
 
-/// Where `cmd` lives on PATH, or "".
+/** Where `cmd` lives on PATH, or "". */
 which(cmd: str) -> str {
     if cmd.contains("/") {
         found_or_empty(cmd)
@@ -48,7 +48,7 @@ which(cmd: str) -> str {
     }
 }
 
-/// Is `cmd` on PATH at all?
+/** Is `cmd` on PATH at all? */
 have(cmd: str) -> bool =>
     which(cmd) != ""
 
@@ -73,7 +73,7 @@ found_or_empty(p: str) -> str {
     }
 }
 
-/// An environment variable, or `dflt` when it is unset or empty.
+/** An environment variable, or `dflt` when it is unset or empty. */
 env_or(name: str, dflt: str) -> str {
     v = env(name)
 

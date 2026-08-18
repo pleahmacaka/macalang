@@ -38,7 +38,9 @@ group_step(k: Kind) -> int {
     }
 }
 
-/// A token that opens a line is marked, so a postfix `[` or `.` cannot reach back across it.
+/** A token that opens a line is marked, so a postfix `[` or `.` cannot reach
+ * back across it.
+ */
 keep(acc: Lexed, t: Token) -> Lexed {
     moved = acc.depth + group_step(t.kind)
 
@@ -63,7 +65,9 @@ note_error(acc: Lexed, msg: str) -> Lexed =>
 lex(src: str) -> Token[] =>
     lex_all(src).tokens
 
-/// The comments, in source order, which a formatter needs and a parser must not see.
+/** The comments, in source order, which a formatter needs and a parser must not
+ * see.
+ */
 lex_marked(src: str) -> Token[] =>
     lex_all(src).marks
 
@@ -142,7 +146,9 @@ lex_block(cs: str[], i: int, out: Lexed) -> Lexed {
     moved(mark(out, mk_token(Comment, span(cs, i, j), i)), j)
 }
 
-/// A block ends at the first `*/`, and one nobody closed runs to the end of the file rather than eating the parser.
+/** A block ends at its first closing mark, and one nobody closed runs to the
+ * end of the file rather than eating the parser.
+ */
 shut_block(cs: str[], i: int) -> int {
     j = i + 2
 
@@ -231,7 +237,9 @@ lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
     moved(held, j + 1)
 }
 
-/// Inside `{…}` the text is code, so a backslash there is not an escape and would reach the back end as one.
+/** Inside `{…}` the text is code, so a backslash there is not an escape and
+ * would reach the back end as one.
+ */
 escaped_in_interp(cs: str[], i: int, out: Lexed) -> Lexed {
     shut = plain_end(cs, i + 1)
     held = note_error(out, "a `\\` inside an interpolation is not an escape:"
@@ -241,7 +249,9 @@ escaped_in_interp(cs: str[], i: int, out: Lexed) -> Lexed {
     moved(keep(held, mk_token(TStr, span(cs, i + 1, shut), i)), shut + 1)
 }
 
-/// Where the string would end if nothing in it were special, which is how the lexer gets past a bad one.
+/** Where the string would end if nothing in it were special, which is how the
+ * lexer gets past a bad one.
+ */
 plain_end(cs: str[], i: int) -> int {
     j = i
 
@@ -355,7 +365,7 @@ lex_word(cs: str[], i: int, out: Lexed) -> Lexed {
     moved(keep(out, mk_token(keyword_kind(text), text, i)), j)
 }
 
-/// An attached `-` is part of the name, and a spaced one subtracts.
+/** An attached `-` is part of the name, and a spaced one subtracts. */
 word_end(cs: str[], j: int) -> int {
     if j + 1 < cs.length() && cs.get(j) == "-" && is_alpha(cs.get(j + 1)) {
         word_end(cs, run_end(cs, j + 1, is_alnum))
@@ -378,7 +388,8 @@ lex_number(cs: str[], i: int, out: Lexed) -> Lexed {
     }
 }
 
-/// `0x…` and `0b…`, which a register address and a bit mask are written as.
+/** `0x…` and `0b…`, which a register address and a bit mask are written as.
+ */
 based(cs: str[], i: int) -> bool {
     if cs.get(i) != "0" || i + 2 >= cs.length() {
         false
@@ -450,7 +461,9 @@ lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
     }
 }
 
-/// A `?` written tight against the value before it propagates; a spaced one opens a ternary.
+/** A `?` written tight against the value before it propagates; a spaced one
+ * opens a ternary.
+ */
 one_char_kind(cs: str[], i: int, c: str) -> Kind {
     if c == "?" && i > 0 && !is_space(cs.get(i - 1)) {
         QuestionPost

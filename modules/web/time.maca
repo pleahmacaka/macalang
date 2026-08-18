@@ -5,28 +5,29 @@
 
 import { clock, clock12, stamp } from web/format
 
-/// The local time as `[year, month, day, hour, minute, second]`.
+/** The local time as `[year, month, day, hour, minute, second]`. */
 now_parts() -> int[]
 
-/// Repaint the view every `ms` milliseconds, and answer the timer that does it.
+/** Repaint the view every `ms` milliseconds, and answer the timer that does it.
+ */
 every_ms(ms: int) -> int
 
-/// Stop the repainting `every_ms` started.
+/** Stop the repainting `every_ms` started. */
 stop_every(timer: int) -> bool
 
-/// The local time as a 24-hour clock reads it.
+/** The local time as a 24-hour clock reads it. */
 clock_time() -> str {
     p = now_parts()
     clock(p.get(3), p.get(4))
 }
 
-/// The local time as a 12-hour clock reads it.
+/** The local time as a 12-hour clock reads it. */
 clock_time12() -> str {
     p = now_parts()
     clock12(p.get(3), p.get(4))
 }
 
-/// Today, as one sortable stamp.
+/** Today, as one sortable stamp. */
 clock_date() -> str {
     p = now_parts()
     stamp(p.get(0), p.get(1), p.get(2))

@@ -1,4 +1,4 @@
-/// The smallest sample.
+/** The smallest sample. */
 min_of(xs: int[]) -> int {
     if xs.length() == 0 {
         0
@@ -7,7 +7,7 @@ min_of(xs: int[]) -> int {
     }
 }
 
-/// The largest sample, 0 for an empty list.
+/** The largest sample, 0 for an empty list. */
 max_of(xs: int[]) -> int {
     if xs.length() == 0 {
         0
@@ -16,7 +16,9 @@ max_of(xs: int[]) -> int {
     }
 }
 
-/// The middle sample, averaging the two middles when there is an even number of them.
+/** The middle sample, averaging the two middles when there is an even number of
+ * them.
+ */
 median(xs: int[]) -> float {
     n = xs.length()
 
@@ -30,7 +32,7 @@ median(xs: int[]) -> float {
     }
 }
 
-/// The arithmetic mean.
+/** The arithmetic mean. */
 mean(xs: int[]) -> float {
     if xs.length() == 0 {
         0.0
@@ -39,7 +41,7 @@ mean(xs: int[]) -> float {
     }
 }
 
-/// Population standard deviation, in the same unit as the samples.
+/** Population standard deviation, in the same unit as the samples. */
 spread(xs: int[]) -> float {
     n = xs.length()
 
@@ -82,7 +84,7 @@ squared_error(xs: int[], centre: float, i: int, acc: float) -> float {
     }
 }
 
-/// The spread as a fraction of the mean.
+/** The spread as a fraction of the mean. */
 relative_spread(xs: int[]) -> float {
     centre = mean(xs)
 
@@ -93,7 +95,9 @@ relative_spread(xs: int[]) -> float {
     }
 }
 
-/// The sample at `frac` of the way through the sorted list: `percentile(xs, 0.95)` is the slow tail.
+/** The sample at `frac` of the way through the sorted list: `percentile(xs,
+ * 0.95)` is the slow tail.
+ */
 percentile(xs: int[], frac: float) -> int {
     n = xs.length()
 

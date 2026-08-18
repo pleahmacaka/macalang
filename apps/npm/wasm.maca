@@ -9,7 +9,7 @@ import std/json
 
 PgVersion = "0.4.0"
 
-/// The playground's whole answer for one source, as the JSON its glue reads.
+/** The playground's whole answer for one source, as the JSON its glue reads. */
 pg_compile(src: str, mode: int) -> str {
     scanned = lex_all(src)
     raw = parse_module(scanned.tokens, 0, [])
@@ -90,7 +90,8 @@ pg_col_at(text: str, at: int) -> int {
     before.get(before.length() - 1).length() + 1
 }
 
-/// The name a message is about, which is the first thing it puts in backticks.
+/** The name a message is about, which is the first thing it puts in backticks.
+ */
 pg_quoted_name(msg: str) -> str {
     open = msg.index_of("`")
     rest = open < 0 ? "" : msg.slice(open + 1, msg.length())
@@ -140,7 +141,8 @@ pg_ran(m: Module, mode: int, broke: bool) -> str {
     }
 }
 
-/// Every language-server answer for one caret, in the one call an editor asks.
+/** Every language-server answer for one caret, in the one call an editor asks.
+ */
 pg_lsp(src: str, off: int) -> str {
     name = pg_word_at(src, off)
     m = parse_module(lex_all(src).tokens, 0, [])

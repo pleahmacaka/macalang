@@ -1,4 +1,4 @@
-/// `n` written the way beta writes it.
+/** `n` written the way beta writes it. */
 beta_reading(n: int) -> str => reading(n)
 
 reading(n: int) -> str => "b{n}"

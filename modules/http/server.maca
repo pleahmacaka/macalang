@@ -7,7 +7,7 @@ http_listen(port: int) -> int
 http_accept_loop(server: int, handler: (str) -> str) -> int
 http_fetch(host: str, port: int, request: str) -> str
 
-/// Serve `handler` on `port` until the process ends.
+/** Serve `handler` on `port` until the process ends. */
 listen(port: int, handler) -> int {
     server = http_listen(port)
 
@@ -40,11 +40,12 @@ bind_failure(code: int, port: int) -> str {
     }
 }
 
-/// One request against a server, returning the whole reply including headers.
+/** One request against a server, returning the whole reply including headers.
+ */
 fetch(host: str, port: int, request: str) -> str =>
     http_fetch(host, port, request)
 
-/// A `GET` for the common case.
+/** A `GET` for the common case. */
 get(host: str, port: int, path: str) -> str =>
     fetch(host, port,
           "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n")

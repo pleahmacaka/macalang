@@ -3,7 +3,8 @@ import maca/ast
 import maca/ty
 import maca/lexer
 
-/// One defect: the code that names it forever, what is wrong here, and where.
+/** One defect: the code that names it forever, what is wrong here, and where.
+ */
 Diagnostic = {
     code:    str
     message: str
@@ -38,7 +39,7 @@ empty_env() -> Env =>
           varargs = [], frozen = [], infer = new_infer(), errors = [],
           holes = [], fills = [], here = 0, hidden = [], target = "" }
 
-/// What a code means in general, apart from the occurrence that raised it.
+/** What a code means in general, apart from the occurrence that raised it. */
 diag_explain(code: str) -> str =>
     match code {
         "M0001" => "a value is used where a different type is required"
@@ -56,7 +57,9 @@ diag_explain(code: str) -> str =>
 diag_message(d: Diagnostic) -> str =>
     d.message
 
-/// A defect a whole statement is answerable for, placed where that statement starts.
+/** A defect a whole statement is answerable for, placed where that statement
+ * starts.
+ */
 diag_at(s: Stmt, code: str, why: str) -> Diagnostic =>
     Diagnostic { code, message = why, note = "", pos = s.pos }
 
@@ -79,7 +82,9 @@ bind(env: Env, name: str, ty: Ty) -> Env =>
 complain(env: Env, why: str) -> Env =>
     complain_as(env, "M0001", why)
 
-/// A defect the checker can name exactly carries its own code, so a tool branches on it.
+/** A defect the checker can name exactly carries its own code, so a tool
+ * branches on it.
+ */
 complain_as(env: Env, code: str, why: str) -> Env {
     said = Diagnostic { code, message = why, note = "", pos = env.here }
 
@@ -132,7 +137,9 @@ ty_named(name: str) -> Ty {
     }
 }
 
-/// A parameter declared `(int, str) -> bool` holds a function, so it unifies with one.
+/** A parameter declared `(int, str) -> bool` holds a function, so it unifies
+ * with one.
+ */
 ty_fn_named(name: str) -> Ty {
     cut = name.index_of(") -> ")
 
@@ -196,7 +203,9 @@ env_of_module(m: Module) -> Env =>
                                   m.items, 0),
                    m.items, 0)
 
-/// Every name a function declares inside itself, so a read from outside it can say so.
+/** Every name a function declares inside itself, so a read from outside it can
+ * say so.
+ */
 collect_hidden(env: Env, items: Stmt[], i: int) -> Env {
     if i >= items.length() {
         env
@@ -232,7 +241,9 @@ hidden_binds(stmts: Stmt[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// A function written inside a body is a lambda bound to a name, and what it declares is hidden too.
+/** A function written inside a body is a lambda bound to a name, and what it
+ * declares is hidden too.
+ */
 hidden_lambda(e: Expr) -> str[] {
     if e.kind != ELambda {
         []
@@ -409,7 +420,7 @@ range_type(env: Env, a: Ty, b: Ty) -> Typed {
     typed(joined(lo, t_int(), b), t_array(t_int()))
 }
 
-/// A shift moves bits, so both sides count them and neither may be a float.
+/** A shift moves bits, so both sides count them and neither may be a float. */
 shift_type(env: Env, a: Ty, b: Ty) -> Typed {
     value = joined(env, t_int(), a)
 
@@ -433,7 +444,9 @@ unary_type(env: Env, e: Expr) -> Typed {
     }
 }
 
-/// A task carries whole numbers and strings, so it cannot gather a variadic's list.
+/** A task carries whole numbers and strings, so it cannot gather a variadic's
+ * list.
+ */
 spawn_checked(env: Env, e: Expr) -> Env {
     if e.kind == ECall && env.varargs.index_of(e.text) >= 0 {
         complain(env, "`spawn {e.text}` cannot take a variadic: a task takes"
@@ -502,7 +515,8 @@ call_type(env: Env, e: Expr) -> Typed {
     }
 }
 
-/// A closure is worth exactly what the function it was lifted out of is worth.
+/** A closure is worth exactly what the function it was lifted out of is worth.
+ */
 closure_sig(env: Env, e: Expr) -> Ty {
     at = env.fns.index_of(e.children.get(0).text)
 
@@ -514,7 +528,9 @@ StdExports = " decode std/json encode std/json"
     ++ " join std/path basename std/path dirname std/path"
     ++ " between std/text split_once std/text indent std/text "
 
-/// A name the standard library exports is a missing import, not a missing function.
+/** A name the standard library exports is a missing import, not a missing
+ * function.
+ */
 carried_by(name: str) -> str {
     at = StdExports.index_of(" {name} ")
 
@@ -529,7 +545,9 @@ carried_by(name: str) -> str {
     "; `import {{ {name} }} from {where}`"
 }
 
-/// A lowercase call name that resolves to nothing is a function nobody wrote, not a foreign one.
+/** A lowercase call name that resolves to nothing is a function nobody wrote,
+ * not a foreign one.
+ */
 unknown_call(env: Env, name: str) -> Env {
     if !starts_lower(name) || is_prelude_call(name) || is_element_tag(name) {
         env
@@ -599,7 +617,9 @@ call_declared(env: Env, e: Expr, sig: Ty) -> Typed {
     }
 }
 
-/// A call solves its own copy of a signature, so the shape it settled on is kept aside.
+/** A call solves its own copy of a signature, so the shape it settled on is
+ * kept aside.
+ */
 noted_shapes(env: Env, want: Ty[], got: Ty[], i: int) -> Env {
     if i >= want.length() || i >= got.length() {
         env
@@ -622,7 +642,9 @@ noted_shape(env: Env, want: Ty, got: Ty) -> Env {
     }
 }
 
-/// What a slot ended up being: what unification proved, or else what a call site used.
+/** What a slot ended up being: what unification proved, or else what a call
+ * site used.
+ */
 solved_ty(env: Env, t: Ty) -> Ty {
     seen = resolve(env.infer, t)
     at = seen.kind == KVar ? env.holes.index_of(seen.slot) : 0 - 1
@@ -912,7 +934,9 @@ ListMethods = " map filter reduce fold sort sort_by reverse push pop set"
 
 MapMethods = " set get has remove keys length "
 
-/// Every method name a receiver of this shape answers to, or nothing when the shape is unknown.
+/** Every method name a receiver of this shape answers to, or nothing when the
+ * shape is unknown.
+ */
 method_names(recv: Ty) -> str {
     if recv.kind == KStr {
         StrMethods
@@ -935,7 +959,9 @@ method_what(recv: Ty) -> str {
     }
 }
 
-/// A `str`, list or map receiver takes the names its shape declares and no other.
+/** A `str`, list or map receiver takes the names its shape declares and no
+ * other.
+ */
 method_missing(env: Env, name: str, recv: Ty) -> Env {
     known = method_names(recv)
 
@@ -955,7 +981,8 @@ method_gap(known: str, name: str, what: str) -> str {
         : "`{what}` has no method `{name}`; did you mean `{near}`?"
 }
 
-/// The type of a record's field, when the receiver is a record that names one.
+/** The type of a record's field, when the receiver is a record that names one.
+ */
 field_fn_ty(env: Env, recv: Ty, name: str) -> Ty {
     at = env.fields.index_of(recv.name ++ "." ++ name)
 
@@ -966,12 +993,16 @@ field_fn_ty(env: Env, recv: Ty, name: str) -> Ty {
     }
 }
 
-/// `x.f(y)` is `f(x, y)` when no method answers to the name and the module declares one.
+/** `x.f(y)` is `f(x, y)` when no method answers to the name and the module
+ * declares one.
+ */
 is_ufcs_call(env: Env, e: Expr, recv: Ty) -> bool =>
     env.fns.index_of(e.text) >= 0
         && (method_result(e.text, recv).kind == KAny || own_method(recv))
 
-/// A named type of the module's own answers to its functions, not to list methods.
+/** A named type of the module's own answers to its functions, not to list
+ * methods.
+ */
 own_method(t: Ty) -> bool =>
     t.kind == KRec || (t.kind == KCon && t.name != "Array" && !is_map_ty(t))
 
@@ -991,7 +1022,9 @@ sifted_type(env: Env, recv: Ty, f: Expr) -> Typed {
     typed(ready, recv)
 }
 
-/// `sort_by` reads a key off the element and answers with the list it was given.
+/** `sort_by` reads a key off the element and answers with the list it was
+ * given.
+ */
 keyed_type(env: Env, recv: Ty, f: Expr) -> Typed {
     got = type_in(env, f)
     res = fresh(got.env.infer)
@@ -1001,7 +1034,9 @@ keyed_type(env: Env, recv: Ty, f: Expr) -> Typed {
     typed(ready, recv)
 }
 
-/// `index_of_by` asks the element a question and answers with where it first held.
+/** `index_of_by` asks the element a question and answers with where it first
+ * held.
+ */
 found_type(env: Env, recv: Ty, f: Expr) -> Typed {
     got = type_in(env, f)
     ready = joined(got.env, got.ty, t_fn([element_of(recv)], t_bool()))
@@ -1045,7 +1080,7 @@ method_result(name: str, recv: Ty) -> Ty {
 is_map_ty(t: Ty) -> bool =>
     t.kind == KCon && map_type_val(t.name) != ""
 
-/// A map answers with the types it was declared over, not with its own.
+/** A map answers with the types it was declared over, not with its own. */
 map_method_result(name: str, recv: Ty) -> Ty {
     if name == "get" {
         ty_named(map_type_val(recv.name))
@@ -1117,7 +1152,9 @@ field_set(env: Env, rec: str, f: Expr) -> Env {
     }
 }
 
-/// A record literal names every field the record declares, and no field it does not.
+/** A record literal names every field the record declares, and no field it does
+ * not.
+ */
 check_literal(env: Env, rec: str, fs: Expr[]) -> Env {
     if !declares_field(env, rec, 0) {
         env
@@ -1190,7 +1227,7 @@ field_type(env: Env, e: Expr) -> Typed {
     }
 }
 
-/// An entry pairs where the element was with what it was.
+/** An entry pairs where the element was with what it was. */
 entry_field_ty(owner: str, field: str) -> Ty {
     if field == "index" {
         t_int()
@@ -1201,7 +1238,9 @@ entry_field_ty(owner: str, field: str) -> Ty {
     }
 }
 
-/// The payload types a variant carries, joined, so one list can hold them beside the name.
+/** The payload types a variant carries, joined, so one list can hold them
+ * beside the name.
+ */
 slot_types(v: Expr) -> str =>
     v.children.map(binder_type).join(",")
 
@@ -1221,7 +1260,9 @@ match_type(env: Env, e: Expr) -> Typed {
     }
 }
 
-/// A match on a sum names every variant of it, unless an arm catches everything.
+/** A match on a sum names every variant of it, unless an arm catches
+ * everything.
+ */
 check_arms(env: Env, e: Expr, scrut: Ty) -> Env {
     if scrut.kind != KCon || env.owners.index_of(scrut.name) < 0
             || catches_all(env, e, 1) {
@@ -1247,7 +1288,7 @@ catches_all(env: Env, e: Expr, i: int) -> bool {
     }
 }
 
-/// `_` catches everything, and so does a name the sum does not declare.
+/** `_` catches everything, and so does a name the sum does not declare. */
 wide_arm(env: Env, p: Expr) -> bool {
     if p.kind == EGuard {
         false
@@ -1298,7 +1339,9 @@ unify_arms(env: Env, cs: Expr[], want: Ty, i: int) -> Env {
     }
 }
 
-/// `C(r)` binds `r` to what the variant declared it carries, so the arm reads it as that.
+/** `C(r)` binds `r` to what the variant declared it carries, so the arm reads
+ * it as that.
+ */
 bound_arm(env: Env, pat: Expr) -> Env {
     if pat.kind == EGuard {
         bound_arm(env, pat.children.get(0))
@@ -1317,7 +1360,9 @@ bound_arm(env: Env, pat: Expr) -> Env {
     }
 }
 
-/// A cell an arm names is that arm's own binding, whichever function elsewhere spells a local the same.
+/** A cell an arm names is that arm's own binding, whichever function elsewhere
+ * spells a local the same.
+ */
 arm_binder(env: Env, pat: Expr) -> Env =>
     pat.kind == EIdent && starts_lower(pat.text)
         ? env with { hidden = names_but(env.hidden, pat.text, 0, []) }
@@ -1341,7 +1386,9 @@ names_but(xs: str[], name: str, i: int, acc: str[]) -> str[] {
     }
 }
 
-/// A capitalised pattern names a constructor, so one nothing declares is a misspelling and never a binder.
+/** A capitalised pattern names a constructor, so one nothing declares is a
+ * misspelling and never a binder.
+ */
 named_pattern(env: Env, pat: Expr) -> Env {
     if pat.kind != EIdent || !starts_upper(pat.text) {
         env
@@ -1388,7 +1435,9 @@ nearest_ctor(want: str, names: str[], i: int, found: str, best: int) -> str {
     }
 }
 
-/// Levenshtein distance, stopped at `cap`, because a hint only needs the near ones.
+/** Levenshtein distance, stopped at `cap`, because a hint only needs the near
+ * ones.
+ */
 edits_apart(a: str, b: str, cap: int) -> int {
     if a.length() > b.length() + cap || b.length() > a.length() + cap {
         cap
@@ -1426,7 +1475,9 @@ least_of(a: int, b: int, c: int) -> int {
     m < c ? m : c
 }
 
-/// A comma pattern matches a list by position, so a named cell holds an element.
+/** A comma pattern matches a list by position, so a named cell holds an
+ * element.
+ */
 bound_cells(env: Env, pat: Expr, el: Ty) -> Env {
     if pat.kind == EGuard {
         bound_cells(env, pat.children.get(0), el)
@@ -1492,7 +1543,9 @@ check_fn_in(env: Env, s: Stmt) -> Env {
                    frozen = env.frozen, hidden = env.hidden }
 }
 
-/// `return` is a statement, and what it carries is what the function said it gives back.
+/** `return` is a statement, and what it carries is what the function said it
+ * gives back.
+ */
 jump_errors(env: Env, s: Stmt) -> Env =>
     jump_stmts(env, s, s.body, 0)
 
@@ -1543,7 +1596,9 @@ jump_match(env: Env, s: Stmt, e: Expr, i: int, held: bool) -> Env {
     }
 }
 
-/// A lambda written with a block is a function body, where one written with `=>` is an expression.
+/** A lambda written with a block is a function body, where one written with
+ * `=>` is an expression.
+ */
 lambda_block(e: Expr) -> bool {
     n = e.children.length()
 
@@ -1633,7 +1688,8 @@ stmt_type(env: Env, s: Stmt, is_last: bool) -> Typed {
 branches_for_effect(e: Expr) -> bool =>
     e.kind == EIf || e.kind == EMatch
 
-/// A branch run for its effect answers nothing, so its branches need not agree.
+/** A branch run for its effect answers nothing, so its branches need not agree.
+ */
 effect_walk(env: Env, e: Expr) -> Env {
     if e.kind == EIf {
         cond = type_in(env, e.children.get(0))
@@ -1678,7 +1734,9 @@ extend(env: Env, s: Stmt, ty: Ty) -> Env {
     }
 }
 
-/// A binding written `const`, `as const`, or with a capital is one nothing writes twice.
+/** A binding written `const`, `as const`, or with a capital is one nothing
+ * writes twice.
+ */
 sealed(env: Env, s: Stmt) -> Env {
     if s.frozen || starts_upper(s.name) {
         env with { frozen = env.frozen ++ [s.name] }
@@ -1726,7 +1784,9 @@ check_item(env: Env, s: Stmt) -> Env {
     }
 }
 
-/// Every defect found, each carrying its code and where the statement it came from starts.
+/** Every defect found, each carrying its code and where the statement it came
+ * from starts.
+ */
 check_diagnostics(m: Module) -> Diagnostic[] =>
     checked_module(m).errors ++ clashing_names(m.items, 0, [], [])
         ++ variadic_errors(m.items, 0, [])
@@ -1740,7 +1800,9 @@ NixosRoots = " networking system services users user environment programs"
     ++ " i18n time sound xdg home imports console powerManagement"
     ++ " documentation location "
 
-/// A dotted path left of `=` is how config mode writes an option, and a program has no such statement.
+/** A dotted path left of `=` is how config mode writes an option, and a program
+ * has no such statement.
+ */
 config_errors(items: Stmt[]) -> Diagnostic[] =>
     writes_an_option(items, 0) ? config_refusals(items, 0, []) : []
 
@@ -1785,7 +1847,9 @@ impure_config(name: str) -> str =>
     "config must be pure, and `{name}` performs {effect_of(name)}: a NixOS"
         ++ " module is data, so there is no moment at which it could run"
 
-/// An effect is named by the word that carries it, because config mode forces the empty effect row.
+/** An effect is named by the word that carries it, because config mode forces
+ * the empty effect row.
+ */
 effect_of(name: str) -> str =>
     is_async_effect(name) ? "async" : "io"
 
@@ -1812,7 +1876,9 @@ effectful_in(xs: Expr[], i: int) -> str {
     }
 }
 
-/// A namespace no module declares is refused only when it is a misspelling of one, because NixOS options are an open set.
+/** A namespace no module declares is refused only when it is a misspelling of
+ * one, because NixOS options are an open set.
+ */
 misspelt_option(s: Stmt) -> Diagnostic[] {
     root = option_root(s.name)
     near = root == "" || known_root(root)
@@ -1835,7 +1901,9 @@ known_root(root: str) -> bool =>
 nixos_roots() -> str[] =>
     NixosRoots.trim().split(" ")
 
-/// Imports flatten into one module, so two packages defining one name is a clash, not a shadow.
+/** Imports flatten into one module, so two packages defining one name is a
+ * clash, not a shadow.
+ */
 clashing_names(items: Stmt[], i: int, seen: str[],
                acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
@@ -1893,7 +1961,9 @@ surface_joined(ts: Ty[], i: int) -> str {
 annotated(raw: Module) -> Module =>
     annotated_on(raw, "")
 
-/// The back end a program is being built for decides how a view is lowered, and only it knows.
+/** The back end a program is being built for decides how a view is lowered, and
+ * only it knows.
+ */
 annotated_on(raw: Module, target: str) -> Module {
     m = named_module(raw)
     env = checked_module(m) with { target = target }
@@ -1932,7 +2002,9 @@ annotate_item(env: Env, s: Stmt) -> Stmt {
     }
 }
 
-/// A method keeps the parameters and the return type it declared, so only its body is annotated.
+/** A method keeps the parameters and the return type it declared, so only its
+ * body is annotated.
+ */
 annotated_methods(env: Env, e: Expr) -> Expr =>
     e with { children = annotated_each(env, e.children, 0, []) }
 
@@ -2048,7 +2120,10 @@ annotate_expr(env: Env, e: Expr) -> Expr {
     }
 }
 
-/// A `{ … }` with no name is the record the context wants, so the literal is a value of that type.
+/** A `{ … }` with no name is the record the context wants, so the literal is
+ * a
+ * value of that type.
+ */
 named_lit(env: Env, want: Ty, e: Expr) -> Expr {
     got = resolve(env.infer, want)
 
@@ -2065,7 +2140,7 @@ named_lit(env: Env, want: Ty, e: Expr) -> Expr {
     }
 }
 
-/// A list nobody typed is the type of the first element that names a record.
+/** A list nobody typed is the type of the first element that names a record. */
 elem_want(env: Env, want: Ty, e: Expr) -> Ty {
     if want.kind == KCon && want.name == "Array" && want.args.length() == 1 {
         want.args.get(0)
@@ -2127,7 +2202,7 @@ named_lit_field(env: Env, rec: str, f: Expr) -> Expr {
     }
 }
 
-/// Every literal in the module, named before anything reads it.
+/** Every literal in the module, named before anything reads it. */
 named_module(m: Module) -> Module {
     env = env_of_module(m)
 
@@ -2153,7 +2228,9 @@ named_stmt(env: Env, want: Ty, s: Stmt) -> Stmt {
              body = named_body(env, s, 0, []) }
 }
 
-/// A function answers with the type it declares, so its last statement is that type's context.
+/** A function answers with the type it declares, so its last statement is that
+ * type's context.
+ */
 named_body(env: Env, s: Stmt, i: int, acc: Stmt[]) -> Stmt[] {
     if i >= s.body.length() {
         acc
@@ -2169,7 +2246,8 @@ named_body(env: Env, s: Stmt, i: int, acc: Stmt[]) -> Stmt[] {
 named_in(env: Env, want: Ty, e: Expr) -> Expr =>
     named_kids(env, named_lit(env, want, e))
 
-/// An argument written as a bare literal is the record the parameter declares.
+/** An argument written as a bare literal is the record the parameter declares.
+ */
 named_kids(env: Env, e: Expr) -> Expr {
     tys = e.kind == ECall ? signature_params(env, e.text) : []
 
@@ -2189,7 +2267,9 @@ named_children(env: Env, tys: Ty[], xs: Expr[], i: int,
     }
 }
 
-/// A local holding a function is already a closure, where a top-level name is only a name.
+/** A local holding a function is already a closure, where a top-level name is
+ * only a name.
+ */
 holds_fn(env: Env, name: str) -> bool {
     at = env.names.index_of(name)
 
@@ -2200,11 +2280,14 @@ holds_fn(env: Env, name: str) -> bool {
     }
 }
 
-/// A name the checker resolved to a binding is what a lambda has to carry with it.
+/** A name the checker resolved to a binding is what a lambda has to carry with
+ * it.
+ */
 is_bound_name(e: Expr) -> bool =>
     e.kind == EIdent && (e.ival == 3 || e.ival == 4)
 
-/// A record field holding a function is called through the field, not by name.
+/** A record field holding a function is called through the field, not by name.
+ */
 is_field_call(env: Env, e: Expr) -> bool =>
     e.kind == EMethod
         && field_fn_ty(env,
@@ -2215,14 +2298,15 @@ is_field_call(env: Env, e: Expr) -> bool =>
 is_rest_call(env: Env, e: Expr) -> bool =>
     e.kind == ECall && env.varargs.index_of(e.text) >= 0 && !has_rest(e)
 
-/// A UFCS call into a variadic is that call, so the receiver is an argument.
+/** A UFCS call into a variadic is that call, so the receiver is an argument. */
 is_rest_method(env: Env, e: Expr) -> bool =>
     e.kind == EMethod && env.varargs.index_of(e.text) >= 0
         && is_ufcs_call(env, e,
                         resolve(env.infer,
                                 type_in(env, e.children.get(0)).ty))
 
-/// The gathered list marks itself, so annotating a module twice gathers once.
+/** The gathered list marks itself, so annotating a module twice gathers once.
+ */
 has_rest(e: Expr) -> bool {
     n = e.children.length()
     last = n > 0 ? e.children.get(n - 1) : e_list([])
@@ -2230,7 +2314,8 @@ has_rest(e: Expr) -> bool {
     last.kind == EList && last.ival == 1
 }
 
-/// Every argument past the fixed ones becomes the one list the callee declared.
+/** Every argument past the fixed ones becomes the one list the callee declared.
+ */
 gathered_rest(env: Env, e: Expr) -> Expr {
     at = fixed_arity(env, e.text)
     gathered = e.children.slice(at, e.children.length())
@@ -2257,7 +2342,9 @@ is_element_call(env: Env, e: Expr) -> bool =>
         && (env.fns.index_of(e.text) < 0
             || tag_wins(env, e, env.fns.index_of(e.text)))
 
-/// A tag some function also names stays the tag when the call cannot be that function.
+/** A tag some function also names stays the tag when the call cannot be that
+ * function.
+ */
 tag_wins(env: Env, e: Expr, declared: int) -> bool =>
     is_element_tag(e.text) && !is_prelude_call(e.text)
         && env.names.index_of(e.text) < 0
@@ -2281,7 +2368,10 @@ lowered_element(env: Env, e: Expr) -> Expr {
         : e_call("maca_element", text)
 }
 
-/// gpui builds a value rather than text, so the rust target carries what was written beside the text it would otherwise be, and the emitter picks by what the function said it returns.
+/** gpui builds a value rather than text, so the rust target carries what was
+ * written beside the text it would otherwise be, and the emitter picks by what
+ * the function said it returns.
+ */
 kept_attrs(cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
     if i >= cs.length() {
         acc
@@ -2322,7 +2412,9 @@ one_attribute(env: Env, a: Expr) -> Expr {
     env.target == "js" ? e_list([made]) : made
 }
 
-/// A browser attaches a handler to a node, so what the page holds is the value and not its text.
+/** A browser attaches a handler to a node, so what the page holds is the value
+ * and not its text.
+ */
 attr_value(env: Env, v: Expr) -> Expr =>
     env.target == "js" ? v : as_html_text(env, v)
 
@@ -2376,7 +2468,8 @@ annotate_children(env: Env, e: Expr, i: int, acc: Expr[]) -> Expr[] {
     }
 }
 
-/// An arm and a lambda name their own bindings, and only that child reads them.
+/** An arm and a lambda name their own bindings, and only that child reads them.
+ */
 child_scope(env: Env, e: Expr, i: int) -> Env {
     if e.kind == EMatch && i >= 2 && i % 2 == 0 {
         arm_scope(env, e.children.get(0), e.children.get(i - 1))
@@ -2396,7 +2489,9 @@ arm_scope(env: Env, scrut: Expr, pat: Expr) -> Env {
                 element_of(resolve(seen.env.infer, seen.ty)))
 }
 
-/// A lowercase pattern names the whole value, so writing it is a reassignment and never a second binding.
+/** A lowercase pattern names the whole value, so writing it is a reassignment
+ * and never a second binding.
+ */
 bound_whole(env: Env, pat: Expr, t: Ty) -> Env {
     if pat.kind == EGuard {
         bound_whole(env, pat.children.get(0), t)
@@ -2460,7 +2555,9 @@ LiftedBody = {
     at:    Lift
 }
 
-/// A lambda used as a value becomes a function of its own, which every back end already passes by name.
+/** A lambda used as a value becomes a function of its own, which every back end
+ * already passes by name.
+ */
 lifted(m: Module) -> Module {
     named = named_anons(m)
     got = lift_items(named.items, 0, Lift { items = [], n = 0 })
@@ -2468,7 +2565,10 @@ lifted(m: Module) -> Module {
     Module { items = got.items, errors = m.errors }
 }
 
-/// A lifted function is a top-level one, which is why it cannot hold what the scope around it declared; a browser closure can, so there it stays where it was written.
+/** A lifted function is a top-level one, which is why it cannot hold what the
+ * scope around it declared; a browser closure can, so there it stays where it
+ * was written.
+ */
 lifted_on(m: Module, target: str) -> Module =>
     target == "js" || target == "wasm" ? m : lifted(m)
 
@@ -2493,7 +2593,8 @@ Assets = {
     texts: str[]
 }
 
-/// `data("f")` is the file's own text, spliced in while the program is built.
+/** `data("f")` is the file's own text, spliced in while the program is built.
+ */
 desugared(m: Module, src: str) -> Module {
     at = Assets { base = embed_dir(src),
                   names = text_const_names(m.items, 0, []),
@@ -2510,7 +2611,9 @@ desugared(m: Module, src: str) -> Module {
     }
 }
 
-/// `stored(key, default)` is the whole surface: the name starts at what the browser saved, and assigning it saves again.
+/** `stored(key, default)` is the whole surface: the name starts at what the
+ * browser saved, and assigning it saves again.
+ */
 kept_stored(m: Module, at: Assets) -> Module {
     slots = stored_slots(m.items, at, 0, [])
     loose = loose_keys(m.items, at, 0, [])
@@ -2526,7 +2629,9 @@ kept_stored(m: Module, at: Assets) -> Module {
     }
 }
 
-/// Each slot is written `name key`, because a name and the key it saves under are one pair.
+/** Each slot is written `name key`, because a name and the key it saves under
+ * are one pair.
+ */
 stored_slots(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
@@ -2538,7 +2643,9 @@ stored_slots(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
     }
 }
 
-/// A slot names a place in the browser, and a name a build cannot read is not one.
+/** A slot names a place in the browser, and a name a build cannot read is not
+ * one.
+ */
 loose_keys(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
@@ -2606,7 +2713,9 @@ slot_at(slots: str[], name: str, i: int) -> int {
     }
 }
 
-/// Assigning a stored name is the save, so every write outside the declaration becomes one.
+/** Assigning a stored name is the save, so every write outside the declaration
+ * becomes one.
+ */
 saved_items(items: Stmt[], slots: str[], bound: str[], i: int,
             acc: Stmt[]) -> Stmt[] {
     if i >= items.length() {
@@ -2661,7 +2770,9 @@ saved_kids(xs: Expr[], slots: str[], bound: str[], i: int,
     }
 }
 
-/// The declaring binding starts from what the browser saved, its written value standing in as the default.
+/** The declaring binding starts from what the browser saved, its written value
+ * standing in as the default.
+ */
 started_items(items: Stmt[], at: Assets, i: int, acc: Stmt[]) -> Stmt[] {
     if i >= items.length() {
         acc
@@ -2677,7 +2788,7 @@ started_items(items: Stmt[], at: Assets, i: int, acc: Stmt[]) -> Stmt[] {
     }
 }
 
-/// `decode` reads into a type, and the binding that holds it says which one.
+/** `decode` reads into a type, and the binding that holds it says which one. */
 decode_faults(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
@@ -2754,7 +2865,7 @@ text_const_texts(items: Stmt[], i: int, acc: str[]) -> str[] {
 is_data_call(e: Expr) -> bool =>
     e.kind == ECall && e.text == "data"
 
-/// The path an argument names, written out or bound to a constant beside it.
+/** The path an argument names, written out or bound to a constant beside it. */
 asset_spec(e: Expr, at: Assets) -> str {
     if e.kind == EStr {
         e.text
@@ -2765,14 +2876,14 @@ asset_spec(e: Expr, at: Assets) -> str {
     }
 }
 
-/// The file `data("x")` reads: the `.local` copy when the tree holds one.
+/** The file `data("x")` reads: the `.local` copy when the tree holds one. */
 data_file(base: str, spec: str) -> str {
     local = base ++ local_spec(spec)
 
     file_exists(local) ? local : base ++ spec
 }
 
-/// `config/links.json` is shadowed by `config/links.local.json` beside it.
+/** `config/links.json` is shadowed by `config/links.local.json` beside it. */
 local_spec(spec: str) -> str {
     cut = embed_sep(spec.chars(), spec.length() - 1)
     tail = spec.slice(cut, spec.length())
@@ -2803,7 +2914,7 @@ asset_ok(e: Expr, at: Assets) -> bool =>
     e.children.length() == 1 && asset_spec(e.children.get(0), at) != ""
         && file_exists(asset_file(e, at))
 
-/// The file's text as a literal a back end can print, its own escapes kept.
+/** The file's text as a literal a back end can print, its own escapes kept. */
 asset_text(e: Expr, at: Assets) -> str =>
     one_line_text(read_file(asset_file(e, at)))
         .chars().map(embed_char).join("")
@@ -2811,7 +2922,7 @@ asset_text(e: Expr, at: Assets) -> str =>
 one_line_text(text: str) -> str =>
     text.replace("\r\n", "\n").replace("\r", "\n")
 
-/// A brace is its own character here, and the rest is the lexer's escape.
+/** A brace is its own character here, and the rest is the lexer's escape. */
 embed_char(c: str) -> str =>
     c == "\{" || c == "\}" ? c : raw_char(c)
 
@@ -2828,7 +2939,8 @@ embed_stmt(s: Stmt, at: Assets) -> Stmt =>
     s with { value = embed_bound(s.value, s.ret, at),
              body = embed_items(s.body, at, 0, []) }
 
-/// A `str` binding is the text itself, and any other type what `decode` reads.
+/** A `str` binding is the text itself, and any other type what `decode` reads.
+ */
 embed_bound(e: Expr, want: str, at: Assets) -> Expr {
     if is_data_call(e) && asset_ok(e, at) && want == "str" {
         e_str(asset_text(e, at))
@@ -2956,7 +3068,9 @@ lift_all(cs: Expr[], i: int, acc: Expr[], at: Lift, owner: Expr) -> LiftedAll {
     }
 }
 
-/// `map` and its neighbours read the lambda's own body, and an attribute holds a handler, not a name.
+/** `map` and its neighbours read the lambda's own body, and an attribute holds
+ * a handler, not a name.
+ */
 held_inline(owner: Expr, kid: Expr) -> bool =>
     kid.kind == ELambda
         && (owner.kind == EAttr || is_attribute_call(owner)
@@ -2971,7 +3085,9 @@ inlines_lambda(name: str) -> bool =>
     name == "map" || name == "filter" || name == "reduce" || name == "fold"
         || name == "parallel"
 
-/// The lifted function answers what the lambda's body answers, which a typed target must be told.
+/** The lifted function answers what the lambda's body answers, which a typed
+ * target must be told.
+ */
 lift_one(e: Expr, at: Lift) -> Lifted {
     name = "maca_lambda_{str(at.n)}"
     made = s_fn(name, lambda_body(e).ty, lambda_params(e),
@@ -2982,7 +3098,9 @@ lift_one(e: Expr, at: Lift) -> Lifted {
              at = inner.at with { items = inner.at.items ++ inner.stmts } }
 }
 
-/// A lambda that reads a name from around it becomes a function plus the values it read.
+/** A lambda that reads a name from around it becomes a function plus the values
+ * it read.
+ */
 lift_closure(e: Expr, at: Lift) -> Lifted {
     name = "maca_closure_{str(at.n)}"
     caps = captures_of(e)
@@ -2995,7 +3113,9 @@ lift_closure(e: Expr, at: Lift) -> Lifted {
              at = inner.at with { items = inner.at.items ++ inner.stmts } }
 }
 
-/// A name the body reaches through a cell, which is what the enclosing scope gave it.
+/** A name the body reaches through a cell, which is what the enclosing scope
+ * gave it.
+ */
 ref_names(e: Expr, acc: str[]) -> str[] {
     seen = e.kind == ECall
         && (e.text == "maca_deref" || e.text == "maca_setref")
@@ -3023,7 +3143,9 @@ ref_kids(xs: Expr[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// A local a nested definition writes lives in a cell, so the write outlives the call that made the definition.
+/** A local a nested definition writes lives in a cell, so the write outlives
+ * the call that made the definition.
+ */
 celled_body(ss: Stmt[]) -> Stmt[] {
     wrote = inner_writes(ss, 0, [])
 
@@ -3121,7 +3243,9 @@ writes_of_kids(xs: Expr[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// Inside the lifted body the name holds an address, so every read goes through it and every write lands where it points.
+/** Inside the lifted body the name holds an address, so every read goes through
+ * it and every write lands where it points.
+ */
 deref_expr(e: Expr, wrote: str[]) -> Expr {
     if e.kind == EIdent && wrote.index_of(e.text) >= 0 {
         e_call("maca_deref", [e])
@@ -3157,7 +3281,9 @@ deref_stmt(s: Stmt, wrote: str[]) -> Stmt {
     }
 }
 
-/// Every name the body reads from around it, once each, carrying the type it was given.
+/** Every name the body reads from around it, once each, carrying the type it
+ * was given.
+ */
 captures_of(e: Expr) -> Expr[] =>
     free_idents(lambda_body(e), lambda_names(lambda_params(e), 0, []), [])
 
@@ -3194,7 +3320,9 @@ stmt_names(ss: Stmt[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The name a `=` writes, carrying the type of what it was given, which is the only type it has here.
+/** The name a `=` writes, carrying the type of what it was given, which is the
+ * only type it has here.
+ */
 set_target(s: Stmt) -> Expr =>
     e_ident(s.name) with { ival = 4, ty = s.value.ty }
 
@@ -3227,7 +3355,9 @@ free_kids(cs: Expr[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     }
 }
 
-/// A `=` to a name the scope around it declared is a write, not a new local, so the name is one the body reads from outside.
+/** A `=` to a name the scope around it declared is a write, not a new local, so
+ * the name is one the body reads from outside.
+ */
 free_stmts(ss: Stmt[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     if i >= ss.length() {
         acc
@@ -3241,7 +3371,7 @@ free_stmts(ss: Stmt[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
     }
 }
 
-/// A record literal with no name gets a struct of its own shape to be.
+/** A record literal with no name gets a struct of its own shape to be. */
 named_anons(m: Module) -> Module {
     fixed = anon_stmts(m.items, 0)
 
@@ -3265,7 +3395,9 @@ anon_stmt(s: Stmt) -> Stmt {
     }
 }
 
-/// The methods are walked, but the record holding them is an implementation, not a value.
+/** The methods are walked, but the record holding them is an implementation,
+ * not a value.
+ */
 anon_methods(e: Expr) -> Expr =>
     e with { children = anon_kids(e.children, 0) }
 
@@ -3281,7 +3413,8 @@ anon_kids(cs: Expr[], i: int) -> Expr[] {
     }
 }
 
-/// Two literals of one shape share a name, so the field list is sorted first.
+/** Two literals of one shape share a name, so the field list is sorted first.
+ */
 anon_text(e: Expr) -> str {
     if e.kind != ERecord || e.text != "" || e.children.length() == 0 {
         e.text
@@ -3399,7 +3532,9 @@ PolyBody = {
     at:    Poly
 }
 
-/// A function declared over a type variable is compiled once per concrete argument tuple, so no back end meets one.
+/** A function declared over a type variable is compiled once per concrete
+ * argument tuple, so no back end meets one.
+ */
 monomorphic(m: Module) -> Module {
     gens = generic_items(m.items, 0, [])
 
@@ -3424,7 +3559,9 @@ generic_items(items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
     }
 }
 
-/// A declaration without a body is what a foreign block or a back end writes, so it keeps its type variable.
+/** A declaration without a body is what a foreign block or a back end writes,
+ * so it keeps its type variable.
+ */
 is_generic_fn(s: Stmt) -> bool =>
     s.kind == SFn && s.body.length() > 0
         && (has_type_var(s.ret) || any_type_var(s.params, 0))
@@ -3439,7 +3576,9 @@ any_type_var(ps: Expr[], i: int) -> bool {
     }
 }
 
-/// A name the type table answers nothing for is the one thing left that it can be.
+/** A name the type table answers nothing for is the one thing left that it can
+ * be.
+ */
 has_type_var(name: str) -> bool {
     cut = name.index_of(") -> ")
 
@@ -3536,7 +3675,9 @@ mono_named(e: Expr, at: Poly) -> PolyNode {
     }
 }
 
-/// The rewritten call carries its specialisation's return type, so a call around it reads a concrete argument.
+/** The rewritten call carries its specialisation's return type, so a call
+ * around it reads a concrete argument.
+ */
 mono_call(e: Expr, g: Stmt, at: Poly) -> PolyNode {
     want = Want { name = e.text, tys = arg_type_names(e.children, 0, []) }
 
@@ -3567,7 +3708,9 @@ mangled(w: Want) -> str {
     "{w.name}__{tags}"
 }
 
-/// A mangled name has to be a C identifier, so a bracket, a space and an arrow each become a word.
+/** A mangled name has to be a C identifier, so a bracket, a space and an arrow
+ * each become a word.
+ */
 type_tag(ty: str) -> str {
     if ty == "" {
         "any"
@@ -3644,7 +3787,9 @@ specialised_params(g: Stmt, ps: Expr[], tys: str[], i: int) -> Expr[] {
     }
 }
 
-/// An argument whose own type is still unknown leaves the declaration to say what it is.
+/** An argument whose own type is still unknown leaves the declaration to say
+ * what it is.
+ */
 specialised_param(g: Stmt, p: Expr, tys: str[], i: int) -> Expr {
     if i >= tys.length() {
         p
@@ -3715,7 +3860,9 @@ matched_var(declared: str, concrete: str, v: str) -> str {
     }
 }
 
-/// A rest parameter says what its list holds, and `main` is filled from the command line rather than by a caller.
+/** A rest parameter says what its list holds, and `main` is filled from the
+ * command line rather than by a caller.
+ */
 variadic_errors(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
@@ -3754,7 +3901,7 @@ rest_misuse_why(s: Stmt) -> str {
 
 AllEffects = " io net os async exn "
 
-/// Every effect a program can perform, in the order a diagnostic names them.
+/** Every effect a program can perform, in the order a diagnostic names them. */
 effect_list() -> str[] =>
     eff_words(AllEffects)
 
@@ -3778,11 +3925,15 @@ eff_merge(a: str, xs: str[], i: int) -> str =>
 
 KnownTargets = " native c js jvm rust elixir tauri embedded nix all "
 
-/// A target nothing builds for cannot say what it carries, so naming one is a usage error.
+/** A target nothing builds for cannot say what it carries, so naming one is a
+ * usage error.
+ */
 is_known_target(name: str) -> bool =>
     KnownTargets.index_of(" {name} ") >= 0
 
-/// What a back end can carry, as the effects a program compiled for it may perform.
+/** What a back end can carry, as the effects a program compiled for it may
+ * perform.
+ */
 target_effects(target: str) -> str[] {
     if target == "js" {
         ["io", "net", "async", "exn"]
@@ -3809,7 +3960,9 @@ eff_refused(all: str[], set: str, allowed: str[], i: int,
     }
 }
 
-/// A prelude call is where an effect enters a program, since nothing else performs one.
+/** A prelude call is where an effect enters a program, since nothing else
+ * performs one.
+ */
 eff_of_call(name: str) -> str {
     if name == "sleep_ms" {
         " async "
@@ -3898,7 +4051,9 @@ effect_fn_names(items: Stmt[], i: int, acc: str[]) -> str[] {
 blank_effects(n: int, i: int, acc: str[]) -> str[] =>
     i >= n ? acc : blank_effects(n, i + 1, acc.push(eff_none()))
 
-/// A function performs what it calls, so the answer is the fixed point of one pass repeated.
+/** A function performs what it calls, so the answer is the fixed point of one
+ * pass repeated.
+ */
 settled_effects(items: Stmt[]) -> str[] {
     names = effect_fn_names(items, 0, [])
 
@@ -3940,12 +4095,14 @@ effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
     }
 }
 
-/// What the target being built for cannot carry, from this module.
+/** What the target being built for cannot carry, from this module. */
 target_errors(m: Module, target: str) -> Diagnostic[] =>
     effect_errors(m, target) ++ kept_borrow_errors(m, target)
         ++ handler_errors(m, target) ++ nested_errors(m, target)
 
-/// A nested definition is a closure over the scope that holds it, and these targets carry no such thing.
+/** A nested definition is a closure over the scope that holds it, and these
+ * targets carry no such thing.
+ */
 nested_errors(m: Module, target: str) -> Diagnostic[] {
     if target != "rust" && target != "jvm" {
         []
@@ -3985,7 +4142,9 @@ nested_said(s: Stmt, name: str, target: str) -> Diagnostic =>
                      ++ " --target {target} has no closure to carry what it"
                      ++ " reads from around it" }
 
-/// A handler is attached to a node, and a target that answers with markup has no node to attach it to.
+/** A handler is attached to a node, and a target that answers with markup has
+ * no node to attach it to.
+ */
 handler_errors(m: Module, target: str) -> Diagnostic[] {
     if target == "js" || target == "wasm" {
         []
@@ -4030,7 +4189,9 @@ handler_kids(s: Stmt, xs: Expr[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     }
 }
 
-/// A quoted value is what HTML has always had, and it is text like any other attribute.
+/** A quoted value is what HTML has always had, and it is text like any other
+ * attribute.
+ */
 is_dom_handler(a: Expr) -> bool {
     v = a.children.get(0)
 
@@ -4059,7 +4220,9 @@ handler_said(s: Stmt, name: str) -> Diagnostic =>
                      ++ " nowhere to attach one; build this with"
                      ++ " `--target js`" }
 
-/// A nested definition reads the scope that holds it, and the C back end has no way to carry a write back out.
+/** A nested definition reads the scope that holds it, and the C back end has no
+ * way to carry a write back out.
+ */
 nested_write_errors(m: Module, target: str) -> Diagnostic[] {
     if target == "js" || target == "wasm" {
         []
@@ -4118,7 +4281,9 @@ outer_write_said(s: Stmt, who: str, name: str) -> Diagnostic =>
                      ++ " around it declared, and a nested definition reads"
                      ++ " that scope rather than writing it" }
 
-/// What the rust target refuses about the borrows a method keeps, as plain lines.
+/** What the rust target refuses about the borrows a method keeps, as plain
+ * lines.
+ */
 kept_borrow_notes(m: Module) -> str[] =>
     kept_borrow_errors(m, "rust").map(diag_message)
 
@@ -4130,7 +4295,9 @@ kept_borrow_errors(m: Module, target: str) -> Diagnostic[] {
     }
 }
 
-/// A method's foreign-typed parameter is lent by the crate for the call, so it may be read and passed on but not kept.
+/** A method's foreign-typed parameter is lent by the crate for the call, so it
+ * may be read and passed on but not kept.
+ */
 borrow_errors(items: Stmt[], own: str[], i: int,
               acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
@@ -4178,7 +4345,9 @@ kept_message(p: str, method: str) -> str =>
         ++ " and passed on, but not returned or stored, because it belongs to"
         ++ " the caller"
 
-/// A borrow leaves the method as its answer, or inside a record or a list that outlives the call.
+/** A borrow leaves the method as its answer, or inside a record or a list that
+ * outlives the call.
+ */
 escaping(body: Expr, name: str) -> bool =>
     answered_by(body, name) || stored_away(body, name)
 
@@ -4292,7 +4461,9 @@ effect_diag(s: Stmt, what: str, target: str) -> Diagnostic {
 target_phrase(target: str) -> str =>
     target == "all" ? "every program target" : "the `{target}` target"
 
-/// Every defect, and then whether the target being built for can carry what the program does.
+/** Every defect, and then whether the target being built for can carry what the
+ * program does.
+ */
 check_diagnostics_on(m: Module, target: str) -> Diagnostic[] =>
     check_diagnostics(m) ++ target_errors(m, target)
 

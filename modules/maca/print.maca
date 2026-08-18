@@ -10,11 +10,14 @@ Indent = "    "
 print_module(m: Module) -> str =>
     print_items(m.items, [], 0, 0, "")
 
-/// The module as Maca, with every comment back on the item it was written above.
+/** The module as Maca, with every comment back on the item it was written
+ * above.
+ */
 print_marked(m: Module, marks: Token[]) -> str =>
     print_items(m.items, marks, 0, 0, "")
 
-/// The file as Maca, imports included, which the tree alone cannot answer with.
+/** The file as Maca, imports included, which the tree alone cannot answer with.
+ */
 print_source(src: str) -> str {
     ts = lex(src)
     marks = lex_marked(src)
@@ -23,7 +26,9 @@ print_source(src: str) -> str {
                  in_order(marks, imports_of(src, ts, marks, 0, []), 0, 0, []))
 }
 
-/// An import is written back verbatim, where it stood, since no item carries it.
+/** An import is written back verbatim, where it stood, since no item carries
+ * it.
+ */
 imports_of(src: str, ts: Token[], marks: Token[], i: int,
            acc: Token[]) -> Token[] {
     if ts.get(i).kind == Eof {
@@ -43,7 +48,9 @@ one_import(src: str, ts: Token[], marks: Token[], i: int) -> Token {
     mk_token(KwImport, src.slice(from, upto).trim(), from)
 }
 
-/// A raw import runs over many lines, so its text ends where the next thing starts.
+/** A raw import runs over many lines, so its text ends where the next thing
+ * starts.
+ */
 import_text_end(src: str, ts: Token[], marks: Token[], shut: int,
                 from: int) -> int {
     tail = ts.get(shut).pos > from ? ts.get(shut).pos : src.length()
@@ -93,7 +100,8 @@ trailing_marks(marks: Token[], from: int, acc: str) -> str {
     }
 }
 
-/// A comment belongs to what follows it; an import wants its blank line back.
+/** A comment belongs to what follows it; an import wants its blank line back.
+ */
 written(marks: Token[], from: int, more: bool) -> str {
     kept = marks.get(from).kind == KwImport
     runs_on = !kept || (from + 1 < marks.length()
@@ -258,7 +266,7 @@ print_expr(e: Expr, d: int) -> str =>
         _        => e.text
     }
 
-/// A brace the parser read as one of a pair is written back as the pair.
+/** A brace the parser read as one of a pair is written back as the pair. */
 print_str(s: str) -> str =>
     "\"" + doubled_braces(s.chars(), 0, "") + "\""
 
@@ -284,7 +292,8 @@ print_method(e: Expr, d: int) -> str =>
     held(e.children.get(0), d) + ".{e.text}(" +
         print_args(e.children, 1, "", d) + ")"
 
-/// A ternary, an `if` and a lambda bind looser than anything that can hold one.
+/** A ternary, an `if` and a lambda bind looser than anything that can hold one.
+ */
 loose(e: Expr) -> bool =>
     e.kind == ETernary || e.kind == EIf || e.kind == ELambda
 
@@ -316,7 +325,7 @@ print_lambda(e: Expr, d: int) -> str {
     }
 }
 
-/// The lines inside a block, each carrying its own indent and its newline.
+/** The lines inside a block, each carrying its own indent and its newline. */
 print_inner(e: Expr, d: int) -> str {
     if e.kind == EBlock {
         print_body(e.stmts, 0, "", d) +
@@ -329,7 +338,8 @@ print_inner(e: Expr, d: int) -> str {
 print_wrapped(e: Expr, d: int) -> str =>
     "\{\n" + print_inner(e, d + 1) + indent_of(d) + "\}"
 
-/// A ternary is one binary choice, so a branch that is a block needs the words.
+/** A ternary is one binary choice, so a branch that is a block needs the words.
+ */
 needs_block(e: Expr) -> bool {
     els = e.children.get(2)
 
@@ -436,7 +446,9 @@ print_pieces(xs: Expr[], i: int, acc: str, d: int) -> str {
     }
 }
 
-/// Binding power, so a child only wears brackets when dropping them would rebind it.
+/** Binding power, so a child only wears brackets when dropping them would
+ * rebind it.
+ */
 op_power(op: str) -> int {
     if op == "*" || op == "/" || op == "%" {
         7

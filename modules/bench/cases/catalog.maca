@@ -3,35 +3,35 @@ import bench/cases/algo
 import bench/cases/inter
 import bench/cases/adv
 
-/// The primitives: what everything else is built out of.
+/** The primitives: what everything else is built out of. */
 prim_names() -> str[] =>
     ["int arithmetic", "float arithmetic", "string concat",
      "string interpolate", "string scan", "list push", "list index",
      "list iterate", "map set", "map get", "record build", "record field"]
 
-/// The algorithms you write in the first week.
+/** The algorithms you write in the first week. */
 algo_names() -> str[] =>
     ["linear search", "binary search", "bubble sort", "insertion sort",
      "selection sort", "reverse", "sum/min/max", "fib recursive",
      "fib iterative", "factorial", "gcd", "prime count"]
 
-/// The ones with a data structure in them.
+/** The ones with a data structure in them. */
 inter_names() -> str[] =>
     ["merge sort", "quick sort", "heap sort", "heap ops", "sieve",
      "matrix multiply", "substring search", "run-length", "base convert",
      "balanced brackets", "ring queue", "bst"]
 
-/// The ones with a real idea in them.
+/** The ones with a real idea in them. */
 adv_names() -> str[] =>
     ["kmp search", "edit distance", "lcs", "knapsack", "n-queens",
      "union-find", "dijkstra", "topological sort", "lru cache",
      "json tokenize"]
 
-/// Every case, in the order the groups are meant to be read.
+/** Every case, in the order the groups are meant to be read. */
 case_names() -> str[] =>
     prim_names() ++ algo_names() ++ inter_names() ++ adv_names()
 
-/// Which group `name` belongs to, or "" for a name that is not a case.
+/** Which group `name` belongs to, or "" for a name that is not a case. */
 group_of(name: str) -> str {
     if prim_names().contains(name) {
         "primitives"
@@ -46,7 +46,7 @@ group_of(name: str) -> str {
     }
 }
 
-/// The names in one group, in order.
+/** The names in one group, in order. */
 names_in(group: str) -> str[] {
     if group == "primitives" {
         prim_names()
@@ -61,7 +61,7 @@ names_in(group: str) -> str[] {
     }
 }
 
-/// The four groups, in reading order.
+/** The four groups, in reading order. */
 groups() -> str[] =>
     ["primitives", "elementary", "intermediate", "advanced"]
 
@@ -82,7 +82,7 @@ cheap_cases() -> str[] =>
      "sum/min/max", "balanced brackets", "ring queue", "string scan",
      "factorial", "gcd"]
 
-/// The workload size a case runs at when nobody says otherwise.
+/** The workload size a case runs at when nobody says otherwise. */
 default_size(name: str) -> int {
     if name == "fib recursive" {
         22
@@ -109,7 +109,7 @@ default_size(name: str) -> int {
     }
 }
 
-/// What the size means for this case, for a report that has to say so.
+/** What the size means for this case, for a report that has to say so. */
 size_unit(name: str) -> str {
     if name == "fib recursive" || name == "fib iterative" {
         "index"
@@ -122,7 +122,7 @@ size_unit(name: str) -> str {
     }
 }
 
-/// Run the case called `name` at workload size `n`, and return its checksum.
+/** Run the case called `name` at workload size `n`, and return its checksum. */
 run_case(name: str, n: int) -> int {
     if prim_names().contains(name) {
         run_prim(name, n)

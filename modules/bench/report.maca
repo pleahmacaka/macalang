@@ -3,17 +3,17 @@ import { grey } from cli/style
 import { Result, fastest_ms, median_ms, mean_ms } from bench/time
 import { ns_per_op, ops_per_sec, total_ops, total_ms, resolved } from bench/time
 
-/// The column headings, in the order `row_of` fills them.
+/** The column headings, in the order `row_of` fills them. */
 result_columns() -> str[] =>
     ["case", "size", "iters", "min", "med", "mean", "ns/op", "ops/sec"]
 
-/// One result as table cells.
+/** One result as table cells. */
 row_of(r: Result) -> str[] =>
     [r.name, grouped(r.size), grouped(r.iters), grouped(fastest_ms(r)),
      "{median_ms(r):.1}", "{mean_ms(r):.1}", "{ns_per_op(r):.1}",
      grouped(int(ops_per_sec(r)))]
 
-/// Every result as one aligned table.
+/** Every result as one aligned table. */
 table_of(rs: Result[]) -> str =>
     table_aligned(result_columns(), rows_of(rs, 0, []))
 
@@ -25,7 +25,9 @@ rows_of(rs: Result[], i: int, acc: str[][]) -> str[][] {
     }
 }
 
-/// One result on one line, for printing as the run goes rather than waiting for the whole table.
+/** One result on one line, for printing as the run goes rather than waiting for
+ * the whole table.
+ */
 line_of(r: Result) -> str {
     head = "{r.name:<24} {r.size:>9} {ns_per_op(r):>12.1} ns/op"
 
@@ -36,10 +38,10 @@ line_of(r: Result) -> str {
     }
 }
 
-/// A section rule with a title, for putting a group of results under a name.
+/** A section rule with a title, for putting a group of results under a name. */
 heading(title: str) -> str => rule(title)
 
-/// The one-paragraph footer a table needs to be read correctly.
+/** The one-paragraph footer a table needs to be read correctly. */
 footnote(rs: Result[]) -> str {
     calls = summed_ops(rs, 0, 0)
     ms = summed_ms(rs, 0, 0)
@@ -89,7 +91,7 @@ unresolved_count(rs: Result[], i: int, acc: int) -> int {
     }
 }
 
-/// `1234567` as `1,234,567`.
+/** `1234567` as `1,234,567`. */
 grouped(n: int) -> str {
     if n < 0 {
         "-" ++ grouped(0 - n)

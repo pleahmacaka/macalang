@@ -17,12 +17,12 @@ unserved(id: str) -> str =>
     "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\{\"code\":-32601,"
         ++ "\"message\":\"method not found\"\}\}"
 
-/// A range the editor can draw, whose lines and characters count from zero.
+/** A range the editor can draw, whose lines and characters count from zero. */
 range_of(sl: int, sc: int, el: int, ec: int) -> str =>
     "\{\"start\":\{\"line\":{sl},\"character\":{sc}\},\"end\":"
         ++ "\{\"line\":{el},\"character\":{ec}\}\}"
 
-/// The checker counts lines from one, and an editor counts them from zero.
+/** The checker counts lines from one, and an editor counts them from zero. */
 diagnostic_of(d: str) -> str {
     at = range_of(get_int(d, "start_line", 1) - 1,
                   get_int(d, "start_column", 1) - 1,
@@ -70,7 +70,7 @@ complaints(src: str) -> str[] {
 carries_a_buffer(method: str) -> bool =>
     method == "textDocument/didOpen" || method == "textDocument/didChange"
 
-/// The open buffers, held as a uri and its text side by side.
+/** The open buffers, held as a uri and its text side by side. */
 remembered(msg: str, docs: str[]) -> str[] {
     method = get(msg, "method")
     uri = get(msg, "uri")
@@ -116,7 +116,7 @@ word_start(cs: str[], i: int) -> int =>
 word_end(cs: str[], i: int) -> int =>
     i < cs.length() && is_word_char(cs.get(i)) ? word_end(cs, i + 1) : i
 
-/// The whole name the cursor is standing anywhere inside, or nothing.
+/** The whole name the cursor is standing anywhere inside, or nothing. */
 word_at(text: str, at: int) -> str {
     cs = text.chars()
 
@@ -127,7 +127,7 @@ word_at(text: str, at: int) -> str {
     }
 }
 
-/// A line and a character, back into the offset the whole file counts by.
+/** A line and a character, back into the offset the whole file counts by. */
 offset_of(text: str, line: int, character: int) -> int =>
     line_start(text.split("\n"), line, 0, 0) + character
 
@@ -154,11 +154,13 @@ cursor_at(text: str, msg: str) -> int {
     offset_of(text, get_int(pos, "line", 0), get_int(pos, "character", 0))
 }
 
-/// A declaration is what a line starts in the first column, and nothing else.
+/** A declaration is what a line starts in the first column, and nothing else.
+ */
 name_on(line: str) -> str =>
     line.slice(0, word_end(line.chars(), 0))
 
-/// A bracket after the name makes it a function, and a brace or a bar a type.
+/** A bracket after the name makes it a function, and a brace or a bar a type.
+ */
 kind_on(line: str) -> int {
     name = name_on(line)
     rest = line.slice(name.length(), line.length())
@@ -220,7 +222,7 @@ definition_json(text: str, uri: str, msg: str) -> str {
     }
 }
 
-/// The head of a declaration is the line it opens on, without its body.
+/** The head of a declaration is the line it opens on, without its body. */
 signature_of(line: str) -> str {
     fat = line.index_of(" =>")
     brace = line.index_of(" \{")
@@ -256,7 +258,8 @@ hover_json(text: str, msg: str) -> str {
     }
 }
 
-/// A file the checker refuses is left alone, because its text is not its tree.
+/** A file the checker refuses is left alone, because its text is not its tree.
+ */
 formatting_json(text: str) -> str {
     tidy = print_source(text)
 

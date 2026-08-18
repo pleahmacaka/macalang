@@ -2,20 +2,22 @@
 
 import std/text
 
-/// The licences a collected package may carry.
-///
-/// A corpus is redistributed, so a package whose terms are not on this list is
-/// not collected at all rather than collected and filtered later. The check
-/// belongs at the front of the pipeline: bytes that were never fetched cannot
-/// leak into a record by an oversight downstream.
+/** The licences a collected package may carry.
+ *
+ * A corpus is redistributed, so a package whose terms are not on this list is
+ * not collected at all rather than collected and filtered later. The check
+ * belongs at the front of the pipeline: bytes that were never fetched cannot
+ * leak into a record by an oversight downstream.
+ */
 allowed() -> str[] =>
     "MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "0BSD",
     "Unlicense", "CC0-1.0"
 
-/// Whether `spdx` is one the corpus may carry.
-///
-/// An `OR` expression passes when any branch does, because the taker chooses.
-/// An `AND` needs every branch, because all of them bind.
+/** Whether `spdx` is one the corpus may carry.
+ *
+ * An `OR` expression passes when any branch does, because the taker chooses.
+ * An `AND` needs every branch, because all of them bind.
+ */
 permits(spdx: str) -> bool {
     id = spdx.trim().replace("(", "").replace(")", "").trim()
 
@@ -53,7 +55,7 @@ all_permitted(ids: str[], i: int) -> bool {
     }
 }
 
-/// Why a package was not collected, in the words the failure log records.
+/** Why a package was not collected, in the words the failure log records. */
 refusal(spdx: str) -> str =>
     spdx.trim() == ""
         ? "the package states no licence, and an unstated licence is not a permissive one"

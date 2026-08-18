@@ -117,7 +117,9 @@ s_expr(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", pos = 0,
            params = [], body = [], frozen = false }
 
-/// A `=>` body is one expression, so a `return` in it stands where no statement does.
+/** A `=>` body is one expression, so a `return` in it stands where no statement
+ * does.
+ */
 s_arrow(value: Expr) -> Stmt =>
     Stmt { kind = SExpr, name = "", value, ret = "", pos = 0,
            params = [], body = [], frozen = true }
@@ -138,13 +140,17 @@ s_record(name: str, fields: Expr[]) -> Stmt =>
     Stmt { kind = SRecord, name, value = e_ident(name), ret = "", pos = 0,
            params = fields, body = [], frozen = false }
 
-/// A record of lambdas bound under a declared type name implements that type for the record it names.
+/** A record of lambdas bound under a declared type name implements that type
+ * for the record it names.
+ */
 is_impl_block(s: Stmt) -> bool =>
     s.kind == SBind && upper_word(s.ret) && s.value.kind == ERecord
         && s.value.children.length() > 0
         && all_lambda_fields(s.value.children, 0)
 
-/// A capitalized type this module never declared belongs to whatever the program links against.
+/** A capitalized type this module never declared belongs to whatever the
+ * program links against.
+ */
 foreign_type(ty: str, own: str[]) -> bool =>
     ty.index_of("[]") < 0 && upper_word(ty) && own.index_of(head_type(ty)) < 0
         && upper_word(head_type(ty))
@@ -155,7 +161,9 @@ head_type(ty: str) -> str {
     cut < 0 ? ty : ty.slice(0, cut)
 }
 
-/// Every type this module declares itself; anything else capitalized is foreign to it.
+/** Every type this module declares itself; anything else capitalized is foreign
+ * to it.
+ */
 declared_types(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
@@ -249,14 +257,18 @@ e_block(stmts: Stmt[], last: Expr) -> Expr =>
 at_pos(s: Stmt, p: int) -> Stmt =>
     s with { pos = p }
 
-/// An entry type is written `Entry element`, which is what `enumerate` answers with.
+/** An entry type is written `Entry element`, which is what `enumerate` answers
+ * with.
+ */
 is_entry_type(ty: str) -> bool =>
     ty.length() > 6 && ty.slice(0, 6) == "Entry "
 
 entry_value_type(ty: str) -> str =>
     is_entry_type(ty) ? ty.slice(6, ty.length()) : ""
 
-/// A map type is written `Map key value`, so its key is the word after the head.
+/** A map type is written `Map key value`, so its key is the word after the
+ * head.
+ */
 map_type_key(ty: str) -> str {
     rest = map_type_rest(ty)
     cut = rest.index_of(" ")
@@ -268,7 +280,9 @@ map_type_key(ty: str) -> str {
     }
 }
 
-/// The type a lookup in this map answers with, empty when the type is not a map.
+/** The type a lookup in this map answers with, empty when the type is not a
+ * map.
+ */
 map_type_val(ty: str) -> str {
     rest = map_type_rest(ty)
     cut = rest.index_of(" ")
@@ -290,7 +304,9 @@ map_type_rest(ty: str) -> str {
 
 ElementTags = " html head title meta link style script body div span p pre code a button input textarea select option label form header footer main section article nav aside ul ol li table thead tbody tr td th h1 h2 h3 h4 h5 h6 img svg canvas small strong em b i hr br blockquote figure figcaption details summary dialog progress meter video audio "
 
-/// `element` names its tag with its first argument; every other tag is its own name.
+/** `element` names its tag with its first argument; every other tag is its own
+ * name.
+ */
 is_element_tag(name: str) -> bool =>
     name == "element" || ElementTags.index_of(" {name} ") >= 0
         || (tag_lower(name) && name.index_of("-") > 0)

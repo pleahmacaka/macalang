@@ -2,7 +2,7 @@ import profile/trace
 import { percent, fit } from profile/flame
 import { bold, dim, grey, width, pad, pad_left } from cli/style
 
-/// One row: a name, and everything the run has to say about it.
+/** One row: a name, and everything the run has to say about it. */
 Stat = {
     name: str,
     calls: int,
@@ -11,7 +11,7 @@ Stat = {
     share: float,
 }
 
-/// Every name in the trace, heaviest self time first.
+/** Every name in the trace, heaviest self time first. */
 summary(t: Trace) -> Stat[] {
     counted = tally(t, 0, [])
     shared = with_shares(counted, wall(t), 0, [])
@@ -19,7 +19,7 @@ summary(t: Trace) -> Stat[] {
     by_self(shared, 0, [])
 }
 
-/// The row for `name`, or a zeroed one if the trace never recorded it.
+/** The row for `name`, or a zeroed one if the trace never recorded it. */
 stat_of(stats: Stat[], name: str) -> Stat {
     at = index_named(stats, name, 0)
 
@@ -110,10 +110,10 @@ rank_of(acc: Stat[], own: int, i: int) -> int {
     }
 }
 
-/// The summary as a table: name, calls, total, self, share.
+/** The summary as a table: name, calls, total, self, share. */
 summary_table(t: Trace) -> str => stats_table(summary(t))
 
-/// The same table over rows the caller picked.
+/** The same table over rows the caller picked. */
 stats_table(stats: Stat[]) -> str {
     if stats.length() == 0 {
         dim("(nothing recorded)")

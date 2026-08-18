@@ -59,7 +59,7 @@ paragraph(n: int, acc: str) -> str {
     }
 }
 
-/// What a walk of one directory found, and the recorder that watched it.
+/** What a walk of one directory found, and the recorder that watched it. */
 Scan = {
     rec: Rec,
     files: int,

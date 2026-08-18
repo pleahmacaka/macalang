@@ -1,11 +1,11 @@
-/// The generator's starting state.
+/** The generator's starting state. */
 Seed = 12345
 
-/// The next state of a linear congruential generator.
+/** The next state of a linear congruential generator. */
 next_rand(state: int) -> int =>
     (state * 1103515245 + 12345) % 2147483648
 
-/// A list of `n` copies of `v`.
+/** A list of `n` copies of `v`. */
 repeated(n: int, v: int) -> int[] {
     if n <= 0 {
         []
@@ -20,10 +20,10 @@ repeated(n: int, v: int) -> int[] {
     }
 }
 
-/// `n` zeros: the scratch array most of the corpus starts from.
+/** `n` zeros: the scratch array most of the corpus starts from. */
 zeros(n: int) -> int[] => repeated(n, 0)
 
-/// `n` pseudo-random integers in 0..99999, the same ones every time.
+/** `n` pseudo-random integers in 0..99999, the same ones every time. */
 numbers(n: int) -> int[] {
     xs = zeros(n)
     state = Seed
@@ -36,7 +36,7 @@ numbers(n: int) -> int[] {
     xs
 }
 
-/// `0, 1, 2, …, n-1`: a sorted list, for the cases that need one.
+/** `0, 1, 2, …, n-1`: a sorted list, for the cases that need one. */
 ascending(n: int) -> int[] {
     xs = zeros(n)
     i = 0
@@ -47,7 +47,9 @@ ascending(n: int) -> int[] {
     xs
 }
 
-/// `n-1, …, 1, 0`: the worst case for an insertion sort and the best case for nothing, which is why it is worth having.
+/** `n-1, …, 1, 0`: the worst case for an insertion sort and the best case for
+ * nothing, which is why it is worth having.
+ */
 descending(n: int) -> int[] {
     xs = zeros(n)
     i = 0
@@ -58,7 +60,7 @@ descending(n: int) -> int[] {
     xs
 }
 
-/// `n` bytes of mixed letters, digits and spaces.
+/** `n` bytes of mixed letters, digits and spaces. */
 sentence(n: int) -> str {
     if n <= 0 {
         ""
@@ -69,7 +71,7 @@ sentence(n: int) -> str {
     }
 }
 
-/// A string of `n` bytes with long runs of repeated characters.
+/** A string of `n` bytes with long runs of repeated characters. */
 runs(n: int) -> str {
     out = ""
     letters = "aabbbccccdeeeee"
@@ -81,7 +83,7 @@ runs(n: int) -> str {
     out.slice(0, n)
 }
 
-/// An order-sensitive fingerprint of a list.
+/** An order-sensitive fingerprint of a list. */
 checksum(xs: int[]) -> int {
     acc = 0
     for x in xs {
@@ -90,6 +92,6 @@ checksum(xs: int[]) -> int {
     acc
 }
 
-/// A copy of `xs` that can be written to without writing to `xs`.
+/** A copy of `xs` that can be written to without writing to `xs`. */
 copy_of(xs: int[]) -> int[] =>
     xs.slice(0, xs.length())

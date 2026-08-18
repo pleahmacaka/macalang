@@ -1,37 +1,39 @@
 import profile/trace
 
-/// One end of a region: the moment it opened or closed.
+/** One end of a region: the moment it opened or closed. */
 Mark = {
     name: str,
     at: int,
     enter: bool,
 }
 
-/// A recording in progress.
+/** A recording in progress. */
 Rec = {
     label: str,
     marks: Mark[],
     open: int,
 }
 
-/// A fresh recorder.
+/** A fresh recorder. */
 recorder(label: str) -> Rec => Rec { label = label, marks = [], open = 0 }
 
-/// Open a region named `name`.
+/** Open a region named `name`. */
 start(r: Rec, name: str) -> Rec =>
     r with {
         marks = r.marks.push(Mark { name = name, at = now_ms(), enter = true }),
         open = r.open + 1,
     }
 
-/// Close the innermost open region.
+/** Close the innermost open region. */
 stop(r: Rec) -> Rec =>
     r with {
         marks = r.marks.push(Mark { name = "", at = now_ms(), enter = false }),
         open = r.open > 0 ? r.open - 1 : 0,
     }
 
-/// A region around a call (`start`, the work, `stop`) with no way to forget the stop.
+/** A region around a call (`start`, the work, `stop`) with no way to forget the
+ * stop.
+ */
 span(r: Rec, name: str, body) -> Rec =>
     close_down_to(body(start(r, name)), r.open)
 
@@ -43,7 +45,8 @@ close_down_to(r: Rec, want: int) -> Rec {
     }
 }
 
-/// An instant rather than a region: a zero-length span at the current moment.
+/** An instant rather than a region: a zero-length span at the current moment.
+ */
 mark(r: Rec, name: str) -> Rec {
     at = now_ms()
     opened = r.marks.push(Mark { name = name, at = at, enter = true })
@@ -51,10 +54,10 @@ mark(r: Rec, name: str) -> Rec {
     r with { marks = opened.push(Mark { name = "", at = at, enter = false }) }
 }
 
-/// How many regions are open right now.
+/** How many regions are open right now. */
 open_count(r: Rec) -> int => r.open
 
-/// Milliseconds since the first mark.
+/** Milliseconds since the first mark. */
 elapsed(r: Rec) -> int {
     n = r.marks.length()
 
@@ -66,7 +69,7 @@ Build = {
     open: int[],
 }
 
-/// The trace of everything recorded so far.
+/** The trace of everything recorded so far. */
 finish(r: Rec) -> Trace {
     marks = r.marks
 

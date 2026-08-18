@@ -28,7 +28,7 @@ monarch() -> str => grammar("apps/playground/playground.maca")
 zed(query: str) -> str =>
     grammar("apps/editor/zed-maca/languages/maca/{query}.scm")
 
-/// A grammar names a word when it sits in an alternation or is quoted whole.
+/** A grammar names a word when it sits in an alternation or is quoted whole. */
 names_word(src: str, w: str) -> bool =>
     src.contains("({w}|") || src.contains("|{w}|") || src.contains("|{w})")
         || src.contains(Quote ++ w ++ Quote)
@@ -153,7 +153,9 @@ test_the_node_scan_skips_a_comment_and_a_pattern_string() {
 Scanner = "apps/editor/tree-sitter-maca/scanner.maca"
 ScannerC = "apps/editor/tree-sitter-maca/src/scanner.c"
 
-/// `scanner.c` is `scanner.maca` as the compiler emits it, so the two are held to each other.
+/** `scanner.c` is `scanner.maca` as the compiler emits it, so the two are held
+ * to each other.
+ */
 test_the_committed_scanner_is_what_its_source_emits() {
     out = env_or("TMPDIR", "/tmp") ++ "/maca-scanner.c"
 

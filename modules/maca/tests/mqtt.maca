@@ -22,7 +22,9 @@ built(app: str, name: str) -> str {
     at
 }
 
-/// A broker, a subscriber and a publisher, then a hundred subscribers on one message.
+/** A broker, a subscriber and a publisher, then a hundred subscribers on one
+ * message.
+ */
 script() -> str =>
     "pkill -x maca-mqbroker 2>/dev/null || true\n"
         ++ "sleep 0.5\n"

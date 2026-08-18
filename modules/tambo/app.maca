@@ -1,29 +1,29 @@
 import { bind_path, more_specific } from tambo/route
 
-/// One row of the table.
+/** One row of the table. */
 Route = {
     method: str
     pattern: str
-    /// The handler's name, as `handle` will see it in `ctx.name`.
+    /** The handler's name, as `handle` will see it in `ctx.name`. */
     name: str
 }
 
-/// A routing table, plus the three handlers that are not routes.
+/** A routing table, plus the three handlers that are not routes. */
 App = {
     routes: Route[]
-    /// Runs before the route, for every request.
+    /** Runs before the route, for every request. */
     before: str
-    /// Runs after it, with the response so far in `ctx.reply`.
+    /** Runs after it, with the response so far in `ctx.reply`. */
     after: str
-    /// Runs when nothing matched.
+    /** Runs when nothing matched. */
     fallback: str
 }
 
-/// An empty app.
+/** An empty app. */
 app() -> App =>
     App { routes = [], before = "", after = "", fallback = "" }
 
-/// `method pattern` → the handler called `name`.
+/** `method pattern` → the handler called `name`. */
 route(a: App, method: str, pattern: str, name: str) -> App =>
     a with {
         routes = a.routes.push(Route {
@@ -33,29 +33,33 @@ route(a: App, method: str, pattern: str, name: str) -> App =>
         })
     }
 
-/// The handler for a request nothing matched.
+/** The handler for a request nothing matched. */
 fallback(a: App, name: str) -> App =>
     a with { fallback = name }
 
-/// The handler every request passes through first: a log line, a clock start, an authorization check.
+/** The handler every request passes through first: a log line, a clock start,
+ * an authorization check.
+ */
 before(a: App, name: str) -> App =>
     a with { before = name }
 
-/// The handler every response passes through last, with the response in `ctx.reply`.
+/** The handler every response passes through last, with the response in
+ * `ctx.reply`.
+ */
 after(a: App, name: str) -> App =>
     a with { after = name }
 
-/// What a method and path chose.
+/** What a method and path chose. */
 Pick = {
     ok: bool
     name: str
     pattern: str
     params: Map str str
-    /// The methods this path *would* have answered to, when `ok` is false.
+    /** The methods this path *would* have answered to, when `ok` is false. */
     allowed: str[]
 }
 
-/// The route a method and path chose, if any.
+/** The route a method and path chose, if any. */
 lookup(a: App, method: str, path: str) -> Pick {
     want = method.upper()
     best = nothing()
@@ -93,7 +97,7 @@ nothing() -> Pick {
     Pick { ok = false, name = "", pattern = "", params = empty, allowed = [] }
 }
 
-/// The routing table as text, one route to a line, in declaration order.
+/** The routing table as text, one route to a line, in declaration order. */
 routes_table(a: App) -> str =>
     rows(a.routes, 0, []).join("\n")
 

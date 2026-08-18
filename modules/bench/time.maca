@@ -1,6 +1,6 @@
 import { min_of, median, mean, spread, relative_spread } from bench/stat
 
-/// How hard to measure.
+/** How hard to measure. */
 Options = {
     samples: int,
     min_ms: int,
@@ -8,19 +8,21 @@ Options = {
     max_iters: int,
 }
 
-/// Five samples of at least 50 ms each, after one discarded warm-up.
+/** Five samples of at least 50 ms each, after one discarded warm-up. */
 defaults() -> Options =>
     Options { samples = 5, min_ms = 50, warmups = 1, max_iters = 100000000 }
 
-/// Shorter and noisier: for a demo, a smoke test, or a first look at a candidate you are still writing.
+/** Shorter and noisier: for a demo, a smoke test, or a first look at a
+ * candidate you are still writing.
+ */
 quick() -> Options =>
     Options { samples = 3, min_ms = 15, warmups = 1, max_iters = 100000000 }
 
-/// Longer and steadier: eleven samples of 200 ms, three warm-ups.
+/** Longer and steadier: eleven samples of 200 ms, three warm-ups. */
 careful() -> Options =>
     Options { samples = 11, min_ms = 200, warmups = 3, max_iters = 100000000 }
 
-/// What one candidate measured.
+/** What one candidate measured. */
 Result = {
     name: str,
     size: int,
@@ -31,14 +33,14 @@ Result = {
 
 Tick = { ms: int, checksum: int }
 
-/// Time `candidate` at workload `size` and keep the samples.
+/** Time `candidate` at workload `size` and keep the samples. */
 measure(name: str, size: int, candidate, opts: Options) -> Result {
     iters = calibrate(candidate, size, opts)
     warm(candidate, size, iters, opts.warmups)
     collect(name, size, candidate, iters, opts.samples)
 }
 
-/// `measure` with `defaults()`.
+/** `measure` with `defaults()`. */
 time_it(name: str, size: int, candidate) -> Result =>
     measure(name, size, candidate, defaults())
 
@@ -103,7 +105,7 @@ collect(name: str, size: int, candidate, iters: int, rounds: int) -> Result {
              checksum = candidate(size) }
 }
 
-/// Milliseconds spent inside the candidate across every kept sample.
+/** Milliseconds spent inside the candidate across every kept sample. */
 total_ms(r: Result) -> int {
     if r.samples.length() == 0 {
         0
@@ -112,11 +114,11 @@ total_ms(r: Result) -> int {
     }
 }
 
-/// Candidate calls across every kept sample.
+/** Candidate calls across every kept sample. */
 total_ops(r: Result) -> int =>
     r.iters * r.samples.length()
 
-/// Nanoseconds per candidate call.
+/** Nanoseconds per candidate call. */
 ns_per_op(r: Result) -> float {
     ops = total_ops(r)
 
@@ -127,7 +129,7 @@ ns_per_op(r: Result) -> float {
     }
 }
 
-/// Candidate calls per second.
+/** Candidate calls per second. */
 ops_per_sec(r: Result) -> float {
     ms = total_ms(r)
 
@@ -138,7 +140,7 @@ ops_per_sec(r: Result) -> float {
     }
 }
 
-/// Nanoseconds per unit of workload: `ns_per_op` divided by `size`.
+/** Nanoseconds per unit of workload: `ns_per_op` divided by `size`. */
 ns_per_item(r: Result) -> float {
     if r.size <= 0 {
         0.0
@@ -147,22 +149,22 @@ ns_per_item(r: Result) -> float {
     }
 }
 
-/// The fastest sample, in milliseconds.
+/** The fastest sample, in milliseconds. */
 fastest_ms(r: Result) -> int => min_of(r.samples)
 
-/// The middle sample, in milliseconds.
+/** The middle sample, in milliseconds. */
 median_ms(r: Result) -> float => median(r.samples)
 
-/// The mean sample, in milliseconds.
+/** The mean sample, in milliseconds. */
 mean_ms(r: Result) -> float => mean(r.samples)
 
-/// How far the samples scatter, in milliseconds.
+/** How far the samples scatter, in milliseconds. */
 spread_ms(r: Result) -> float => spread(r.samples)
 
-/// Did the clock resolve this at all?
+/** Did the clock resolve this at all? */
 resolved(r: Result) -> bool =>
     total_ms(r) > 0
 
-/// Are these samples steady enough to compare against another run?
+/** Are these samples steady enough to compare against another run? */
 steady(r: Result) -> bool =>
     resolved(r) && relative_spread(r.samples) < 0.1

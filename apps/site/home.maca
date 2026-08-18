@@ -580,7 +580,7 @@ is_behind(rs: Result[], algo: str) -> bool =>
         _      => false
     }
 
-/// The kernels Maca is slower than C on, in the harness's order.
+/** The kernels Maca is slower than C on, in the harness's order. */
 losses(rs: Result[]) -> str[] =>
     kept(rs, kernels(), 0, [])
 
@@ -697,7 +697,9 @@ ratio_text(rs: Result[], algo: str) -> str {
     }
 }
 
-/// A loss is a hole in the ink rather than a colour, so the site reads in one hue.
+/** A loss is a hole in the ink rather than a colour, so the site reads in one
+ * hue.
+ */
 mine_tone(rs: Result[], algo: str) -> str {
     if is_behind(rs, algo) {
         "bg-white dark:bg-black border border-black dark:border-white"
@@ -706,7 +708,9 @@ mine_tone(rs: Result[], algo: str) -> str {
     }
 }
 
-/// The losing verdict is the filled one, so the page states its losses louder than its wins.
+/** The losing verdict is the filled one, so the page states its losses louder
+ * than its wins.
+ */
 chip_tone(rs: Result[], algo: str) -> str {
     if is_behind(rs, algo) {
         "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
@@ -820,13 +824,15 @@ prov_cell(f: Fact) -> str =>
 
 
 
-/// Every page the site writes, which is also the order the directory lists them.
+/** Every page the site writes, which is also the order the directory lists
+ * them.
+ */
 Key = Home | Language | Benchmarks | Evals | Targets | Install | Limits
 
 keys() -> Key[] =>
     Language, Benchmarks, Evals, Targets, Limits
 
-/// The file a key is written to, under a language directory.
+/** The file a key is written to, under a language directory. */
 page_file(k: Key) -> str =>
     match k {
         Home       => "home"
@@ -838,7 +844,7 @@ page_file(k: Key) -> str =>
         Limits     => "limits"
     }
 
-/// Where a key sits in the directory, printed as a two digit ordinal.
+/** Where a key sits in the directory, printed as a two digit ordinal. */
 ordinal(k: Key) -> str =>
     match k {
         Home       => "00"
@@ -872,7 +878,9 @@ blurb_of(c: Copy, k: Key) -> str =>
         Limits     => c.lim_sub
     }
 
-/// The default language is written twice: once at the root and once under its own directory.
+/** The default language is written twice: once at the root and once under its
+ * own directory.
+ */
 page_href(o: Copy, up: str, k: Key) -> str =>
     up ++ o.lang ++ "/" ++ page_file(k) ++ ".html"
 
@@ -898,7 +906,7 @@ alternates(up: str, k: Key) -> str =>
         ++ link(rel="alternate", hreflang="x-default",
                 href=canonical(copies().get(0), up, k))
 
-/// The whole chrome every page on this site shares.
+/** The whole chrome every page on this site shares. */
 document(c: Copy, up: str, k: Key, ...body: str) -> str =>
     "<!doctype html>\n"
         ++ html(lang=c.lang,
@@ -949,7 +957,7 @@ masthead(c: Copy, up: str) -> str =>
                 a(class=NavLink, href=Repo, "GitHub")
                 lang_control(c, up, Home))))
 
-/// The language control: one disclosure, never a row of links.
+/** The language control: one disclosure, never a row of links. */
 lang_control(c: Copy, up: str, k: Key) -> str =>
     nav(aria-label=c.lang_label, class="relative shrink-0",
         details(data-site="lang",
@@ -973,7 +981,7 @@ colophon(c: Copy) -> str =>
               a(class=InlineLink, href=Repo,
                 "github.com/pleahmacaka/macalang"))))
 
-/// The front page: a banner, four facts, and the eight places the site goes.
+/** The front page: a banner, four facts, and the eight places the site goes. */
 directory_page(c: Copy, up: str, rs: Result[]) -> str =>
     document(c, up, Home,
         section(class=Frame ++ " py-14 md:py-20 grid gap-10 md:grid-cols-12"
@@ -998,7 +1006,8 @@ directory_page(c: Copy, up: str, rs: Result[]) -> str =>
                     ++ play_cell(c, up)))
         install_strip(c, up))
 
-/// One destination, which ends in a figure and the file that figure came from.
+/** One destination, which ends in a figure and the file that figure came from.
+ */
 dest_cell(c: Copy, up: str, k: Key, rs: Result[]) -> str {
     r = reading_of(k, rs)
 
@@ -1036,7 +1045,7 @@ play_cell(c: Copy, up: str) -> str =>
       div(class="mt-5 " ++ Figure, "0")
       div(class="mt-1 " ++ Unit, escape_html(c.play_unit)))
 
-/// The figure a destination carries, computed from a committed file.
+/** The figure a destination carries, computed from a committed file. */
 reading_of(k: Key, rs: Result[]) -> Reading =>
     match k {
         Home       => release_reading()
@@ -1059,7 +1068,7 @@ SiteCopy = "apps/site/home.maca"
 ahead_count(rs: Result[]) -> int =>
     kernels().filter(k => !is_behind(rs, k)).length()
 
-/// A blurb is one sentence in a cell, however many it is on its own page.
+/** A blurb is one sentence in a cell, however many it is on its own page. */
 one_line(s: str) -> str {
     cut = s.split(".")
 
@@ -1079,7 +1088,7 @@ code_panel(src: str, lang: str) -> str =>
     pre(class=CodePlate,
         code(class="font-mono language-" ++ lang, highlight(lang, src)))
 
-/// Two lines, one per platform, the way a reader expects to find them.
+/** Two lines, one per platform, the way a reader expects to find them. */
 install_strip(c: Copy, up: str) -> str =>
     section(id="install", class="border-t border-zinc-200 dark:border-zinc-800",
         div(class=Frame ++ " py-10",
@@ -1100,7 +1109,9 @@ PosixInstall = "curl -fsSL " ++ SiteRoot ++ "/install | sh"
 
 WindowsInstall = "powershell -c \"irm " ++ SiteRoot ++ "/install.ps1 | iex\""
 
-/// The head of a numbered document: its ordinal, its title, and where its facts come from.
+/** The head of a numbered document: its ordinal, its title, and where its facts
+ * come from.
+ */
 doc_head(c: Copy, up: str, k: Key) -> str =>
     section(class=Frame ++ " py-12 md:py-16 grid gap-8 md:grid-cols-12",
         div(class="md:col-span-8 min-w-0",
@@ -1110,7 +1121,7 @@ doc_head(c: Copy, up: str, k: Key) -> str =>
             p(class="mt-5 m-0 " ++ Lead, prose(blurb_of(c, k))))
         div(class="md:col-span-4 min-w-0"))
 
-/// Every document ends by saying where it sits and what is next.
+/** Every document ends by saying where it sits and what is next. */
 doc_foot(c: Copy, up: str, k: Key) -> str =>
     section(class=Frame ++ " py-10 border-t border-zinc-200"
                   ++ " dark:border-zinc-800",
@@ -1120,7 +1131,7 @@ section_head(title: str) -> str =>
     h2(class="mt-12 pt-6 border-t border-zinc-200 dark:border-zinc-800 m-0 "
              ++ Head2, escape_html(title))
 
-/// 01: what the language is, at a size where the samples can be read.
+/** 01: what the language is, at a size where the samples can be read. */
 language_doc(c: Copy, up: str) -> str =>
     document(c, up, Language,
         doc_head(c, up, Language)
@@ -1138,7 +1149,7 @@ feature_cell(f: Feature, src: str) -> str =>
         pre(class="mt-4 " ++ CodeLight,
             code(class="font-mono language-maca", highlight("maca", src))))
 
-/// 02: the measured argument, with its provenance beside the title.
+/** 02: the measured argument, with its provenance beside the title. */
 bench_doc_page(c: Copy, up: str, rs: Result[]) -> str =>
     document(c, up, Benchmarks,
         doc_head(c, up, Benchmarks)
@@ -1151,7 +1162,7 @@ bench_doc_page(c: Copy, up: str, rs: Result[]) -> str =>
             p(class="mt-6 m-0 " ++ Muted, prose(c.bench_note)))
         doc_foot(c, up, Benchmarks))
 
-/// 03: pass@1, and the reason the third column is not the headline.
+/** 03: pass@1, and the reason the third column is not the headline. */
 evals_doc(c: Copy, up: str) -> str =>
     document(c, up, Evals,
         doc_head(c, up, Evals)
@@ -1172,7 +1183,7 @@ score_cell(s: Score) -> str =>
             span(class="block h-2 bg-zinc-900 dark:bg-zinc-100",
                  style="width:{s.percent}%")))
 
-/// 04: what a program may be compiled to.
+/** 04: what a program may be compiled to. */
 targets_doc(c: Copy, up: str) -> str =>
     document(c, up, Targets,
         doc_head(c, up, Targets)
@@ -1184,7 +1195,7 @@ targets_doc(c: Copy, up: str) -> str =>
 target_cell(t: str) -> str =>
     div(class=Cell, div(class="font-mono text-[0.95rem]", escape_html(t)))
 
-/// 05: the one command, and the release it fetches.
+/** 05: the one command, and the release it fetches. */
 install_doc(c: Copy, up: str) -> str =>
     document(c, up, Install,
         doc_head(c, up, Install)
@@ -1195,7 +1206,7 @@ install_doc(c: Copy, up: str) -> str =>
             p(class="mt-6 m-0 " ++ Body, prose(c.install_body)))
         doc_foot(c, up, Install))
 
-/// 06: what this language does not do, at the same size as what it does.
+/** 06: what this language does not do, at the same size as what it does. */
 limits_doc(c: Copy, up: str) -> str =>
     document(c, up, Limits,
         doc_head(c, up, Limits)
@@ -1278,7 +1289,9 @@ write_page(path: str, markup: str) -> int {
     }
 }
 
-/// Backticks in copy become inline code, so one string per language stays one string.
+/** Backticks in copy become inline code, so one string per language stays one
+ * string.
+ */
 prose(s: str) -> str {
     parts = s.split("`")
 

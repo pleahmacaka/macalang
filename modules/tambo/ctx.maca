@@ -3,52 +3,54 @@ import { Response } from http/response
 import { pass } from tambo/reply
 import { split_once } from std/text
 
-/// One request, as a handler sees it.
+/** One request, as a handler sees it. */
 Ctx = {
     method: str
-    /// The path with the query removed and percent-escapes decoded.
+    /** The path with the query removed and percent-escapes decoded. */
     path: str
-    /// The handler being called: a route's name, a hook's name, or the fallback's.
+    /** The handler being called: a route's name, a hook's name, or the
+     * fallback's.
+     */
     name: str
-    /// The name of the route that matched, "" when nothing did.
+    /** The name of the route that matched, "" when nothing did. */
     route: str
-    /// The pattern that matched, "" when nothing did.
+    /** The pattern that matched, "" when nothing did. */
     pattern: str
     params: Map str str
     query: Map str str
-    /// Header names lower-cased, because a client picks its own capitals.
+    /** Header names lower-cased, because a client picks its own capitals. */
     headers: Map str str
     body: str
-    /// `now_ms()` at the moment the request was taken apart.
+    /** `now_ms()` at the moment the request was taken apart. */
     arrived: int
-    /// What the route answered.
+    /** What the route answered. */
     reply: Response
 }
 
-/// A bound segment, or "" when the pattern bound no such name.
+/** A bound segment, or "" when the pattern bound no such name. */
 param(ctx: Ctx, name: str) -> str =>
     ctx.params.get(name, "")
 
-/// A bound segment as a number, or `fallback` when it is absent.
+/** A bound segment as a number, or `fallback` when it is absent. */
 param_int(ctx: Ctx, name: str, fallback: int) -> int {
     v = ctx.params.get(name, "")
 
     v == "" ? fallback : int(v)
 }
 
-/// Everything a trailing `*` bound, or "".
+/** Everything a trailing `*` bound, or "". */
 wildcard(ctx: Ctx) -> str =>
     ctx.params.get("*", "")
 
-/// A query parameter, or "".
+/** A query parameter, or "". */
 query(ctx: Ctx, name: str) -> str =>
     ctx.query.get(name, "")
 
-/// A header, matched however the client capitalised it, or "".
+/** A header, matched however the client capitalised it, or "". */
 header(ctx: Ctx, name: str) -> str =>
     ctx.headers.get(name.lower(), "")
 
-/// The context for `req`, routed to `name`.
+/** The context for `req`, routed to `name`. */
 context(req: Request, name: str, route: str, pattern: str,
         params: Map str str) -> Ctx =>
     Ctx {
@@ -65,7 +67,7 @@ context(req: Request, name: str, route: str, pattern: str,
         reply = pass(),
     }
 
-/// A context with nothing in it but a method and a path.
+/** A context with nothing in it but a method and a path. */
 probe(method: str, path: str) -> Ctx {
     empty: Map str str = map()
 
@@ -84,7 +86,7 @@ probe(method: str, path: str) -> Ctx {
     }
 }
 
-/// `a=1&b=two` as a map, with `%XX` decoded and `+` read as a space.
+/** `a=1&b=two` as a map, with `%XX` decoded and `+` read as a space. */
 parse_query(q: str) -> Map str str {
     empty: Map str str = map()
 
@@ -113,7 +115,7 @@ add_pairs(ps: str[], i: int, acc: Map str str) -> Map str str {
 decode_form(s: str) -> str =>
     percent_decode(s.replace("+", " "))
 
-/// A raw header block as a map, names lower-cased and values trimmed.
+/** A raw header block as a map, names lower-cased and values trimmed. */
 parse_headers(block: str) -> Map str str {
     empty: Map str str = map()
 

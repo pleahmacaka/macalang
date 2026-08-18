@@ -2,7 +2,9 @@
 
 UrlHex = "0123456789ABCDEF"
 
-/// `base` and `path` with exactly one slash between them; an absolute `path` wins outright.
+/** `base` and `path` with exactly one slash between them; an absolute `path`
+ * wins outright.
+ */
 url_join(base: str, path: str) -> str {
     if path.starts_with("http://") || path.starts_with("https://") {
         return path
@@ -17,7 +19,9 @@ url_join(base: str, path: str) -> str {
     path.starts_with("/") ? left ++ path : "{left}/{path}"
 }
 
-/// The percent-encoding a query value needs, over the bytes the text is made of.
+/** The percent-encoding a query value needs, over the bytes the text is made
+ * of.
+ */
 url_encode(s: str) -> str {
     out = ""
     cs = s.chars()
@@ -42,7 +46,7 @@ url_escaped(c: str) -> str {
     "%" ++ UrlHex.at(b / 16) ++ UrlHex.at(b % 16)
 }
 
-/// `a=1&b=2` from parallel key and value lists, each side escaped.
+/** `a=1&b=2` from parallel key and value lists, each side escaped. */
 url_query(keys: str[], values: str[]) -> str {
     out = ""
     i = 0
@@ -56,7 +60,9 @@ url_query(keys: str[], values: str[]) -> str {
     out
 }
 
-/// `url` with `q` attached, by `?` when it carries no query yet and by `&` when it does.
+/** `url` with `q` attached, by `?` when it carries no query yet and by `&` when
+ * it does.
+ */
 url_with_query(at: str, q: str) -> str {
     if q == "" {
         return at

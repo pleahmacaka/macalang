@@ -16,18 +16,19 @@ Failures = "apps/corpus/failures.jsonl"
 maca() -> str =>
     env_or("MACA", "target/release/maca")
 
-/// The command that reads a prompt file and writes Maca to stdout.
-///
-/// Deterministic rules are meant to take this over one construct at a time.
-/// Until they do, the translator is a model, and it is a subprocess so that
-/// swapping one for the other changes nothing else in the pipeline.
+/** The command that reads a prompt file and writes Maca to stdout.
+ *
+ * Deterministic rules are meant to take this over one construct at a time.
+ * Until they do, the translator is a model, and it is a subprocess so that
+ * swapping one for the other changes nothing else in the pipeline.
+ */
 translator() -> str =>
     env_or("MACA_CORPUS_MODEL", "")
 
-/// One collected package, as `collect.maca` left it on disk.
+/** One collected package, as `collect.maca` left it on disk. */
 Package = { name: str, license: str, ts: str, test: str }
 
-/// Every package under `Collected`, in a stable order.
+/** Every package under `Collected`, in a stable order. */
 packages() -> Package[] =>
     read_all(walk_dirs(Collected).sort(), 0, [])
 
@@ -50,7 +51,7 @@ read_one(dir: str) -> Package =>
 read_or(p: str, dflt: str) -> str =>
     file_exists(p) ? read_file(p) : dflt
 
-/// Ask the translator for Maca, handing the prompt over as a file.
+/** Ask the translator for Maca, handing the prompt over as a file. */
 translate(p: Package) -> str {
     scratch = join(env_or("TMPDIR", "/tmp"), "maca-corpus")
     make_dir(scratch)
@@ -64,11 +65,12 @@ translate(p: Package) -> str {
 spec() -> str =>
     capture(maca(), ["spec", "--llm"])
 
-/// Compile the Maca to JavaScript and run the package's own tests against it.
-///
-/// The tests are the oracle. A translation that compiles is not a translation
-/// that is right, and the only thing that knows the difference is the suite the
-/// package already shipped.
+/** Compile the Maca to JavaScript and run the package's own tests against it.
+ *
+ * The tests are the oracle. A translation that compiles is not a translation
+ * that is right, and the only thing that knows the difference is the suite the
+ * package already shipped.
+ */
 verify(p: Package, maca_src: str) -> Failure[] {
     scratch = join(join(env_or("TMPDIR", "/tmp"), "maca-corpus"), p.name)
     make_dir(scratch)
@@ -134,7 +136,7 @@ run_all(ps: Package[], i: int, kept: int, lost: int) -> int {
     }
 }
 
-/// One package end to end, appending its record when every stage answers.
+/** One package end to end, appending its record when every stage answers. */
 attempt(p: Package) -> Failure[] {
     if !permits(p.license) {
         one(failed(p, "licence", refusal(p.license)))

@@ -279,7 +279,9 @@ test_dev_without_a_dev_file_shows_the_starter_it_wants() {
 jdk_here() -> bool =>
     have("javac") && have("java")
 
-/// The interface a Fabric mod implements, compiled where a classpath can name it.
+/** The interface a Fabric mod implements, compiled where a classpath can name
+ * it.
+ */
 jvm_stub(dir: str) -> bool {
     make_dir(dir ++ "/net/fabricmc/api")
     write_file(dir ++ "/net/fabricmc/api/ModInitializer.java",
@@ -290,7 +292,9 @@ jvm_stub(dir: str) -> bool {
                    "-d", dir]) == 0
 }
 
-/// The Fabric mod this repository ships, which is what a JVM package looks like.
+/** The Fabric mod this repository ships, which is what a JVM package looks
+ * like.
+ */
 mcmod_source() -> str =>
     read_file(cwd() ++ "/apps/mcmod/mod.maca")
 
@@ -311,7 +315,9 @@ test_the_jvm_target_compiles_the_java_it_emits() {
     }
 }
 
-/// The jars a JVM package compiles against belong to the package, not to whoever types the command.
+/** The jars a JVM package compiles against belong to the package, not to
+ * whoever types the command.
+ */
 test_a_declared_classpath_reaches_the_java_compiler() {
     if jdk_here() {
         at = monorepo("ws-classpath") ++ "/apps/hello"
@@ -355,7 +361,9 @@ test_a_classpath_flag_names_the_jars_a_manifest_did_not() {
     }
 }
 
-/// A root that gathers a library and an application, the way this repository does.
+/** A root that gathers a library and an application, the way this repository
+ * does.
+ */
 monorepo(tag: str) -> str {
     dir = package_dir(tag)
 
@@ -469,7 +477,7 @@ test_a_package_the_workspace_does_not_list_is_named() {
            "the list and the tree must agree: {said}")
 }
 
-/// A library that names one target and an application that names another.
+/** A library that names one target and an application that names another. */
 cross_target(tag: str) -> str {
     dir = package_dir(tag)
 
@@ -523,7 +531,9 @@ test_a_write_into_a_directory_that_is_not_there_makes_it_first() {
            "and the file the compiler said it wrote is really there")
 }
 
-/// A monorepo holding a monorepo, which is what `modules/ai` is to this repository.
+/** A monorepo holding a monorepo, which is what `modules/ai` is to this
+ * repository.
+ */
 nested_monorepo(tag: str) -> str {
     dir = monorepo(tag)
 

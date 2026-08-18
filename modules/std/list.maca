@@ -1,6 +1,6 @@
 // std/list: the list operations that aren't builtins.
 
-/// Does any element satisfy `pred`?
+/** Does any element satisfy `pred`? */
 any_of(xs: int[], pred) -> bool =>
     scan_any(xs, 0, pred)
 
@@ -14,7 +14,7 @@ scan_any(xs: int[], i: int, pred) -> bool {
     }
 }
 
-/// Does every element satisfy `pred`?
+/** Does every element satisfy `pred`? */
 all_of(xs: int[], pred) -> bool =>
     scan_all(xs, 0, pred)
 
@@ -28,7 +28,7 @@ scan_all(xs: int[], i: int, pred) -> bool {
     }
 }
 
-/// The index of the first element satisfying `pred`, or -1.
+/** The index of the first element satisfying `pred`, or -1. */
 find_index(xs: int[], pred) -> int =>
     scan_find(xs, 0, pred)
 
@@ -42,15 +42,17 @@ scan_find(xs: int[], i: int, pred) -> int {
     }
 }
 
-/// How many elements satisfy `pred`.
+/** How many elements satisfy `pred`. */
 count_if(xs: int[], pred) -> int =>
     xs.filter(pred).length()
 
-/// The first `n` elements.
+/** The first `n` elements. */
 take(xs: int[], n: int) -> int[] =>
     xs.slice(0, clamp(n, xs.length()))
 
-/// Everything after the first `n` elements: the other half of `take`, and clamping the same way.
+/** Everything after the first `n` elements: the other half of `take`, and
+ * clamping the same way.
+ */
 drop(xs: int[], n: int) -> int[] =>
     xs.slice(clamp(n, xs.length()), xs.length())
 
@@ -64,7 +66,7 @@ clamp(n: int, len: int) -> int {
     }
 }
 
-/// Fixed-size groups, the last one short if the length doesn't divide.
+/** Fixed-size groups, the last one short if the length doesn't divide. */
 chunk(xs: int[], size: int) -> int[][] {
     if size <= 0 {
         []
@@ -82,7 +84,7 @@ chunk_from(xs: int[], at: int, size: int, acc: int[][]) -> int[][] {
     }
 }
 
-/// One list of the pairwise sums, stopping at the shorter input.
+/** One list of the pairwise sums, stopping at the shorter input. */
 zip_add(a: int[], b: int[]) -> int[] =>
     zip_add_from(a, b, 0, [])
 
@@ -94,7 +96,7 @@ zip_add_from(a: int[], b: int[], i: int, acc: int[]) -> int[] {
     }
 }
 
-/// Flatten one level.
+/** Flatten one level. */
 flatten(xss: int[][]) -> int[] =>
     flatten_from(xss, 0, [])
 
@@ -106,7 +108,7 @@ flatten_from(xss: int[][], i: int, acc: int[]) -> int[] {
     }
 }
 
-/// Values in first-seen order, duplicates dropped.
+/** Values in first-seen order, duplicates dropped. */
 unique(xs: int[]) -> int[] =>
     unique_from(xs, 0, [])
 
@@ -120,7 +122,7 @@ unique_from(xs: int[], i: int, acc: int[]) -> int[] {
     }
 }
 
-/// `[lo, lo+1, …, hi]`, empty when `hi < lo`.
+/** `[lo, lo+1, …, hi]`, empty when `hi < lo`. */
 range(lo: int, hi: int) -> int[] {
     if hi < lo {
         []
@@ -137,7 +139,7 @@ range_from(at: int, hi: int, acc: int[]) -> int[] {
     }
 }
 
-/// `unique` for a `str[]`.
+/** `unique` for a `str[]`. */
 str_unique(xs: str[]) -> str[] =>
     str_unique_from(xs, 0, [])
 
@@ -151,15 +153,15 @@ str_unique_from(xs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// `take` for a `str[]`.
+/** `take` for a `str[]`. */
 str_take(xs: str[], n: int) -> str[] =>
     xs.slice(0, clamp(n, xs.length()))
 
-/// `drop` for a `str[]`.
+/** `drop` for a `str[]`. */
 str_drop(xs: str[], n: int) -> str[] =>
     xs.slice(clamp(n, xs.length()), xs.length())
 
-/// `find_index` for a `str[]`.
+/** `find_index` for a `str[]`. */
 str_find_index(xs: str[], pred) -> int =>
     str_scan_find(xs, 0, pred)
 
@@ -173,7 +175,7 @@ str_scan_find(xs: str[], i: int, pred) -> int {
     }
 }
 
-/// `flatten` for a `str[][]`.
+/** `flatten` for a `str[][]`. */
 str_flatten(xss: str[][]) -> str[] =>
     str_flatten_from(xss, 0, [])
 

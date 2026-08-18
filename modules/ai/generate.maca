@@ -3,14 +3,18 @@
 import ai/openai/chat
 import std/json
 
-/// A tool the model may reach for: its name, what it does, and the JSON schema of its arguments.
+/** A tool the model may reach for: its name, what it does, and the JSON schema
+ * of its arguments.
+ */
 Tool = {
     name:        str
     description: str
     schema:      str
 }
 
-/// What the asking produced: the text, any tools it asked for, and what it cost.
+/** What the asking produced: the text, any tools it asked for, and what it
+ * cost.
+ */
 Said = {
     text:  str
     calls: Call[]
@@ -19,19 +23,21 @@ Said = {
     error: str
 }
 
-/// One prompt, one answer.
+/** One prompt, one answer. */
 generate_text(c: Chat, prompt: str) -> Said =>
     said_of(complete(c, [user_turn(prompt)]))
 
-/// The same, with a system turn ahead of it saying how to answer.
+/** The same, with a system turn ahead of it saying how to answer. */
 generate_text_as(c: Chat, how: str, prompt: str) -> Said =>
     said_of(complete(c, [system_turn(how), user_turn(prompt)]))
 
-/// A whole conversation, for a caller that is keeping one.
+/** A whole conversation, for a caller that is keeping one. */
 generate_from(c: Chat, ts: Turn[]) -> Said =>
     said_of(complete(c, ts))
 
-/// An answer that is one JSON object and nothing else, which is what a program can read.
+/** An answer that is one JSON object and nothing else, which is what a program
+ * can read.
+ */
 generate_object(c: Chat, prompt: str) -> Said =>
     said_of(complete_with(c, [object_turn(), user_turn(prompt)],
                           ["response_format"],
@@ -40,7 +46,10 @@ generate_object(c: Chat, prompt: str) -> Said =>
 object_turn() -> Turn =>
     system_turn("Answer with one JSON object and nothing else.")
 
-/// The tools the model may reach for, offered alongside the conversation; none offered is a pair never sent, because a host that sees an empty list may refuse it.
+/** The tools the model may reach for, offered alongside the conversation; none
+ * offered is a pair never sent, because a host that sees an empty list may
+ * refuse it.
+ */
 generate_using(c: Chat, ts: Turn[], tools: Tool[]) -> Said {
     if tools.length() == 0 {
         return said_of(complete(c, ts))
@@ -49,7 +58,7 @@ generate_using(c: Chat, ts: Turn[], tools: Tool[]) -> Said {
     said_of(complete_with(c, ts, ["tools"], [tools_json(tools)]))
 }
 
-/// The tools as the JSON array the wire format wants.
+/** The tools as the JSON array the wire format wants. */
 tools_json(tools: Tool[]) -> str =>
     "[" ++ tools.map(t => one_tool(t)).join(",") ++ "]"
 
@@ -60,13 +69,16 @@ one_tool(t: Tool) -> str =>
                          [quote(t.name), quote(t.description),
                           tool_schema(t)])])
 
-/// A tool that names no arguments still has to say so, because the format has no word for absent.
+/** A tool that names no arguments still has to say so, because the format has
+ * no word for absent.
+ */
 tool_schema(t: Tool) -> str =>
     t.schema == "" ? object_of(["type", "properties"],
                                [quote("object"), object_of([], [])])
                    : t.schema
 
-/// A tool the caller ran, handed back so the model can go on from its result.
+/** A tool the caller ran, handed back so the model can go on from its result.
+ */
 tool_turn(id: str, result: str) -> Turn =>
     Turn { role = "tool", content = result, call_id = id }
 
@@ -74,11 +86,13 @@ said_of(a: Answer) -> Said =>
     Said { text = a.text, calls = a.calls, sent = a.sent, got = a.got,
            error = a.error }
 
-/// Did the asking land, with something to show for it?
+/** Did the asking land, with something to show for it? */
 said_ok(s: Said) -> bool =>
     s.error == "" && (s.text != "" || s.calls.length() > 0)
 
-/// The arguments of the first tool by that name, or "" when the model asked for no such thing.
+/** The arguments of the first tool by that name, or "" when the model asked for
+ * no such thing.
+ */
 called_with(s: Said, name: str) -> str =>
     call_scan(s.calls, 0, name)
 

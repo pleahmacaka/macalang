@@ -1,76 +1,91 @@
 import { escape_html } from std/text
 
-/// The project's source, named once.
+/** The project's source, named once. */
 Repo = "https://github.com/pleahmacaka/macalang"
 
-/// Told to the browser rather than to any element.
+/** Told to the browser rather than to any element. */
 base_css() -> str =>
     """html{color-scheme:light dark}
 """
 
-/// `<title>`, escaped.
+/** `<title>`, escaped. */
 title_tag(text: str) -> str =>
     title(escape_html(text))
 
 body_tag(classes: str, inner: str) -> str =>
     body(class=classes, inner)
 
-/// The two families the site uses, which `font-sans` and `font-mono` name and which nothing else supplies.
+/** The two families the site uses, which `font-sans` and `font-mono` name and
+ * which nothing else supplies.
+ */
 font_link(up: str) -> str =>
     link(rel="stylesheet", href=up ++ "fonts/fonts.css")
 
-/// The body's typography and colours, over a chosen font stack.
+/** The body's typography and colours, over a chosen font stack. */
 page_class(font: str) -> str =>
     font ++ " text-base leading-relaxed break-keep bg-white dark:bg-zinc-950"
         ++ " text-zinc-900 dark:text-zinc-100"
 
-/// An inline `<code>` span in running prose.
+/** An inline `<code>` span in running prose. */
 CodeSpan = "font-mono text-[0.9em] bg-zinc-100 dark:bg-zinc-800 px-1"
     ++ " py-[0.05rem]"
 
-/// The one measure every page is set to.
+/** The one measure every page is set to. */
 Frame = "max-w-[72rem] mx-auto px-5 md:px-8"
 
-/// Running prose is capped so a line stays readable however wide the window is.
+/** Running prose is capped so a line stays readable however wide the window is.
+ */
 ProseWidth = "max-w-[38ch]"
 
-/// Display type is capped tighter than prose, because a headline breaks on meaning.
+/** Display type is capped tighter than prose, because a headline breaks on
+ * meaning.
+ */
 HeadlineWidth = "max-w-[16ch]"
 
-/// A ruled index: the container's tint bleeds through a one pixel gap as a hairline.
-///
-/// `gap-px` is one pixel, so a field of cells over a tinted container is ruled
-/// without any cell drawing a border of its own, and without two adjacent
-/// borders doubling into two pixels.
+/** A ruled index: the container's tint bleeds through a one pixel gap as a
+ * hairline.
+ *
+ * `gap-px` is one pixel, so a field of cells over a tinted container is ruled
+ * without any cell drawing a border of its own, and without two adjacent
+ * borders doubling into two pixels.
+ */
 lattice(cols: str) -> str =>
     "grid gap-px bg-zinc-200 dark:bg-zinc-800 border border-zinc-200"
         ++ " dark:border-zinc-800 " ++ cols
 
-/// One cell of a lattice, which paints over the container everywhere but the hairline.
+/** One cell of a lattice, which paints over the container everywhere but the
+ * hairline.
+ */
 Cell = "bg-white dark:bg-zinc-950 p-5 md:p-6 min-w-0"
 
-/// A cell the whole of which is a link.
+/** A cell the whole of which is a link. */
 CellLink = "bg-white dark:bg-zinc-950 p-5 md:p-6 min-w-0 no-underline"
     ++ " text-inherit hover:bg-zinc-50 dark:hover:bg-zinc-900 focus:underline"
     ++ " block"
 
-/// The label that opens every atom on the site: mono, small, wide, upper.
+/** The label that opens every atom on the site: mono, small, wide, upper. */
 Eyebrow = "font-mono text-[0.7rem] uppercase tracking-widest text-zinc-500"
     ++ " dark:text-zinc-400"
 
-/// A destination's place in the directory, which is a position rather than a decoration.
+/** A destination's place in the directory, which is a position rather than a
+ * decoration.
+ */
 Ordinal = "font-mono text-[0.7rem] tabular-nums tracking-widest text-zinc-500"
     ++ " dark:text-zinc-400"
 
-/// A measured number, always mono and always tabular so a column of them lines up.
+/** A measured number, always mono and always tabular so a column of them lines
+ * up.
+ */
 Figure = "font-mono tabular-nums text-[1.9rem] leading-none tracking-tight"
     ++ " text-black dark:text-white"
 
-/// What a figure counts, set under it.
+/** What a figure counts, set under it. */
 Unit = "font-mono text-[0.7rem] uppercase tracking-widest text-zinc-500"
     ++ " dark:text-zinc-400"
 
-/// The committed file a figure was computed from, which every figure on the site carries.
+/** The committed file a figure was computed from, which every figure on the
+ * site carries.
+ */
 Source = "font-mono text-[0.7rem] text-zinc-500 dark:text-zinc-400 break-all"
 
 Display = "font-bold text-[2.5rem] md:text-[4rem] leading-[1.02]"
@@ -91,7 +106,9 @@ Body = "text-[0.95rem] leading-relaxed text-zinc-700 dark:text-zinc-300"
 
 Muted = "text-[0.85rem] text-zinc-600 dark:text-zinc-400"
 
-/// The one inverted surface, rationed to the primary action and the current item.
+/** The one inverted surface, rationed to the primary action and the current
+ * item.
+ */
 Inverted = "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
 
 Primary = "inline-block px-5 py-2 no-underline font-medium text-[0.95rem]"
@@ -108,24 +125,27 @@ NavLink = "no-underline font-mono text-[0.72rem] uppercase tracking-widest"
     ++ " text-zinc-600 dark:text-zinc-400 hover:text-black"
     ++ " dark:hover:text-white focus:underline"
 
-/// A rule that opens a section, which is the same hairline the lattice draws.
+/** A rule that opens a section, which is the same hairline the lattice draws.
+ */
 Rule = "border-t border-zinc-200 dark:border-zinc-800"
 
-/// The code plate: flat black in both themes, because a listing is not a surface.
+/** The code plate: flat black in both themes, because a listing is not a
+ * surface.
+ */
 CodePlate = "code-dark bg-black text-zinc-100 p-5 overflow-x-auto"
     ++ " text-[0.85rem] leading-relaxed m-0 border border-zinc-800 min-w-0"
 
-/// A listing set on the page's own surface rather than on the plate.
+/** A listing set on the page's own surface rather than on the plate. */
 CodeLight = "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200"
     ++ " dark:border-zinc-800 p-4 overflow-x-auto text-[0.8rem] m-0 min-w-0"
 
-/// The language control's closed state, which is the endonym and a glyph.
+/** The language control's closed state, which is the endonym and a glyph. */
 LangSummary = "cursor-pointer list-none details-marker:hidden font-mono"
     ++ " text-[0.72rem] uppercase tracking-widest text-zinc-600"
     ++ " dark:text-zinc-400 hover:text-black dark:hover:text-white"
     ++ " focus:underline select-none"
 
-/// The open menu, which overlays rather than widening the row it sits in.
+/** The open menu, which overlays rather than widening the row it sits in. */
 LangMenu = "absolute right-0 z-20 mt-2 w-[9rem] list-none m-0 p-0 bg-white"
     ++ " dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700"
 
@@ -137,30 +157,36 @@ LangItemOff = "block px-3 py-2 no-underline font-mono text-[0.72rem]"
 LangItemOn = "block px-3 py-2 font-mono text-[0.72rem] whitespace-nowrap"
     ++ " bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
 
-/// The closed control: the endonym of the language you are reading, and a glyph that opens it.
-///
-/// The tag is named as a string because `bench/compare` also exports a
-/// `summary`, and a page that reads benchmark results would resolve the bare
-/// call to that function instead of to the element.
+/** The closed control: the endonym of the language you are reading, and a glyph
+ * that opens it.
+ *
+ * The tag is named as a string because `bench/compare` also exports a
+ * `summary`, and a page that reads benchmark results would resolve the bare
+ * call to that function instead of to the element.
+ */
 lang_summary(name: str) -> str =>
     element("summary", class=LangSummary, escape_html(name) ++ " ▾")
 
-/// A language you are not reading, as a link to the same page under it.
+/** A language you are not reading, as a link to the same page under it. */
 lang_item(name: str, href: str, code: str) -> str =>
     li(a(class=LangItemOff, href=href, lang=code, escape_html(name)))
 
-/// The language you are reading, which is stated rather than linked.
+/** The language you are reading, which is stated rather than linked. */
 lang_item_current(name: str) -> str =>
     li(span(class=LangItemOn, aria-current="page", escape_html(name)))
 
-/// A label, a hairline and the thing: the one atom the whole site is built from.
+/** A label, a hairline and the thing: the one atom the whole site is built
+ * from.
+ */
 atom(label: str, inner: str) -> str =>
     div(
         div(class=Eyebrow, escape_html(label))
         div(class="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800",
             inner))
 
-/// A measured number beside the file it was computed from, which is the only way a number goes on this site.
+/** A measured number beside the file it was computed from, which is the only
+ * way a number goes on this site.
+ */
 figure_block(label: str, value: str, unit: str, from: str) -> str =>
     div(class=Cell,
         div(class=Eyebrow, escape_html(label))

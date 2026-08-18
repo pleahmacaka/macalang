@@ -109,7 +109,7 @@ test_the_assistant_names_what_it_needs_rather_than_pretending() {
 }
 
 test_a_param_in_a_doc_comment_is_a_control_the_editor_offers() {
-    got = knobs(lined("/// Add two numbers.\n/// @param a = slider(1..10)\n/// @param b = toggle(off)\nadd(a: int, b: int) -> int => a + b\n"))
+    got = knobs(lined("/** Add two numbers.\n * @param a = slider(1..10)\n * @param b = toggle(off)\n */\nadd(a: int, b: int) -> int => a + b\n"))
 
     assert_eq(str(got.length()), "2",
               "two tags asked, two controls offered")
@@ -122,7 +122,7 @@ test_a_param_in_a_doc_comment_is_a_control_the_editor_offers() {
 }
 
 test_reader_mode_keeps_what_was_said_and_drops_what_was_typed() {
-    said = reading("/// Add two numbers, which is the whole of it.\n/// @param a = slider(1..10)\nadd(a: int, b: int) -> int => a + b\n\n// a plain note\nmain() -> int => 0\n")
+    said = reading("/** Add two numbers, which is the whole of it.\n * @param a = slider(1..10)\n */\nadd(a: int, b: int) -> int => a + b\n\n// a plain note\nmain() -> int => 0\n")
 
     assert(said.contains("Add two numbers"),
            "a doc sentence is what the reader reads: {said}")
@@ -132,8 +132,8 @@ test_reader_mode_keeps_what_was_said_and_drops_what_was_typed() {
            "the code between them is not: {said}")
     assert(!said.contains("@param"),
            "and neither is a tag, which is a control and not a sentence: {said}")
-    assert(!said.contains("///"),
-           "the marks that opened the comment go with it: {said}")
+    assert(!said.contains("/**") && !said.contains("*/"),
+           "the marks that opened and closed the comment go with it: {said}")
 }
 
 test_the_quick_menu_reaches_files_panels_and_commands() {

@@ -3,7 +3,7 @@ import maca/lexer
 import maca/parser
 import maca/check
 
-/// The compiler and the driver, in the order a definition has to come first.
+/** The compiler and the driver, in the order a definition has to come first. */
 compiler_files() -> str[] => [
     "modules/maca/ty.maca", "modules/maca/token.maca",
     "modules/maca/ast.maca", "modules/maca/styles.maca",

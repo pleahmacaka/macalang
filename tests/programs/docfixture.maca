@@ -11,69 +11,75 @@
 undocumented_helper(x: int) -> int =>
     x + 1
 
-/// A signature whose parameter list wraps. Reading one line and stopping
-/// published `wrapped(alpha: int,`: an unbalanced paren, no return type.
+/** A signature whose parameter list wraps. Reading one line and stopping
+ * published `wrapped(alpha: int,`: an unbalanced paren, no return type.
+ */
 wrapped(alpha: int,
         beta: int) -> int =>
     alpha + beta
 
-/// A record written on one line. Looking for a `}` of its own would have run
-/// to the end of the file.
+/** A record written on one line. Looking for a `}` of its own would have run
+ * to the end of the file.
+ */
 Compact = { a: int, b: int }
 
-/// A record written the usual way.
+/** A record written the usual way. */
 Roomy = {
     first:  str
     second: str
 }
 
-/// A sum type.
+/** A sum type. */
 Choice = Yes | No
 
-/// A constant.
+/** A constant. */
 Answer = 42
 
-/// Arithmetic is not emphasis: a * b is a product, and 2 * 3 * 4 is another.
-///
-/// A backtick that never closes is not a code span either: use `foo for that.
-/// Delimiters pair left to right within a paragraph, as they do in Markdown,
-/// so this one is on its own: a stray backtick and a real pair in the same
-/// paragraph is genuinely ambiguous and nothing can tell them apart.
-///
-/// But *this* is emphasis and `this` is code.
+/** Arithmetic is not emphasis: a * b is a product, and 2 * 3 * 4 is another.
+ *
+ * A backtick that never closes is not a code span either: use `foo for that.
+ * Delimiters pair left to right within a paragraph, as they do in Markdown,
+ * so this one is on its own: a stray backtick and a real pair in the same
+ * paragraph is genuinely ambiguous and nothing can tell them apart.
+ *
+ * But *this* is emphasis and `this` is code.
+ */
 punctuated(x: int) -> int =>
     x
 
-/// A doc comment can carry markup (<b>, &amp; and </b>), and none of it may
-/// reach the page as markup.
+/** A doc comment can carry markup (<b>, &amp; and </b>), and none of it may
+ * reach the page as markup.
+ */
 metacharacters(x: int) -> int =>
     x
 
-/// A signature that names two documented types, which is what makes a
-/// cross-link. std documents no record and no sum, so without this the
-/// reference is generated over a corpus where the linking never runs.
+/** A signature that names two documented types, which is what makes a
+ * cross-link. std documents no record and no sum, so without this the
+ * reference is generated over a corpus where the linking never runs.
+ */
 widen(r: Roomy) -> Compact =>
     Compact { a = r.first.length(), b = r.second.length() }
 
-/// A doc comment that carries examples, which are code and are coloured as
-/// code.
-///
-/// An indented run carries no tag, so it is read as the language of the file:
-///
-///     n = widen(Roomy { first = "a", second = "bc" })
-///
-/// A fence says which language it is:
-///
-/// ```sh
-/// for f in *.maca; do maca run "$f"; done
-/// ```
-///
-/// And a tag no scanner claims comes back as plain text rather than coloured
-/// by rules written for something else:
-///
-/// ```nomad
-/// nothing here is coloured: a < b, and it says so.
-/// ```
+/** A doc comment that carries examples, which are code and are coloured as
+ * code.
+ *
+ * An indented run carries no tag, so it is read as the language of the file:
+ *
+ *     n = widen(Roomy { first = "a", second = "bc" })
+ *
+ * A fence says which language it is:
+ *
+ * ```sh
+ * for f in *.maca; do maca run "$f"; done
+ * ```
+ *
+ * And a tag no scanner claims comes back as plain text rather than coloured
+ * by rules written for something else:
+ *
+ * ```nomad
+ * nothing here is coloured: a < b, and it says so.
+ * ```
+ */
 exampled(x: int) -> int =>
     x
 

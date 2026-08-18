@@ -5,14 +5,16 @@
 
 import { safe_name } from web/format
 
-/// Offer `text` to the reader as a file called `name`.
+/** Offer `text` to the reader as a file called `name`. */
 download(name: str, text: str) -> bool =>
     browser_download(safe_name(name), text)
 
-/// The text of a file the reader picks among the kinds `accept` names, or "" if they pick none.
+/** The text of a file the reader picks among the kinds `accept` names, or "" if
+ * they pick none.
+ */
 pick_text(accept: str) -> str
 
-/// Hand `text` to the browser under a name it has already been told is safe.
+/** Hand `text` to the browser under a name it has already been told is safe. */
 browser_download(name: str, text: str) -> bool
 
 import "file.js" """

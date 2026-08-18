@@ -16,7 +16,9 @@ import std/proc
 import std/text
 import { walk } from std/fs
 
-/// One open editor: the tree it was opened on, the buffer, and the panel beside it.
+/** One open editor: the tree it was opened on, the buffer, and the panel beside
+ * it.
+ */
 Ide = {
     root:   str,
     files:  str[],
@@ -36,7 +38,7 @@ maca_bin() -> str {
     named.starts_with("/") ? named : cwd() ++ "/" ++ named
 }
 
-/// Every `.maca` file under the tree, which is what the file list shows.
+/** Every `.maca` file under the tree, which is what the file list shows. */
 sources(root: str) -> str[] {
     out: str[] = []
 
@@ -53,7 +55,7 @@ opened(root: str) -> Ide =>
     Ide { root = root, files = sources(root), open = "", text = "",
           target = "", panel = "rust", output = "", breaks = [] }
 
-/// Opening a file reads it and decides what building it would produce.
+/** Opening a file reads it and decides what building it would produce. */
 opened_file(ide: Ide, path: str) -> Ide {
     body = read_file(path)
 
@@ -61,7 +63,9 @@ opened_file(ide: Ide, path: str) -> Ide {
                output = "", breaks = [] }
 }
 
-/// What `maca build` would pick with no `--target`: a config imports nixpkgs, a page answers with an Element.
+/** What `maca build` would pick with no `--target`: a config imports nixpkgs, a
+ * page answers with an Element.
+ */
 target_of(body: str) -> str {
     if imports_nixpkgs(body) {
         return "nix"
@@ -85,7 +89,9 @@ imports_nixpkgs(body: str) -> bool {
 answers_element(body: str) -> bool =>
     body.contains("-> Element")
 
-/// The panel a target opens on, so a page shows its JavaScript and a config its Nix.
+/** The panel a target opens on, so a page shows its JavaScript and a config its
+ * Nix.
+ */
 panel_for(target: str) -> str {
     if target == "js" {
         "js"
@@ -96,7 +102,7 @@ panel_for(target: str) -> str {
     }
 }
 
-/// A breakpoint is a line, and toggling one is what the gutter does.
+/** A breakpoint is a line, and toggling one is what the gutter does. */
 toggled(ide: Ide, line: int) -> Ide {
     if ide.breaks.index_of(line) >= 0 {
         ide with { breaks = without_line(ide.breaks, line, 0, []) }
@@ -115,11 +121,13 @@ without_line(xs: int[], line: int, i: int, acc: int[]) -> int[] {
     }
 }
 
-/// What the gutter draws beside a line: a stop, or the line's own number.
+/** What the gutter draws beside a line: a stop, or the line's own number. */
 gutter(ide: Ide, line: int) -> str =>
     ide.breaks.index_of(line) >= 0 ? "*" : str(line)
 
-/// A run that stops where the editor was told to: the lines, in order, as the runner wants them.
+/** A run that stops where the editor was told to: the lines, in order, as the
+ * runner wants them.
+ */
 stops(ide: Ide) -> str =>
     sorted_lines(ide.breaks).map(n => str(n)).join(",")
 
@@ -146,7 +154,7 @@ sorted_lines(xs: int[]) -> int[] {
     out
 }
 
-/// The panel's text, asked of the toolchain rather than guessed at.
+/** The panel's text, asked of the toolchain rather than guessed at. */
 shown(ide: Ide) -> str {
     if ide.open == "" {
         return "open a file"
@@ -191,7 +199,9 @@ shown(ide: Ide) -> str {
     transpiled(ide.open, ide.panel)
 }
 
-/// The file as another target reads it, which is the point of watching it change.
+/** The file as another target reads it, which is the point of watching it
+ * change.
+ */
 transpiled(path: str, panel: str) -> str {
     out = "{scratch()}/{stem(path)}.{panel}"
 
@@ -206,7 +216,7 @@ transpiled(path: str, panel: str) -> str {
     got != "" ? got : said
 }
 
-/// Where the time went, under the counter that is exactly repeatable.
+/** Where the time went, under the counter that is exactly repeatable. */
 flamed(path: str) -> str {
     svg = "{scratch()}/{stem(path)}.svg"
 
@@ -218,7 +228,9 @@ flamed(path: str) -> str {
     file_exists(svg) ? "{svg}\n{flame_frames(read_file(svg))} frames" : said
 }
 
-/// A flame graph draws one rectangle a frame, so counting them says how deep the run went.
+/** A flame graph draws one rectangle a frame, so counting them says how deep
+ * the run went.
+ */
 flame_frames(svg: str) -> int =>
     svg.split("<rect").length() - 1
 
@@ -244,7 +256,9 @@ stem(path: str) -> str {
     last.ends_with(".maca") ? last.slice(0, last.length() - 5) : last
 }
 
-/// The gutter as text, a mark a line, which is what the view draws down the left of the buffer.
+/** The gutter as text, a mark a line, which is what the view draws down the
+ * left of the buffer.
+ */
 gutter_text(ide: Ide) -> str {
     out = ""
     lines = ide.text.split("\n").length()
@@ -258,7 +272,9 @@ gutter_text(ide: Ide) -> str {
     out
 }
 
-/// The panels with the one in view marked, so the tab row is a string the model owns and a suite can read.
+/** The panels with the one in view marked, so the tab row is a string the model
+ * owns and a suite can read.
+ */
 tabs(ide: Ide) -> str =>
     tab_row(Panels, 0, ide.panel, "")
 
@@ -272,11 +288,15 @@ tab_row(ps: str[], i: int, on: str, acc: str) -> str {
     }
 }
 
-/// Which panel a click on the tab row selects, staying put when the name is not one.
+/** Which panel a click on the tab row selects, staying put when the name is not
+ * one.
+ */
 picked(ide: Ide, name: str) -> Ide =>
     Panels.index_of(name) < 0 ? ide : ide with { panel = name }
 
-/// What the open file declares, read by the compiler's own parser, so the list is exact rather than guessed at.
+/** What the open file declares, read by the compiler's own parser, so the list
+ * is exact rather than guessed at.
+ */
 declared(text: str) -> str =>
     named_items(parse_module(lex(text), 0, []).items, 0, "")
 
@@ -307,7 +327,7 @@ one_declared(s: Stmt) -> str {
 
 Timer = "/usr/bin/time"
 
-/// The peak the run actually held, which no reading of the source gives.
+/** The peak the run actually held, which no reading of the source gives. */
 footprint(path: str) -> str {
     if !file_exists(Timer) {
         return "no {Timer} on this host, so nothing measured the run"
@@ -320,7 +340,9 @@ footprint(path: str) -> str {
     said.trim() == "" ? "the run said nothing" : said.trim()
 }
 
-/// The rules this repository keeps, handed to the model so it answers in this language and not another.
+/** The rules this repository keeps, handed to the model so it answers in this
+ * language and not another.
+ */
 house_rules(root: str) -> str {
     said = read_file(root ++ "/AGENT.md")
 
@@ -328,14 +350,18 @@ house_rules(root: str) -> str {
         ++ " syntax has no `fn`, no `let` and no `return` keyword for types."
 }
 
-/// Where the assistant asks, named by the environment so no key is ever written down.
+/** Where the assistant asks, named by the environment so no key is ever written
+ * down.
+ */
 assistant() -> Chat =>
     with_model(compatible(env_or("OPENROUTER_API_KEY", ""),
                           env_or("MACA_AI_BASE",
                                  "https://openrouter.ai/api/v1")),
                env_or("MACA_AI_MODEL", "google/gemma-4-31b-it:free"))
 
-/// What the assistant says about the file in view, asked whatever the box holds.
+/** What the assistant says about the file in view, asked whatever the box
+ * holds.
+ */
 asked(ide: Ide) -> str {
     if env_or("OPENROUTER_API_KEY", "") == "" {
         return "no model reached: set OPENROUTER_API_KEY"
@@ -354,11 +380,15 @@ asked(ide: Ide) -> str {
 asked_body(ide: Ide) -> str =>
     "{ide.output}\n\nThe file is {ide.open}:\n{ide.text}"
 
-/// The controls the open file asked for, which is every `@param` its doc comments carry.
+/** The controls the open file asked for, which is every `@param` its doc
+ * comments carry.
+ */
 knobs(ide: Ide) -> Tag[] =>
     tags(ide.text)
 
-/// The file as prose: what its comments say, with the code between them left out.
+/** The file as prose: what its comments say, with the code between them left
+ * out.
+ */
 reading(text: str) -> str =>
     said_lines(prose(text).split(chr(10)), 0, [])
 
@@ -374,21 +404,28 @@ said_lines(ls: str[], i: int, acc: str[]) -> str {
 
 is_said(line: str) -> bool =>
     line.starts_with("//") || line.starts_with("*")
+        || line.starts_with("/**")
 
-/// A comment reads as a sentence, so the marks that opened it go.
+/** A comment reads as a sentence, so the marks that opened it go. */
 unmarked(line: str) -> str {
-    if line.starts_with("///") {
-        return line.slice(3, line.length()).trim()
+    said = line.ends_with("*/")
+        ? line.slice(0, line.length() - 2).trim()
+        : line
+
+    if said.starts_with("/**") {
+        return said.slice(3, said.length()).trim()
     }
 
-    if line.starts_with("//") {
-        return line.slice(2, line.length()).trim()
+    if said.starts_with("//") {
+        return said.slice(2, said.length()).trim()
     }
 
-    line.slice(1, line.length()).trim()
+    said.starts_with("*") ? said.slice(1, said.length()).trim() : said
 }
 
-/// One thing the quick menu can reach: what it is called and what kind of thing it is.
+/** One thing the quick menu can reach: what it is called and what kind of thing
+ * it is.
+ */
 Pick = {
     label: str
     kind:  str
@@ -396,7 +433,7 @@ Pick = {
 
 Commands = ["open", "run", "check", "profile", "keymap", "about"]
 
-/// Everything Ctrl+P reaches: the files, the panels, the commands.
+/** Everything Ctrl+P reaches: the files, the panels, the commands. */
 picks(ide: Ide) -> Pick[] =>
     named_picks(ide.files, 0, "file", [])
         ++ named_picks(Panels, 0, "panel", [])
@@ -411,7 +448,9 @@ named_picks(xs: str[], i: int, kind: str, acc: Pick[]) -> Pick[] {
                                                  kind = kind }))
 }
 
-/// What the box shows for a query: what starts with it first, then what merely holds it.
+/** What the box shows for a query: what starts with it first, then what merely
+ * holds it.
+ */
 matching(ps: Pick[], query: str) -> Pick[] {
     said = query.trim().lower()
 
@@ -443,13 +482,15 @@ holding(ps: Pick[], i: int, said: str, acc: Pick[]) -> Pick[] {
     holding(ps, i + 1, said, hit ? acc.push(ps.get(i)) : acc)
 }
 
-/// One chord and what it runs.
+/** One chord and what it runs. */
 Bind = {
     chord: str
     does:  str
 }
 
-/// The bindings the editor starts with, which are data it can rewrite and not a table inside it.
+/** The bindings the editor starts with, which are data it can rewrite and not a
+ * table inside it.
+ */
 keymap() -> Bind[] => [
     Bind { chord = "ctrl-p", does = "open" },
     Bind { chord = "ctrl-r", does = "run" },
@@ -458,7 +499,7 @@ keymap() -> Bind[] => [
     Bind { chord = "f9", does = "toggle-stop" }
 ]
 
-/// What a chord runs, or "" when nothing is bound to it.
+/** What a chord runs, or "" when nothing is bound to it. */
 bound_to(ks: Bind[], chord: str) -> str =>
     scan_binds(ks, 0, chord.trim().lower())
 
@@ -470,7 +511,9 @@ scan_binds(ks: Bind[], i: int, chord: str) -> str {
     ks.get(i).chord == chord ? ks.get(i).does : scan_binds(ks, i + 1, chord)
 }
 
-/// A chord already taken stays where it is, and the caller is told what holds it.
+/** A chord already taken stays where it is, and the caller is told what holds
+ * it.
+ */
 rebound(ks: Bind[], chord: str, does: str) -> Bind[] {
     said = chord.trim().lower()
     held = bound_to(ks, said)
@@ -490,7 +533,7 @@ dropped(ks: Bind[], i: int, does: str, acc: Bind[]) -> Bind[] {
     dropped(ks, i + 1, does, ks.get(i).does == does ? acc : acc.push(ks.get(i)))
 }
 
-/// Why a rebinding did not take, or "" when it did.
+/** Why a rebinding did not take, or "" when it did. */
 clash(ks: Bind[], chord: str, does: str) -> str {
     held = bound_to(ks, chord.trim().lower())
 
@@ -501,7 +544,9 @@ clash(ks: Bind[], chord: str, does: str) -> str {
 
 Name = "Quipu"
 
-/// What this is, what version, and what it was built with, asked of the toolchain rather than typed twice.
+/** What this is, what version, and what it was built with, asked of the
+ * toolchain rather than typed twice.
+ */
 about() -> str =>
     "{Name}, an editor for Maca\n{version_said()}\nthe editor is Maca too:"
         ++ " apps/quipu"
@@ -512,7 +557,9 @@ version_said() -> str {
     said == "" ? "no compiler on PATH" : said
 }
 
-/// The quick menu as the box draws it, one line a pick, the kind beside the name.
+/** The quick menu as the box draws it, one line a pick, the kind beside the
+ * name.
+ */
 offered(ps: Pick[], i: int, acc: str[]) -> str {
     if i >= ps.length() {
         return acc.length() == 0 ? "nothing matches" : acc.join(chr(10))
@@ -521,7 +568,7 @@ offered(ps: Pick[], i: int, acc: str[]) -> str {
     offered(ps, i + 1, acc.push("{ps.get(i).kind}  {ps.get(i).label}"))
 }
 
-/// The keymap as the editor shows it, one line a binding.
+/** The keymap as the editor shows it, one line a binding. */
 listed_binds(ks: Bind[], i: int, acc: str[]) -> str {
     if i >= ks.length() {
         return acc.join(chr(10))
@@ -532,7 +579,9 @@ listed_binds(ks: Bind[], i: int, acc: str[]) -> str {
 
 Repo = "pleahmacaka/macalang"
 
-/// A version, split so `0.10.0` is read as later than `0.9.0` rather than earlier.
+/** A version, split so `0.10.0` is read as later than `0.9.0` rather than
+ * earlier.
+ */
 parts_of(v: str) -> int[] =>
     numbered(v.trim().replace("v", "").split("."), 0, [])
 
@@ -544,7 +593,9 @@ numbered(xs: str[], i: int, acc: int[]) -> int[] {
     numbered(xs, i + 1, acc.push(int(digits_of(xs.get(i)))))
 }
 
-/// A part may carry a suffix, and what comes before the first non-digit is the number.
+/** A part may carry a suffix, and what comes before the first non-digit is the
+ * number.
+ */
 digits_of(s: str) -> str {
     cs = s.chars()
     out = ""
@@ -558,7 +609,7 @@ digits_of(s: str) -> str {
     out == "" ? "0" : out
 }
 
-/// Is `there` a later version than `here`?
+/** Is `there` a later version than `here`? */
 newer(here: str, there: str) -> bool =>
     ahead(parts_of(here), parts_of(there), 0)
 
@@ -573,7 +624,8 @@ ahead(a: int[], b: int[], i: int) -> bool {
     x != y ? y > x : ahead(a, b, i + 1)
 }
 
-/// The latest release the project published, or "" when nobody could be asked.
+/** The latest release the project published, or "" when nobody could be asked.
+ */
 latest() -> str {
     got = ask_get(with_seconds(client("https://api.github.com"), 10),
                   "/repos/{Repo}/releases/latest")
@@ -581,7 +633,9 @@ latest() -> str {
     reply_ok(got) ? get(got.body, "tag_name") : ""
 }
 
-/// What the editor says about updating itself, which is the truth in every case.
+/** What the editor says about updating itself, which is the truth in every
+ * case.
+ */
 update_said(here: str, there: str) -> str {
     if there == "" {
         return "could not reach the releases, so nothing is known"

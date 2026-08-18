@@ -1,10 +1,12 @@
 import { ascending, zeros, repeated } from bench/cases/data
 import { sentence, checksum } from bench/cases/data
 
-/// The distance a Dijkstra run reports for a node it could not reach.
+/** The distance a Dijkstra run reports for a node it could not reach. */
 Unreachable = 1000000000
 
-/// For each prefix of `needle`, the length of its longest proper prefix that is also a suffix.
+/** For each prefix of `needle`, the length of its longest proper prefix that is
+ * also a suffix.
+ */
 kmp_table(needle: str) -> int[] {
     table = zeros(needle.length())
     len = 0
@@ -25,7 +27,7 @@ kmp_table(needle: str) -> int[] {
     table
 }
 
-/// The index of `needle` in `hay`, or -1, in `n + m` steps.
+/** The index of `needle` in `hay`, or -1, in `n + m` steps. */
 kmp_search(hay: str, needle: str) -> int {
     if needle.length() == 0 {
         0
@@ -53,11 +55,15 @@ kmp_search(hay: str, needle: str) -> int {
     }
 }
 
-/// The same near-miss search as `find_substring_case`, so the two numbers are directly comparable and the comparison is the point.
+/** The same near-miss search as `find_substring_case`, so the two numbers are
+ * directly comparable and the comparison is the point.
+ */
 kmp_search_case(n: int) -> int =>
     kmp_search(sentence(n), "the quick brown cat")
 
-/// The fewest single-character insertions, deletions and substitutions that turn `a` into `b`.
+/** The fewest single-character insertions, deletions and substitutions that
+ * turn `a` into `b`.
+ */
 edit_distance(a: str, b: str) -> int {
     previous = ascending(b.length() + 1)
     current = zeros(b.length() + 1)
@@ -91,7 +97,9 @@ least_of(a: int, b: int, c: int) -> int {
 edit_distance_case(n: int) -> int =>
     edit_distance(sentence(n), sentence(n).upper())
 
-/// The length of the longest sequence of characters appearing, in order but not necessarily together, in both `a` and `b`.
+/** The length of the longest sequence of characters appearing, in order but not
+ * necessarily together, in both `a` and `b`.
+ */
 lcs_length(a: str, b: str) -> int {
     previous = zeros(b.length() + 1)
     current = zeros(b.length() + 1)
@@ -117,7 +125,9 @@ lcs_length(a: str, b: str) -> int {
 lcs_case(n: int) -> int =>
     lcs_length(sentence(n), sentence(n).replace("o", "0"))
 
-/// The best total value that fits in `capacity`, taking each item once or not at all.
+/** The best total value that fits in `capacity`, taking each item once or not
+ * at all.
+ */
 knapsack(weights: int[], values: int[], capacity: int) -> int {
     best = zeros(capacity + 1)
     item = 0
@@ -134,7 +144,9 @@ knapsack(weights: int[], values: int[], capacity: int) -> int {
     best[capacity]
 }
 
-/// `n` items in a knapsack of `2n`, so the table is `n × 2n` and the size parameter moves the work quadratically.
+/** `n` items in a knapsack of `2n`, so the table is `n × 2n` and the size
+ * parameter moves the work quadratically.
+ */
 knapsack_case(n: int) -> int {
     weights = zeros(n)
     values = zeros(n)
@@ -147,7 +159,9 @@ knapsack_case(n: int) -> int {
     knapsack(weights, values, 2 * n)
 }
 
-/// How many ways `n` queens fit on an `n × n` board with none attacking another.
+/** How many ways `n` queens fit on an `n × n` board with none attacking
+ * another.
+ */
 n_queens(n: int) -> int {
     if n <= 0 {
         0
@@ -182,11 +196,11 @@ place_queen(n: int, row: int, columns: int[], down: int[], up: int[]) -> int {
     }
 }
 
-/// `n` is the board side.
+/** `n` is the board side. */
 n_queens_case(n: int) -> int =>
     n_queens(n)
 
-/// Disjoint sets over `0 … n-1`.
+/** Disjoint sets over `0 … n-1`. */
 Uf = {
     parent: int[],
     size: int[],
@@ -195,7 +209,7 @@ Uf = {
 uf_of(n: int) -> Uf =>
     Uf { parent = ascending(n), size = repeated(n, 1) }
 
-/// The representative of `x`'s set, flattening the path on the way.
+/** The representative of `x`'s set, flattening the path on the way. */
 uf_root(uf: Uf, x: int) -> int {
     at = x
     while uf.parent[at] != at {
@@ -205,7 +219,7 @@ uf_root(uf: Uf, x: int) -> int {
     at
 }
 
-/// Merge the sets holding `a` and `b`.
+/** Merge the sets holding `a` and `b`. */
 uf_union(uf: Uf, a: int, b: int) -> bool {
     ra = uf_root(uf, a)
     rb = uf_root(uf, b)
@@ -221,7 +235,7 @@ uf_union(uf: Uf, a: int, b: int) -> bool {
     }
 }
 
-/// How many separate sets are left.
+/** How many separate sets are left. */
 uf_groups(uf: Uf) -> int {
     found = 0
     i = 0
@@ -234,7 +248,9 @@ uf_groups(uf: Uf) -> int {
     found
 }
 
-/// Join `n` elements in a pattern that builds long chains before compressing them, then count what is left.
+/** Join `n` elements in a pattern that builds long chains before compressing
+ * them, then count what is left.
+ */
 union_find_case(n: int) -> int {
     uf = uf_of(n)
     i = 0
@@ -245,7 +261,9 @@ union_find_case(n: int) -> int {
     uf_groups(uf)
 }
 
-/// Shortest distances from `source`, over an `n × n` weight matrix where -1 means no edge.
+/** Shortest distances from `source`, over an `n × n` weight matrix where -1
+ * means no edge.
+ */
 dijkstra(weight: int[], n: int, source: int) -> int[] {
     if n <= 0 {
         []
@@ -298,7 +316,7 @@ relax_from(weight: int[], distance: int[], n: int, at: int) {
     }
 }
 
-/// A ring of `n` nodes with a few chords across it, solved from node 0.
+/** A ring of `n` nodes with a few chords across it, solved from node 0. */
 dijkstra_case(n: int) -> int {
     weight = repeated(n * n, -1)
     i = 0
@@ -314,7 +332,9 @@ dijkstra_case(n: int) -> int {
     total
 }
 
-/// An order in which `n` nodes can be visited with every edge pointing forwards, or an empty list when the edges contain a cycle.
+/** An order in which `n` nodes can be visited with every edge pointing
+ * forwards, or an empty list when the edges contain a cycle.
+ */
 topo_sort(edges: int[], n: int) -> int[] {
     incoming = repeated(n, 0)
     e = 0
@@ -360,7 +380,7 @@ topo_sort(edges: int[], n: int) -> int[] {
     written == n ? out : []
 }
 
-/// A chain, `0 → 1 → … → n-1`.
+/** A chain, `0 → 1 → … → n-1`. */
 topo_sort_case(n: int) -> int {
     edges = zeros(2 * (n - 1 > 0 ? n - 1 : 0))
     at = 0
@@ -374,7 +394,9 @@ topo_sort_case(n: int) -> int {
     checksum(topo_sort(edges, n))
 }
 
-/// How many of `keys` were already cached, with room for `capacity` of them and the least recently used one thrown out.
+/** How many of `keys` were already cached, with room for `capacity` of them and
+ * the least recently used one thrown out.
+ */
 lru_hits(keys: int[], capacity: int) -> int {
     if capacity <= 0 {
         0
@@ -423,7 +445,7 @@ promote(recent: int[], from: int) {
     recent[0] = held
 }
 
-/// `n` accesses in a cache of 16, keyed by the squares modulo 100.
+/** `n` accesses in a cache of 16, keyed by the squares modulo 100. */
 lru_case(n: int) -> int {
     keys = zeros(n)
     i = 0
@@ -434,7 +456,9 @@ lru_case(n: int) -> int {
     lru_hits(keys, 16)
 }
 
-/// JSON split into its tokens: punctuation one character each, strings whole and still quoted, numbers and bare words as they are, whitespace dropped.
+/** JSON split into its tokens: punctuation one character each, strings whole
+ * and still quoted, numbers and bare words as they are, whitespace dropped.
+ */
 json_tokens(src: str) -> str[] {
     out: str[] = []
     i = 0
@@ -449,7 +473,7 @@ json_tokens(src: str) -> str[] {
     out
 }
 
-/// How many tokens `src` has, without building them.
+/** How many tokens `src` has, without building them. */
 json_token_count(src: str) -> int {
     found = 0
     i = 0
@@ -505,7 +529,7 @@ word_end(src: str, from: int) -> int {
     i
 }
 
-/// A JSON array of `n` objects, for the tokenizer to chew on.
+/** A JSON array of `n` objects, for the tokenizer to chew on. */
 json_sample(n: int) -> str {
     if n <= 0 {
         "[]"
@@ -516,6 +540,6 @@ json_sample(n: int) -> str {
     }
 }
 
-/// `n` is the number of objects in the document, not its length in bytes.
+/** `n` is the number of objects in the document, not its length in bytes. */
 json_tokenize_case(n: int) -> int =>
     json_token_count(json_sample(n))

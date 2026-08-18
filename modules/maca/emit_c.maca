@@ -60,7 +60,7 @@ emit_for(e: Expr) -> str {
     }
 }
 
-/// A counted loop needs no list, so `for i in 0..n` allocates nothing.
+/** A counted loop needs no list, so `for i in 0..n` allocates nothing. */
 emit_for_range(e: Expr, over: Expr) -> str {
     lo = emit_expr(over.children.get(0))
     hi = emit_expr(over.children.get(1))
@@ -144,7 +144,8 @@ emit_ternary(e: Expr) -> str {
     "({cond} ? {then} : {els})"
 }
 
-/// A branch that raises answers nothing, so it takes the other branch's type.
+/** A branch that raises answers nothing, so it takes the other branch's type.
+ */
 c_arm(e: Expr, other: str) -> str {
     if is_raise(e) {
         "({emit_expr(e)}, {c_zero(other)})"
@@ -232,7 +233,7 @@ map_method(name: str) -> bool =>
         || name == "length" || name == "count" || name == "remove"
         || name == "values" || name == "contains"
 
-/// A map is two lists side by side, so a key is an index into both.
+/** A map is two lists side by side, so a key is an index into both. */
 emit_map_method(e: Expr, recv: str) -> str {
     val = map_type_val(e.children.get(0).ty)
     key = e.children.length() > 1 ? emit_expr(e.children.get(1)) : ""
@@ -257,7 +258,9 @@ emit_map_method(e: Expr, recv: str) -> str {
     }
 }
 
-/// Every cell is a long, so a read casts back to what the map was declared over.
+/** Every cell is a long, so a read casts back to what the map was declared
+ * over.
+ */
 c_map_read(val: str, call: str) -> str {
     if c_boxed(val) {
         "(*({type_c(val)}*){call})"
@@ -268,13 +271,16 @@ c_map_read(val: str, call: str) -> str {
     }
 }
 
-/// A user type answers to no builtin method, so `x.f(y)` on one is `f(x, y)`.
+/** A user type answers to no builtin method, so `x.f(y)` on one is `f(x, y)`.
+ */
 c_own_type(ty: str) -> bool =>
     ty != "" && ty != "str" && ty != "int" && ty != "bool" && ty != "float"
         && ty != "Element" && !is_list_type(ty) && !is_map_type(ty)
         && !c_sized_number(ty) && !is_vector_type(ty)
 
-/// A width-tagged number is the number it tags, so `f32` is a float and `i32` an int.
+/** A width-tagged number is the number it tags, so `f32` is a float and `i32`
+ * an int.
+ */
 c_sized_number(ty: str) -> bool =>
     ty.length() > 1 && ty.at(1).is_ascii_digit() && ty.index_of("x") < 0
         && (ty.at(0) == "i" || ty.at(0) == "u" || ty.at(0) == "f")
@@ -282,7 +288,7 @@ c_sized_number(ty: str) -> bool =>
 c_sized_float(ty: str) -> bool =>
     c_sized_number(ty) && ty.at(0) == "f"
 
-/// A vector type is a width-tagged scalar carrying a lane count, `f32x8`.
+/** A vector type is a width-tagged scalar carrying a lane count, `f32x8`. */
 is_vector_type(ty: str) -> bool =>
     c_vec_lanes(ty) > 1
 
@@ -438,7 +444,9 @@ emit_list_method(e: Expr, recv: str, el: str) -> str {
     }
 }
 
-/// A stable insertion sort, because the key an element sorts by is computed once.
+/** A stable insertion sort, because the key an element sorts by is computed
+ * once.
+ */
 emit_sort_by(e: Expr, recv: str, el: str) -> str {
     f = e.children.get(1)
     key = c_fn_ret(f.ty)
@@ -787,7 +795,9 @@ c_int_of(ty: str, args: str) -> str {
     }
 }
 
-/// Two `char*` compared with `<` compares addresses, so every comparison on text goes through strcmp.
+/** Two `char*` compared with `<` compares addresses, so every comparison on
+ * text goes through strcmp.
+ */
 c_compare(op: str) -> bool =>
     op == "==" || op == "!=" || op == "<" || op == ">"
         || op == "<=" || op == ">="
@@ -826,7 +836,8 @@ emit_binary(e: Expr) -> str {
     }
 }
 
-/// Only text joins to text, so a number or a flag beside `++` is spelled first.
+/** Only text joins to text, so a number or a flag beside `++` is spelled first.
+ */
 c_joined(e: Expr) -> str {
     if c_is_str(e) || (e.ty != "int" && e.ty != "float" && e.ty != "bool") {
         emit_expr(e)
@@ -835,7 +846,9 @@ c_joined(e: Expr) -> str {
     }
 }
 
-/// On a user type an operator is the same-named function, so `a + b` is `add(a, b)`.
+/** On a user type an operator is the same-named function, so `a + b` is `add(a,
+ * b)`.
+ */
 c_overload(op: str) -> str {
     if op == "+" {
         "add"
@@ -866,7 +879,9 @@ emit_match(e: Expr) -> str =>
     emit_arms(emit_expr(e.children.get(0)), e.children, 1,
               c_elem_of(e.children.get(0).ty), e.children.get(0).ty)
 
-/// A `return` is a statement, so an arm that holds one answers from a chain of them rather than from a ternary.
+/** A `return` is a statement, so an arm that holds one answers from a chain of
+ * them rather than from a ternary.
+ */
 emit_match_tail(e: Expr, ret: str) -> str =>
     tail_arms(emit_expr(e.children.get(0)), e.children, 1,
               any_bound(e.children, 1), c_elem_of(e.children.get(0).ty),
@@ -902,7 +917,7 @@ tail_arm(scrut: str, pat: Expr, body: Expr, el: str, sum: str,
     }
 }
 
-/// The statement that leaves the function with what this expression answers.
+/** The statement that leaves the function with what this expression answers. */
 tail_value(e: Expr, ret: str) -> str {
     if e.kind == EJump {
         "{emit_jump(e, ret)};"
@@ -922,7 +937,9 @@ emit_if_tail(e: Expr, ret: str) -> str =>
         ++ " {{ {tail_value(e.children.get(1), ret)} }}"
         ++ " else {{ {tail_value(e.children.get(2), ret)} }}"
 
-/// A branch or an arm whose own answer is a `return`, which no ternary may hold.
+/** A branch or an arm whose own answer is a `return`, which no ternary may
+ * hold.
+ */
 holds_return(e: Expr) -> bool {
     if e.kind == EJump && e.text == "return" {
         true
@@ -947,7 +964,7 @@ arm_returns(cs: Expr[], i: int) -> bool {
     }
 }
 
-/// A match run for its effect answers nothing, so its arms are statements.
+/** A match run for its effect answers nothing, so its arms are statements. */
 emit_match_stmt(e: Expr) -> str =>
     stmt_arms(emit_expr(e.children.get(0)), e.children, 1,
               any_bound(e.children, 1), c_elem_of(e.children.get(0).ty),
@@ -1013,7 +1030,9 @@ is_alt_pat(p: Expr) -> bool =>
 is_cells_pat(p: Expr) -> bool =>
     p.kind == EIdent && (p.text == "[]" || p.text == "[..]")
 
-/// `[x, ..rest]` matches from that many cells on; `[x]` matches exactly that many.
+/** `[x, ..rest]` matches from that many cells on; `[x]` matches exactly that
+ * many.
+ */
 cells_test(scrut: str, p: Expr) -> str {
     n = p.children.length()
     size = if p.text == "[..]" {
@@ -1025,7 +1044,7 @@ cells_test(scrut: str, p: Expr) -> str {
     size ++ literal_cells(scrut, p, 0)
 }
 
-/// A cell the pattern spelled out is a value to compare, not a name to bind.
+/** A cell the pattern spelled out is a value to compare, not a name to bind. */
 literal_cells(scrut: str, p: Expr, i: int) -> str {
     if i >= p.children.length() {
         ""
@@ -1074,7 +1093,9 @@ test(scrut: str, pat: Expr, tagged: bool, el: str) -> str {
     }
 }
 
-/// A bare literal against a list is the one-cell list pattern its comma never spelled.
+/** A bare literal against a list is the one-cell list pattern its comma never
+ * spelled.
+ */
 one_cell_test(scrut: str, pat: Expr, el: str) -> str =>
     "{scrut}.len == 1 && strcmp({c_cell_at(scrut, el, "0")},"
         ++ " {quoted(pat.text)}) == 0"
@@ -1091,16 +1112,22 @@ guard_test(scrut: str, pat: Expr, tagged: bool, el: str) -> str {
     }
 }
 
-/// `{ a, b }` names fields rather than slots, so it matches anything and binds by name.
+/** `{ a, b }` names fields rather than slots, so it matches anything and binds
+ * by name.
+ */
 is_fields_pat(p: Expr) -> bool =>
     p.kind == EIdent && p.text == "{{}}"
 
-/// A bare name that resolved to nothing is a binder, not a value to compare against.
+/** A bare name that resolved to nothing is a binder, not a value to compare
+ * against.
+ */
 is_bind_pat(p: Expr) -> bool =>
     p.kind == EIdent && c_lower_name(p.text) && p.children.length() == 0
         && !is_cells_pat(p) && !is_fields_pat(p)
 
-/// Maca capitalises a variant, so a lowercase name in a pattern is a binder and not a value.
+/** Maca capitalises a variant, so a lowercase name in a pattern is a binder and
+ * not a value.
+ */
 c_lower_name(name: str) -> bool =>
     name.length() > 0 && name.at(0).is_alpha()
         && name.at(0).upper() != name.at(0)
@@ -1194,7 +1221,9 @@ is_fn_type(ty: str) -> bool =>
 c_decl(ty: str, name: str) -> str =>
     "{type_c(ty)} {name}"
 
-/// A function named where a value is wanted becomes a closure with nothing captured.
+/** A function named where a value is wanted becomes a closure with nothing
+ * captured.
+ */
 c_ident_value(e: Expr) -> str {
     if is_fn_type(e.ty) && e.ival != 3 {
         "(MacaFn){{ (void*){c_id(e.text)}, (MacaList){{0, 0}} }}"
@@ -1223,7 +1252,9 @@ c_arg_binds(tys: str[], vals: str[], i: int) -> str {
     }
 }
 
-/// A call through a function value casts to the exact shape the captured environment says it has.
+/** A call through a function value casts to the exact shape the captured
+ * environment says it has.
+ */
 c_call_value(fnv: str, rt: str, tys: str[], vals: str[]) -> str {
     names = c_arg_names(tys.length(), 0, [])
     sep = ", "
@@ -1266,7 +1297,9 @@ c_cap_cells(caps: Expr[], i: int) -> str {
 is_closure_fn(name: str) -> bool =>
     name.length() > 13 && name.slice(0, 13) == "maca_closure_"
 
-/// A lifted closure reads what it captured from an environment its caller passes first.
+/** A lifted closure reads what it captured from an environment its caller
+ * passes first.
+ */
 c_sig_params(s: Stmt) -> str {
     ps = c_params(s.params, 0)
 
@@ -1325,8 +1358,10 @@ c_name(s: Stmt) -> str {
     }
 }
 
-/// C fixes the return type of `main`, whatever width the language gives an int.
-/// C wants `main` to answer an int, but a main that renders is a main that answers text.
+/** C fixes the return type of `main`, whatever width the language gives an int.
+ * C wants `main` to answer an int, but a main that renders is a main that
+ * answers text.
+ */
 c_ret(s: Stmt) -> str {
     if s.name == "main" && !c_shimmed(s) && type_c(s.ret) == "long" {
         "int"
@@ -1378,13 +1413,16 @@ bind_c_decl(s: Stmt) -> str {
     }
 }
 
-/// A capture the body writes is held as the address of the caller's own local.
+/** A capture the body writes is held as the address of the caller's own local.
+ */
 is_captured_ref(s: Stmt) -> bool =>
     s.value.kind == ECall
         && (s.value.text == "maca_cap_ref" || s.value.text == "maca_cell")
 
 
-/// A cell is a block of its own, so what a nested definition writes outlives the call that opened it.
+/** A cell is a block of its own, so what a nested definition writes outlives
+ * the call that opened it.
+ */
 c_cell_made(ty: str, init: str) -> str =>
     "({{ {ty}* _mc = ({ty}*)maca_cells(sizeof({ty})); *_mc = {init}; _mc; }})"
 
@@ -1519,7 +1557,9 @@ c_branch(e: Expr) -> str {
     }
 }
 
-/// The last thing in a branch stands where a statement does, so an `if` there is an `if` and never a ternary a `return` cannot sit inside.
+/** The last thing in a branch stands where a statement does, so an `if` there
+ * is an `if` and never a ternary a `return` cannot sit inside.
+ */
 c_tail(e: Expr) -> str =>
     e.kind == EIf ? emit_if_stmt(e) : "{emit_expr(e)};"
 
@@ -1646,7 +1686,9 @@ c_errors(code: str) -> str {
 c_uses(code: str, name: str) -> bool =>
     code.index_of(name) >= 0
 
-/// The emitted C with its string literals dropped, so a runtime helper a program only names in its own text is not read as a call to it.
+/** The emitted C with its string literals dropped, so a runtime helper a
+ * program only names in its own text is not read as a call to it.
+ */
 c_bare(code: str) -> str =>
     c_unquoted(code.split("\""), 0, true, []).join(" ")
 
@@ -1681,7 +1723,9 @@ c_process(code: str) -> str {
     }
 }
 
-/// Windows has no `fork`, so a run is a spawn and a capture is a pipe the shell opens.
+/** Windows has no `fork`, so a run is a spawn and a capture is a pipe the shell
+ * opens.
+ */
 c_process_win() -> str =>
     "static char* maca_quoted(const char* s) {{ char* r = malloc(strlen(s) * 2 + 3); char* w = r; *w++ = 34; for (const char* p = s; *p; p++) {{ if (*p == 34) *w++ = 92; *w++ = *p; }} *w++ = 34; *w = 0; return r; }}\n"
         ++ "static int maca_exec(const char* cmd, MacaList args) {{ const char** argv = malloc((args.len + 2) * sizeof(char*)); argv[0] = cmd; for (int i = 0; i < args.len; i++) argv[i + 1] = (const char*)args.data[i]; argv[args.len + 1] = NULL; intptr_t r = _spawnvp(_P_WAIT, cmd, argv); return r < 0 ? -1 : (int)r; }}\n"
@@ -1781,7 +1825,7 @@ c_json_runtime() -> str =>
     "static char* maca_json_quote(const char* s) {{ size_t n = strlen(s); char* r = malloc(n * 2 + 3); char* w = r; *w++ = '\"'; for (size_t i = 0; i < n; i++) {{ char c = s[i]; if (c == '\"' || c == '\\\\') {{ *w++ = '\\\\'; *w++ = c; }} else if (c == '\\n') {{ *w++ = '\\\\'; *w++ = 'n'; }} else if (c == '\\r') {{ *w++ = '\\\\'; *w++ = 'r'; }} else if (c == '\\t') {{ *w++ = '\\\\'; *w++ = 't'; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
     "static MacaList maca_json_items(const char* v) {{ MacaList l = maca_listv(0); const char* p = mj_ws(v); if (*p != '[') return l; p = mj_ws(p + 1); while (*p && *p != ']') {{ const char* e = mj_end(p); l = maca_list_pushed(l, (long)mj_take(p, e)); p = mj_ws(e); if (*p == ',') p = mj_ws(p + 1); }} return l; }}\n"
 
-/// The JSON text for a value of this type, as one C expression.
+/** The JSON text for a value of this type, as one C expression. */
 c_json_text(ty: str, code: str, d: int) -> str {
     el = c_elem_of(ty)
 
@@ -1813,7 +1857,9 @@ c_json_arr(el: str, code: str, d: int) -> str {
         ++ " maca_cat({acc}, \"]\"); }})"
 }
 
-/// The value of this type read out of the JSON text `code`, as one C expression.
+/** The value of this type read out of the JSON text `code`, as one C
+ * expression.
+ */
 c_json_read(ty: str, code: str, field: str, d: int) -> str {
     el = c_elem_of(ty)
 
@@ -1845,7 +1891,9 @@ c_json_rows(el: str, code: str, field: str, d: int) -> str {
         ++ " {out}; }})"
 }
 
-/// What JSON writes a value of this type as, named the way a diagnostic says it.
+/** What JSON writes a value of this type as, named the way a diagnostic says
+ * it.
+ */
 c_json_kind(items: Stmt[], ty: str) -> str {
     if ty == "int" || ty == "float" {
         "a number"
@@ -1951,7 +1999,9 @@ c_json_list(vs: Expr[], i: int) -> str {
     }
 }
 
-/// Every record and sum a program's `encode` and `decode` reach, fields included.
+/** Every record and sum a program's `encode` and `decode` reach, fields
+ * included.
+ */
 json_wanted(items: Stmt[]) -> str[] =>
     json_closed(items, json_seeds(items, 0, []), items.length())
 
@@ -2083,7 +2133,9 @@ c_json_bodies(items: Stmt[], names: str[], i: int) -> str {
     }
 }
 
-/// The record or nullary sum this name declares, or a nameless one when it declares neither.
+/** The record or nullary sum this name declares, or a nameless one when it
+ * declares neither.
+ */
 json_type_item(items: Stmt[], name: str, i: int) -> Stmt {
     if i >= items.length() {
         s_record("", [])
@@ -2110,7 +2162,7 @@ emit_module(m: Module) -> str {
         ++ c_mqtt(c_bare(protos)) ++ c_ffi(protos)
 }
 
-/// The stylesheet a program asks for by calling `styles`, and only then.
+/** The stylesheet a program asks for by calling `styles`, and only then. */
 c_styles(m: Module, code: str) -> str {
     if code.index_of("MACA_STYLES") < 0 {
         ""
@@ -2182,7 +2234,9 @@ emit_const(s: Stmt) -> str {
     }
 }
 
-/// A Capitalized name is a constant; a lowercase one is module state a body assigns to.
+/** A Capitalized name is a constant; a lowercase one is module state a body
+ * assigns to.
+ */
 c_held(s: Stmt) -> str {
     if c_lower_name(s.name) {
         ""
@@ -2224,7 +2278,9 @@ is_type_item(s: Stmt) -> bool =>
 emit_types(items: Stmt[], i: int) -> str =>
     emit_ranked(items, i, 0)
 
-/// A field holds its record by value, so a type is emitted after every type it names.
+/** A field holds its record by value, so a type is emitted after every type it
+ * names.
+ */
 emit_ranked(items: Stmt[], i: int, r: int) -> str {
     parts: str[] = []
     rank = r
@@ -2383,7 +2439,9 @@ emit_slots(s: Stmt, n: int, i: int) -> str {
     }
 }
 
-/// Every variant shares one slot, so it carries a declared type only where they all agree.
+/** Every variant shares one slot, so it carries a declared type only where they
+ * all agree.
+ */
 slot_type(s: Stmt, at: int, i: int) -> str {
     if i >= s.params.length() {
         "long"
@@ -2430,7 +2488,9 @@ ctor_params(s: Stmt, ps: Expr[], i: int) -> str {
     }
 }
 
-/// A constructor takes its own payload by value, whatever the shared slot holds.
+/** A constructor takes its own payload by value, whatever the shared slot
+ * holds.
+ */
 ctor_slot(s: Stmt, ps: Expr[], i: int) -> str =>
     ps.get(i).ty == s.name ? s.name : slot_type(s, i, 0)
 

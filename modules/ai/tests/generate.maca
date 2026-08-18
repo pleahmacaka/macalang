@@ -72,7 +72,9 @@ test_a_plain_turn_carries_no_call_id_at_all() {
            "a turn answering nothing says nothing about calls: {body}")
 }
 
-/// Reaching a host is opt-in, so this is skipped rather than failed without a key.
+/** Reaching a host is opt-in, so this is skipped rather than failed without a
+ * key.
+ */
 test_a_model_answers_with_json_a_program_can_read() {
     if !keyed() {
         assert(true, "set OPENROUTER_API_KEY to reach a host")

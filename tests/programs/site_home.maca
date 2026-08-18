@@ -25,7 +25,9 @@ built() -> str {
 root() -> str =>
     read_file(join(built(), "index.html"))
 
-/// The benchmark argument is its own document now, so the assertions about it describe that page.
+/** The benchmark argument is its own document now, so the assertions about it
+ * describe that page.
+ */
 bench_page() -> str =>
     read_file(join(join(built(), "en"), "benchmarks.html"))
 

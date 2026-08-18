@@ -10,7 +10,7 @@ import { between } from std/text
 
 Face = "JetBrains Mono Nerd Font"
 
-/// Three columns: what there is to open, what is open, and what it becomes.
+/** Three columns: what there is to open, what is open, and what it becomes. */
 view(ide: Ide) -> Element =>
     div(class="flex flex-row size-full", font=Face,
         tree(ide),
@@ -23,7 +23,9 @@ tree(ide: Ide) -> Element =>
         div(class="text-sm", ide.root),
         div(class="text-xs", "{str(ide.files.length())} in the workspace"))
 
-/// The gutter runs down the left, a mark a line, and a marked line is a stop the runner is told about.
+/** The gutter runs down the left, a mark a line, and a marked line is a stop
+ * the runner is told about.
+ */
 buffer(ide: Ide) -> Element =>
     div(class="flex flex-col grow p-2 gap-1",
         div(class="text-xs", ide.open),
@@ -33,7 +35,9 @@ buffer(ide: Ide) -> Element =>
         div(class="text-xs", "stops: {stops(ide)}"),
         asked_controls(ide))
 
-/// A `@param` in a doc comment is a control, drawn beside the buffer that asked for it.
+/** A `@param` in a doc comment is a control, drawn beside the buffer that asked
+ * for it.
+ */
 asked_controls(ide: Ide) -> Element {
     got = knobs(ide)
 
@@ -46,20 +50,26 @@ asked_controls(ide: Ide) -> Element {
         control(got.get(0)))
 }
 
-/// What the panel shows follows the target the source itself names, so nothing has to be chosen.
+/** What the panel shows follows the target the source itself names, so nothing
+ * has to be chosen.
+ */
 panel(ide: Ide) -> Element =>
     div(class="flex flex-col w-96 p-2 gap-1",
         div(class="text-xs", tabs(ide)),
         div(class="text-xs", "{ide.target} via {panel_for(ide.target)}"),
         div(class="text-sm", shown(ide)))
 
-/// A control a doc comment asked for, drawn the way the tag syntax draws anything else.
+/** A control a doc comment asked for, drawn the way the tag syntax draws
+ * anything else.
+ */
 control(t: Tag) -> Element =>
     div(class="flex flex-row gap-2",
         div(class="text-xs w-24", bound_name(t)),
         knob(bound_call(t)))
 
-/// The control the comment named, or its own text when it named one nobody draws.
+/** The control the comment named, or its own text when it named one nobody
+ * draws.
+ */
 knob(call: str) -> Element {
     if call.starts_with("slider(") {
         return div(class="flex flex-row gap-1 grow",
@@ -75,7 +85,8 @@ knob(call: str) -> Element {
     div(class="text-xs", call == "" ? "no control" : call)
 }
 
-/// `slider(1..10)` names its ends with the range Maca already writes half-open.
+/** `slider(1..10)` names its ends with the range Maca already writes half-open.
+ */
 span_lo(call: str) -> str =>
     between(call, "(", "..")
 

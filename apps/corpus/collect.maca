@@ -14,11 +14,12 @@ Collected = "apps/corpus/collected"
 Failures = "apps/corpus/failures.jsonl"
 Registry = "https://registry.npmjs.org"
 
-/// The licence a package states, from its registry metadata.
-///
-/// The check runs here, before a tarball is fetched, because a corpus is
-/// redistributed: bytes never downloaded cannot leak into a record through an
-/// oversight further down the pipeline.
+/** The licence a package states, from its registry metadata.
+ *
+ * The check runs here, before a tarball is fetched, because a corpus is
+ * redistributed: bytes never downloaded cannot leak into a record through an
+ * oversight further down the pipeline.
+ */
 license_of(metadata: str) -> str =>
     get(metadata, "license").replace("\"", "").trim()
 
@@ -65,7 +66,9 @@ collect_one(name: str) -> bool {
     }
 }
 
-/// Record the package's licence beside its source, so the pipeline never has to guess again.
+/** Record the package's licence beside its source, so the pipeline never has to
+ * guess again.
+ */
 keep(name: str, spdx: str) -> bool {
     dir = join(Collected, name)
     make_dir(dir)

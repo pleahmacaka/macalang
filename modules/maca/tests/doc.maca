@@ -1,6 +1,6 @@
 import maca/doc
 
-Sample = "/// Sum two numbers, which is what a doc line is for.\n/// @param a = slider(1..10)\n/// @param b = slider(1..10)\n/// @returns the total\n"
+Sample = "/** Sum two numbers, which is what a doc block is for.\n * @param a = slider(1..10)\n * @param b = slider(1..10)\n * @returns the total\n */\n"
 
 test_a_tag_opens_its_line_and_a_sentence_never_does() {
     ts = tags(Sample)
@@ -12,7 +12,7 @@ test_a_tag_opens_its_line_and_a_sentence_never_does() {
 }
 
 test_an_at_sign_inside_a_sentence_is_a_sentence() {
-    assert_eq(str(tags("/// write to a@b.com when it fails\n").length()), "0",
+    assert_eq(str(tags("// write to a@b.com when it fails\n").length()), "0",
               "a tag has to open its line")
 }
 
@@ -29,7 +29,7 @@ test_a_param_tag_binds_a_name_to_a_control() {
     assert_eq(bound_name(t), "a", "the name is left of the `=`")
     assert_eq(bound_call(t), "slider(1..10)", "and the control is right of it")
 
-    plain = tag_named(tags("/// @param n\n"), "param")
+    plain = tag_named(tags("/** @param n */\n"), "param")
 
     assert_eq(bound_name(plain), "n", "a tag with no control still names one")
     assert_eq(bound_call(plain), "", "and asks for no control at all")

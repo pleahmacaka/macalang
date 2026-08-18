@@ -1,6 +1,8 @@
 import { escape_html } from std/text
 
-/// One fenced code block as HTML: `src` tokenized under the fence's `lang` tag and escaped.
+/** One fenced code block as HTML: `src` tokenized under the fence's `lang` tag
+ * and escaped.
+ */
 highlight(lang: str, src: str) -> str =>
     dispatch(canon(lang.lower()), src)
 
@@ -38,7 +40,7 @@ dispatch(lang: str, src: str) -> str {
     }
 }
 
-/// One token as markup.
+/** One token as markup. */
 tok(cls: str, text: str) -> str {
     if text == "" {
         ""
@@ -231,8 +233,10 @@ mc_op2(cs: str[], i: int) -> bool =>
 
 mc_block_comment(cs: str[], i: int, operand: bool, depth: int) -> Scan {
     j = block_end(cs, i + 2)
+    doc = starts(cs, i, "/**") && ch(cs, i + 3) != "*"
 
-    scanned(tok("tok-com", text_of(cs, i, j)), j, operand, depth)
+    scanned(tok(doc ? "tok-doc" : "tok-com", text_of(cs, i, j)), j, operand,
+            depth)
 }
 
 mc_number(cs: str[], i: int, depth: int) -> Scan {
@@ -243,8 +247,7 @@ mc_number(cs: str[], i: int, depth: int) -> Scan {
 
 mc_line_comment(cs: str[], i: int, operand: bool, depth: int) -> Scan {
     j = line_end(cs, i)
-    doc = starts(cs, i, "///") && ch(cs, i + 3) != "/"
-    cls = doc ? "tok-doc" : "tok-com"
+    cls = "tok-com"
 
     scanned(tok(cls, text_of(cs, i, j)), j, operand, depth)
 }
@@ -613,12 +616,13 @@ hl_toml(src: str) -> str =>
 hl_json(src: str) -> str =>
     hl_words(src, "", " true false null ")
 
-/// A shell line is a command, its flags and its words, not a C expression.
-///
-/// The generic tokenizer marked the `:` in `https://`, the `+` in `chmod +x`
-/// and the `0.3` in a version string, because it reads punctuation as
-/// operators and digits as numbers. A shell reader wants the command it is
-/// about to run to stand out and nothing else to.
+/** A shell line is a command, its flags and its words, not a C expression.
+ *
+ * The generic tokenizer marked the `:` in `https://`, the `+` in `chmod +x`
+ * and the `0.3` in a version string, because it reads punctuation as
+ * operators and digits as numbers. A shell reader wants the command it is
+ * about to run to stand out and nothing else to.
+ */
 hl_sh(src: str) -> str =>
     sh_run(src.chars(), 0, true, "")
 
@@ -667,7 +671,8 @@ sh_run(cs: str[], i: int, at_command: bool, out: str) -> str {
     sh_run(cs, j, false, out ++ tok("", word))
 }
 
-/// A shell word runs to whitespace or to something that starts a new command.
+/** A shell word runs to whitespace or to something that starts a new command.
+ */
 sh_word_end(cs: str[], i: int) -> int {
     cur = ch(cs, i)
 
@@ -688,7 +693,9 @@ hl_js(src: str) -> str =>
 hl_ps(src: str) -> str =>
     hl_words(src, "#", PsWords)
 
-/// The stylesheet for the token classes above, for `tomo.maca` to put in the page's one `<style>` beside `base_css()` and the generated utilities.
+/** The stylesheet for the token classes above, for `tomo.maca` to put in the
+ * page's one `<style>` beside `base_css()` and the generated utilities.
+ */
 code_css() -> str =>
     light_css()
         ++ "@media (prefers-color-scheme: dark) \{\n" ++ dark_css() ++ "\}\n"

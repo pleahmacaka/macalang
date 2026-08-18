@@ -19,12 +19,14 @@ js_list(ty: str) -> bool =>
 js_scalar_ty(ty: str) -> bool =>
     ty == "int" || ty == "float" || ty == "bool" || ty == "str"
 
-/// A value JavaScript already compares by value, so no deep walk is needed.
+/** A value JavaScript already compares by value, so no deep walk is needed. */
 js_scalar(e: Expr) -> bool =>
     e.kind == EInt || e.kind == EFloat || e.kind == EBool || e.kind == EStr
         || js_scalar_ty(e.ty)
 
-/// A type of the program's own answers to no builtin method, so `x.f(y)` is `f(x, y)`.
+/** A type of the program's own answers to no builtin method, so `x.f(y)` is
+ * `f(x, y)`.
+ */
 js_own_type(ty: str) -> bool =>
     ty != "" && ty != "Element" && !js_scalar_ty(ty) && !js_list(ty)
         && map_type_key(ty) == "" && ty.index_of(") -> ") < 0
@@ -32,7 +34,7 @@ js_own_type(ty: str) -> bool =>
 js_upper(name: str) -> bool =>
     name != "" && name.at(0).lower() != name.at(0)
 
-/// A lowercase word in a pattern names the value rather than testing it.
+/** A lowercase word in a pattern names the value rather than testing it. */
 js_binder(name: str) -> bool =>
     name != "" && name != "true" && name != "false" && !js_upper(name)
         && !name.at(0).is_ascii_digit()
@@ -90,12 +92,13 @@ jemit_unary(e: Expr) -> str {
 jemit_while(e: Expr) -> str =>
     "while ({jemit_expr(e.children.get(0))}) {{ {jemit_stmts(e.stmts, 0)} }}"
 
-/// The binder is a local the body may write, so it is `let` and not `const`.
+/** The binder is a local the body may write, so it is `let` and not `const`. */
 jemit_for(e: Expr) -> str =>
     "for (let {jid(e.text)} of {jemit_expr(e.children.get(0))})"
         ++ " {{ {jemit_stmts(e.stmts, 0)} }}"
 
-/// Arms are pattern and answer in turn, and the first whose test holds answers.
+/** Arms are pattern and answer in turn, and the first whose test holds answers.
+ */
 jemit_match(e: Expr) -> str =>
     "(() => {{ const _s = {jemit_expr(e.children.get(0))};"
         ++ " {jemit_arms(e.children, 1)}"
@@ -134,7 +137,8 @@ jpat_test(p: Expr, sv: str) -> str {
     }
 }
 
-/// A guard reads the arm's own names, so the binds run again inside its test.
+/** A guard reads the arm's own names, so the binds run again inside its test.
+ */
 jguard_test(p: Expr, sv: str) -> str =>
     "{jpat_test(p.children.get(0), sv)} && (() => {{"
         ++ " {jpat_binds(p.children.get(0), sv)}"
@@ -213,7 +217,8 @@ jemit_ternary(e: Expr) -> str =>
     "({jemit_expr(e.children.get(0))} ? {jemit_expr(e.children.get(1))}"
         ++ " : {jemit_else(e.children.get(2))})"
 
-/// A branch with no else has no value, so what it answers with is never read.
+/** A branch with no else has no value, so what it answers with is never read.
+ */
 jemit_else(e: Expr) -> str {
     if e.kind == EIdent && e.text == "?" {
         "undefined"
@@ -245,12 +250,13 @@ jemit_binary(e: Expr) -> str {
 js_not(op: str) -> str =>
     op == "!=" ? "!" : ""
 
-/// One operator joins strings and lists alike, and only one method does both.
+/** One operator joins strings and lists alike, and only one method does both.
+ */
 js_joins(e: Expr) -> bool =>
     e.text == "++" || (e.text == "+" && js_list(e.children.get(0).ty)
                           && js_list(e.children.get(1).ty))
 
-/// Two records are equal when their fields are, which `===` does not ask.
+/** Two records are equal when their fields are, which `===` does not ask. */
 js_deep(e: Expr) -> bool =>
     (e.text == "==" || e.text == "!=") && !js_scalar(e.children.get(0))
         && !js_scalar(e.children.get(1))
@@ -335,7 +341,8 @@ js_map_method(name: str) -> bool =>
         || name == "values" || name == "remove" || name == "contains"
         || name == "length" || name == "count"
 
-/// A map is a `Map`, so a write answers with a copy the way the language does.
+/** A map is a `Map`, so a write answers with a copy the way the language does.
+ */
 jemit_map_method(e: Expr, recv: str) -> str {
     key = jarg(e, 1)
 
@@ -545,7 +552,9 @@ jstmt_of(e: Expr) -> str {
     }
 }
 
-/// An arrow function cannot `break` the loop around it, so a match in statement position is a chain.
+/** An arrow function cannot `break` the loop around it, so a match in statement
+ * position is a chain.
+ */
 jmatch_stmt(e: Expr) -> str =>
     "{{ const _s = {jemit_expr(e.children.get(0))};"
         ++ " {jarms_stmt(e.children, 1)} }}"
@@ -562,7 +571,8 @@ jarms_stmt(cs: Expr[], i: int) -> str {
     }
 }
 
-/// `break` is a statement and no ternary holds one, so a branch stays a branch.
+/** `break` is a statement and no ternary holds one, so a branch stays a branch.
+ */
 jif_stmt(e: Expr) -> str {
     cond = jemit_expr(e.children.get(0))
     then = jbranch(e.children.get(1))
@@ -592,7 +602,7 @@ jemit_fn(s: Stmt) -> str =>
     "{js_waiting(s.body)}function {jid(s.name)}({jemit_params(s.params, 0)})"
         ++ " {{ {jemit_body(s.body, 0)} }}"
 
-/// Only an async function may wait, and every `await` is written inside one.
+/** Only an async function may wait, and every `await` is written inside one. */
 js_waiting(body: Stmt[]) -> str =>
     js_waits_in(body, 0) ? "async " : ""
 
@@ -717,7 +727,8 @@ function _massert(c, m) { if (c) return true; _mfailed++; console.error("asserti
 function _massert_eq(a, b, m) { if (_meq(a, b)) return true; _mfailed++; console.error("assertion failed: " + _mstr(m) + "\n  got:  " + _mstr(a) + "\n  want: " + _mstr(b)); return false; }
 """
 
-/// Every item of the module, in the order a name must exist before it is read.
+/** Every item of the module, in the order a name must exist before it is read.
+ */
 jemit_module(m: Module) -> str {
     heads = jemit_variants(m.items, 0)
     rest = jemit_consts(m.items, 0) ++ jemit_items(m.items, 0)
@@ -726,7 +737,9 @@ jemit_module(m: Module) -> str {
     JsPreamble ++ heads ++ js_json_defs(m.items, rest) ++ rest
 }
 
-/// `decode` reads into the type the binding declares, which is the only thing that says what the text is.
+/** `decode` reads into the type the binding declares, which is the only thing
+ * that says what the text is.
+ */
 js_typed_decode(s: Stmt) -> bool =>
     s.ret != "" && s.value.kind == ECall && s.value.text == "decode"
         && s.value.children.length() == 1
@@ -738,7 +751,9 @@ js_decoded(s: Stmt) -> str =>
 js_json_ty(ty: str) -> str =>
     js_list(ty) ? "[{js_json_ty(ty.slice(0, ty.length() - 2))}]" : js_str(ty)
 
-/// The tables name what a record holds and what a sum accepts, and nothing else can say it.
+/** The tables name what a record holds and what a sum accepts, and nothing else
+ * can say it.
+ */
 js_json_defs(items: Stmt[], body: str) -> str {
     if !body.contains("_jenc(") && !body.contains("_jdec(") {
         ""
@@ -803,7 +818,9 @@ jemit_variants(items: Stmt[], i: int) -> str {
     }
 }
 
-/// A variant carrying nothing is its own name, and one carrying values is tagged.
+/** A variant carrying nothing is its own name, and one carrying values is
+ * tagged.
+ */
 jemit_variant(v: Expr) -> str {
     if v.children.length() == 0 {
         "const {jid(v.text)} = {js_str(v.text)};\n"
@@ -837,7 +854,7 @@ jemit_consts(items: Stmt[], i: int) -> str {
     }
 }
 
-/// The names a JavaScript caller imports: every function and every variant.
+/** The names a JavaScript caller imports: every function and every variant. */
 jemit_exports(items: Stmt[]) -> str {
     names = js_exported(items, 0)
 
@@ -870,14 +887,16 @@ js_export_of(s: Stmt) -> str {
 js_variant_ref(v: Expr) -> str =>
     "{jid(v.text)}, "
 
-/// A view answers with a page, and a page nobody puts on screen is a page nobody sees.
+/** A view answers with a page, and a page nobody puts on screen is a page
+ * nobody sees.
+ */
 js_mount() -> str =>
     "\nconst _mroot = typeof document === \"undefined\" "
         ++ "? null : document.getElementById(\"app\");\n"
         ++ "_mpaint = () => {{ if (_mroot) {{ _mroot.replaceChildren();"
         ++ " _mroot.append(main()); }} }};\n_mpaint();\n"
 
-/// A program answers with a code, and the process answers with the same one.
+/** A program answers with a code, and the process answers with the same one. */
 js_exit() -> str =>
     "\nconst _mexit = main();\nif (typeof process !== \"undefined\" && "
         ++ "typeof _mexit === \"number\" && _mexit > 0) "
@@ -905,7 +924,9 @@ jemit_items(items: Stmt[], i: int) -> str {
     }
 }
 
-/// A function the program declares and does not write is one a JavaScript block supplies.
+/** A function the program declares and does not write is one a JavaScript block
+ * supplies.
+ */
 jemit_host(s: Stmt) -> str {
     ps = js_param_names(s.params, 0)
 

@@ -478,7 +478,7 @@ test_a_field_holding_a_function_reaches_no_target_without_a_pointer() {
         "a record field holding a function")
 }
 
-/// A page that reaches the two forms the driver rewrites before it compiles.
+/** A page that reaches the two forms the driver rewrites before it compiles. */
 host_forms_page() -> str =>
     "import \{ decode \} from std/json\n"
         ++ "import \{ local_start, local_store \} from web/storage\n\n"

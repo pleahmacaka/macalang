@@ -6,7 +6,8 @@ import { Request } from http/request
 import { Response, status, with_header } from http/response
 import { listen } from http/server
 
-/// Answer one request against `a`, dispatching every handler through `handle`.
+/** Answer one request against `a`, dispatching every handler through `handle`.
+ */
 dispatch(a: App, req: Request, handle) -> Response {
     pick = lookup(a, req.method, req.path)
     base = context(req, "", pick.name, pick.pattern, pick.params)
@@ -69,7 +70,7 @@ after_hook(a: App, ctx: Ctx, r: Response, handle) -> Response {
     }
 }
 
-/// The route names `handle` has no arm for.
+/** The route names `handle` has no arm for. */
 missing_handlers(a: App, handle) -> str[] {
     gaps: str[] = []
     asked: str[] = []
@@ -113,7 +114,7 @@ fallback_gap(a: App, asked: str[], gaps: str[], handle) -> str[] {
     }
 }
 
-/// Serve `a` on `port` until the process ends.
+/** Serve `a` on `port` until the process ends. */
 serve(a: App, port: int, handle) -> int {
     gaps = missing_handlers(a, handle)
 

@@ -21,7 +21,10 @@ test_a_row_agrees_with_its_own_arithmetic() {
     }
 }
 
-/// The project's own README says the retry column's three runs straddle the plain spec column, so quoting the retry as the headline would be quoting noise.
+/** The project's own README says the retry column's three runs straddle the
+ * plain spec column, so quoting the retry as the headline would be quoting
+ * noise.
+ */
 test_the_site_leads_with_the_spec_and_not_the_retry() {
     assert_eq(WithSpec, "spec",
               "the headline condition is the plain spec row, named literally")
@@ -78,7 +81,9 @@ test_the_reference_figure_counts_modules_that_are_there() {
     }
 }
 
-/// A lattice paints its container's tint through any track no cell fills, so a cell count that does not divide the columns shows as a grey block.
+/** A lattice paints its container's tint through any track no cell fills, so a
+ * cell count that does not divide the columns shows as a grey block.
+ */
 test_every_lattice_divides_at_every_breakpoint() {
     assert_eq(str(4 % 2), "0", "the spec strip over two columns")
     assert_eq(str(4 % 4), "0", "the spec strip over four columns")

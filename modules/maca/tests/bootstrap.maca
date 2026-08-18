@@ -17,11 +17,15 @@ compiler() -> str {
     named.starts_with("/") ? named : cwd() ++ "/" ++ named
 }
 
-/// A cached binary would answer for a compiler that is not the one under test, which is the one thing a bootstrap gate cannot allow.
+/** A cached binary would answer for a compiler that is not the one under test,
+ * which is the one thing a bootstrap gate cannot allow.
+ */
 fresh(by: str, args: str[]) -> int =>
     exec("env", ["MACA_NO_CACHE=1", by] ++ args)
 
-/// Every round writes the same output name in a directory of its own, because `cc` records the name it was handed in the binary it writes.
+/** Every round writes the same output name in a directory of its own, because
+ * `cc` records the name it was handed in the binary it writes.
+ */
 rebuilt(dir: str, by: str) -> str {
     out = dir ++ "/maca"
     src = cwd() ++ "/" ++ Entry

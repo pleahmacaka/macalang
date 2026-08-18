@@ -13,7 +13,7 @@ import { Request } from http/request
 import { Response } from http/response
 import { serve_file } from http/serve
 
-/// Everything about the book that one round needs and no round changes.
+/** Everything about the book that one round needs and no round changes. */
 Book = {
     root:  str,
     out:   str,
@@ -29,7 +29,7 @@ Interval = 300
 
 main(args: str[]) -> int => serve(args)
 
-/// Serve the book and keep an open page in step with `book/`.
+/** Serve the book and keep an open page in step with `book/`. */
 serve(args: str[]) -> int {
     port = args.length() > 0 ? int(args.get(0)) : 8000
     work = args.length() > 1 ? args.get(1) : ".maca/dev/tomo"
@@ -68,7 +68,7 @@ host(port: int, work: str) -> int {
     listen(port, req => reply(f, site_dir(work), req))
 }
 
-/// The two directories a dev session owns.
+/** The two directories a dev session owns. */
 site_dir(work: str) -> str => work ++ "/site"
 
 hmr_dir(work: str) -> str => work ++ "/hmr"
@@ -239,10 +239,12 @@ write_one(b: Book, regions: Store, lang: str, fallback: str, titles: str[],
     }
 }
 
-/// Dev mode on: regions marked, and the patcher plus its poll loop in the head.
+/** Dev mode on: regions marked, and the patcher plus its poll loop in the head.
+ */
 developing() -> Dev => Dev { on = true, extra = dev_head() }
 
-/// One page's `Parts`, read back out of the store the last render left them in.
+/** One page's `Parts`, read back out of the store the last render left them in.
+ */
 parts_from(regions: Store, lang: str, ch: str) -> Parts {
     key = page_key(lang, ch)
 

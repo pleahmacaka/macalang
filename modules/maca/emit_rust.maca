@@ -17,7 +17,9 @@ rid(name: str) -> str {
     }
 }
 
-/// A future is the one value Rust will not copy, because a join handle is used once.
+/** A future is the one value Rust will not copy, because a join handle is used
+ * once.
+ */
 rcopy(ty: str) -> bool =>
     ty == "" || ty == "int" || ty == "float" || ty == "bool" || r_is_fn(ty)
         || ty == "Future"
@@ -345,7 +347,9 @@ remit_method(e: Expr) -> str {
     }
 }
 
-/// A capitalised receiver with no type of its own is a type an `import rust` brought in, so its method is an associated function.
+/** A capitalised receiver with no type of its own is a type an `import rust`
+ * brought in, so its method is an associated function.
+ */
 rforeign_recv(r: Expr) -> bool =>
     r.kind == EIdent && r.ty == "" && upper_word(r.text)
 
@@ -524,7 +528,9 @@ remit_arms(cs: Expr[], i: int, scrut: str) -> str {
     }
 }
 
-/// A binder the arm writes is `mut`, because Maca reassigns where Rust would shadow.
+/** A binder the arm writes is `mut`, because Maca reassigns where Rust would
+ * shadow.
+ */
 remit_arm_pat(p: Expr, body: Expr) -> str {
     if p.kind == EGuard {
         "{remit_arm_pat(p.children.get(0), body)}"
@@ -719,7 +725,9 @@ rtype(ty: str) -> str {
     }
 }
 
-/// Maca applies a generic by juxtaposition, `Context Shell`, and Rust writes the same thing in brackets.
+/** Maca applies a generic by juxtaposition, `Context Shell`, and Rust writes
+ * the same thing in brackets.
+ */
 rapplied(ty: str) -> str {
     cut = ty.index_of(" ")
 
@@ -925,7 +933,9 @@ remit_item(s: Stmt, own: str[]) -> str {
     }
 }
 
-/// A record of lambdas under a type name is that trait, implemented for the record.
+/** A record of lambdas under a type name is that trait, implemented for the
+ * record.
+ */
 remit_impl(s: Stmt, own: str[]) -> str =>
     "impl {rtype(s.ret)} for {s.name} {{\n"
         ++ remit_methods(s.value.children, own, 0, "") ++ "}}"
@@ -971,7 +981,9 @@ rmethod_ret(lam: Expr) -> str {
     said == "" ? "" : " -> {rtype(said)}"
 }
 
-/// A method that assigns or loops answers nothing; otherwise it answers what it declared, or what its body came to.
+/** A method that assigns or loops answers nothing; otherwise it answers what it
+ * declared, or what its body came to.
+ */
 rmethod_answer(lam: Expr) -> str {
     body = lambda_body(lam)
 
@@ -1045,7 +1057,9 @@ remit_variant(v: Expr) -> str {
 payload_type(p: Expr) -> str =>
     rtype(p.ty)
 
-/// A five-child element carries what it would be as text beside what it is as a box, and what the function declared picks between them.
+/** A five-child element carries what it would be as text beside what it is as a
+ * box, and what the function declared picks between them.
+ */
 gpui_ready(body: Stmt[], i: int, want: bool) -> Stmt[] {
     if want || i >= body.length() {
         body
@@ -1074,13 +1088,16 @@ gpui_texts(cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
     }
 }
 
-/// Maca's tag syntax is gpui's, because gpui names its style methods the way a class names Tailwind.
+/** Maca's tag syntax is gpui's, because gpui names its style methods the way a
+ * class names Tailwind.
+ */
 gpui_element(e: Expr) -> str =>
     gpui_box(e.children.get(0).text)
         ++ gpui_attrs(e.children.get(3).children, 0)
         ++ gpui_kids(e.children.get(4).children, 0)
 
-/// gpui builds one box, and keeps the names of the few tags it has of its own.
+/** gpui builds one box, and keeps the names of the few tags it has of its own.
+ */
 gpui_box(tag: str) -> str {
     if tag == "img" || tag == "svg" || tag == "canvas" {
         "{tag}()"
@@ -1109,7 +1126,9 @@ gpui_attr(a: Expr) -> str {
     }
 }
 
-/// Only a written class list becomes methods, because a computed one has no names to read yet.
+/** Only a written class list becomes methods, because a computed one has no
+ * names to read yet.
+ */
 gpui_words(e: Expr) -> str[] =>
     e.kind == EStr ? e.text.split(" ") : []
 

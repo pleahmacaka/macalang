@@ -1,17 +1,17 @@
 import { find_long, find_short, found, long_names } from cli/spec
 
 Parsed = {
-    /// Every option given, by long name.
+    /** Every option given, by long name. */
     opts: Map str str,
-    /// The positionals, in order.
+    /** The positionals, in order. */
     args: str[],
-    /// Empty when the line was understood.
+    /** Empty when the line was understood. */
     error: str,
-    /// Was `--help` or `-h` asked for?
+    /** Was `--help` or `-h` asked for? */
     wants_help: bool,
 }
 
-/// Read `argv` against `c`.
+/** Read `argv` against `c`. */
 parse(c: Cmd, argv: str[]) -> Parsed {
     empty: Map str str = map()
     out = Parsed { opts = empty, args = [], error = "", wants_help = false }
@@ -203,20 +203,20 @@ name_args(c: Cmd, p: Parsed, i: int) -> Parsed {
     }
 }
 
-/// The value given for `name`, or `fallback`.
+/** The value given for `name`, or `fallback`. */
 value(p: Parsed, name: str, fallback: str) -> str => p.opts.get(name, fallback)
 
-/// Whether a flag was given.
+/** Whether a flag was given. */
 on(p: Parsed, name: str) -> bool => p.opts.get(name, "") == "true"
 
-/// A numeric option, or `fallback` when it was not given.
+/** A numeric option, or `fallback` when it was not given. */
 count(p: Parsed, name: str, fallback: int) -> int {
     v = p.opts.get(name, "")
     v == "" ? fallback : int(v)
 }
 
-/// The positional at `i`, or "" past the end.
+/** The positional at `i`, or "" past the end. */
 at(p: Parsed, i: int) -> str => p.args.get(i)
 
-/// Everything from `i` on: what a trailing `rest` argument collects.
+/** Everything from `i` on: what a trailing `rest` argument collects. */
 from(p: Parsed, i: int) -> str[] => p.args.slice(i, p.args.length())

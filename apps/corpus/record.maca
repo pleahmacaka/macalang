@@ -6,7 +6,9 @@ import std/text
 Open = "\{"
 Close = "\}"
 
-/// One accepted pair: a package's TypeScript, the Maca it became, and how its own tests answered.
+/** One accepted pair: a package's TypeScript, the Maca it became, and how its
+ * own tests answered.
+ */
 Record = {
     pkg: str,
     license: str,
@@ -15,11 +17,12 @@ Record = {
     test_result: str,
 }
 
-/// One rejected attempt, with the stage that rejected it.
-///
-/// Failures are the signal for improving the translator, so they are kept with
-/// a reason rather than dropped. A pipeline that only records its successes
-/// cannot tell you what to fix next.
+/** One rejected attempt, with the stage that rejected it.
+ *
+ * Failures are the signal for improving the translator, so they are kept with
+ * a reason rather than dropped. A pipeline that only records its successes
+ * cannot tell you what to fix next.
+ */
 Failure = {
     pkg: str,
     license: str,
@@ -27,14 +30,14 @@ Failure = {
     why: str,
 }
 
-/// A record as one JSONL line.
+/** A record as one JSONL line. */
 record_line(r: Record) -> str =>
     Open ++ field("pkg", r.pkg) ++ "," ++ field("license", r.license) ++ ","
         ++ field("ts_source", r.ts_source) ++ ","
         ++ field("maca_source", r.maca_source) ++ ","
         ++ field("test_result", r.test_result) ++ Close
 
-/// A failure as one JSONL line.
+/** A failure as one JSONL line. */
 failure_line(f: Failure) -> str =>
     Open ++ field("pkg", f.pkg) ++ "," ++ field("license", f.license) ++ ","
         ++ field("stage", f.stage) ++ "," ++ field("why", f.why) ++ Close
@@ -42,5 +45,7 @@ failure_line(f: Failure) -> str =>
 field(key: str, value: str) -> str =>
     quote(key) ++ ":" ++ quote(value)
 
-/// Every stage a package can fall out at, named the same way in the log and in the code.
+/** Every stage a package can fall out at, named the same way in the log and in
+ * the code.
+ */
 Stages = "licence", "fetch", "translate", "compile", "test"

@@ -14,7 +14,7 @@ Mcu = {
     ram_k:   int
 }
 
-/// A core `--mcu` names, or one with no name when nothing answers to it.
+/** A core `--mcu` names, or one with no name when nothing answers to it. */
 emb_mcu(name: str) -> Mcu {
     if name == "cortex-m0" || name == "cortex-m0plus" {
         Mcu { name = "cortex-m0", triple = "thumbv6m-none-eabi",
@@ -38,7 +38,9 @@ emb_mcu(name: str) -> Mcu {
     }
 }
 
-/// The memory map the image is placed by: the vector table at the flash origin, `.data` and `.bss` in RAM.
+/** The memory map the image is placed by: the vector table at the flash origin,
+ * `.data` and `.bss` in RAM.
+ */
 emb_linker_script(m: Mcu) -> str =>
     "ENTRY(Reset_Handler)\nMEMORY {{\n" ++
         "  FLASH (rx) : ORIGIN = {m.flash}, LENGTH = {str(m.flash_k)}K\n" ++
@@ -52,12 +54,16 @@ emb_linker_script(m: Mcu) -> str =>
         "  .bss  : {{ _sbss = .; *(.bss* COMMON) . = ALIGN(4); _ebss = .; }}" ++
         " > RAM\n}}\n"
 
-/// The whole firmware translation unit: intrinsics, the constants, the code, the startup.
+/** The whole firmware translation unit: intrinsics, the constants, the code,
+ * the startup.
+ */
 eemit_module(m: Module) -> str =>
     EmbedPreamble ++ "\n" ++ emb_consts(m.items, 0, "")
         ++ emb_fns(m.items, 0, "") ++ EmbedStartup
 
-/// Every construct this target cannot honour, named the way the author wrote it.
+/** Every construct this target cannot honour, named the way the author wrote
+ * it.
+ */
 eemit_errors(m: Module) -> str[] =>
     emb_item_errors(m.items, 0, [])
 
@@ -71,7 +77,9 @@ emb_consts(items: Stmt[], i: int, acc: str) -> str {
     }
 }
 
-/// A register address is a word, and a word the program never writes is a constant.
+/** A register address is a word, and a word the program never writes is a
+ * constant.
+ */
 emb_const(s: Stmt) -> str =>
     "static const uint32_t {s.name} = {emb_expr(s.value)};\n"
 
@@ -147,7 +155,7 @@ emb_while(e: Expr, ind: int) -> str {
         ++ emb_block(e.stmts, false, ind + 1) ++ "{pad}}}\n"
 }
 
-/// `for x in forever()` is the loop a microcontroller spends its life in.
+/** `for x in forever()` is the loop a microcontroller spends its life in. */
 emb_for(e: Expr, ind: int) -> str {
     pad = emb_pad(ind, "")
     over = e.children.get(0)
@@ -204,7 +212,8 @@ emb_pad(n: int, acc: str) -> str {
     }
 }
 
-/// A statement that only names a value does nothing, so it is not written down.
+/** A statement that only names a value does nothing, so it is not written down.
+ */
 emb_pure(e: Expr) -> bool =>
     e.kind == EInt || e.kind == EBool || e.kind == EIdent
 
@@ -271,7 +280,9 @@ emb_infix(op: str) -> bool =>
         || op == "<=" || op == ">=" || op == "&&" || op == "||"
         || op == "<<" || op == ">>"
 
-/// The register intrinsics, which are what this target has instead of a library.
+/** The register intrinsics, which are what this target has instead of a
+ * library.
+ */
 emb_call(e: Expr) -> str {
     a = emb_arg(e, 0)
     b = emb_arg(e, 1)
@@ -435,7 +446,7 @@ emb_refusal(e: Expr) -> str {
     }
 }
 
-/// Name a construct the way the author wrote it, for a refusal message.
+/** Name a construct the way the author wrote it, for a refusal message. */
 emb_named(e: Expr) -> str {
     if emb_lowered(e) {
         ""

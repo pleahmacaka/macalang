@@ -1,6 +1,6 @@
 import { numbers, ascending, checksum, copy_of } from bench/cases/data
 
-/// The index of the first `target` in `xs`, or -1.
+/** The index of the first `target` in `xs`, or -1. */
 linear_search(xs: int[], target: int) -> int {
     found = -1
     i = 0
@@ -14,11 +14,11 @@ linear_search(xs: int[], target: int) -> int {
     found
 }
 
-/// Scan a sorted list of `n` for its last element.
+/** Scan a sorted list of `n` for its last element. */
 linear_search_case(n: int) -> int =>
     linear_search(ascending(n), n - 1)
 
-/// The index of `target` in a sorted `xs`, or -1.
+/** The index of `target` in a sorted `xs`, or -1. */
 binary_search(xs: int[], target: int) -> int {
     low = 0
     high = xs.length() - 1
@@ -39,7 +39,7 @@ binary_search(xs: int[], target: int) -> int {
     found
 }
 
-/// Look up every one of `n` values in a sorted list of `n`.
+/** Look up every one of `n` values in a sorted list of `n`. */
 binary_search_case(n: int) -> int {
     xs = ascending(n)
     hits = 0
@@ -53,7 +53,7 @@ binary_search_case(n: int) -> int {
     hits
 }
 
-/// Bubble sort: sweep, swapping neighbours, until a sweep swaps nothing.
+/** Bubble sort: sweep, swapping neighbours, until a sweep swaps nothing. */
 bubble_sort(xs: int[]) -> int[] {
     out = copy_of(xs)
     end = out.length() - 1
@@ -81,7 +81,7 @@ bubble_sort(xs: int[]) -> int[] {
 bubble_sort_case(n: int) -> int =>
     checksum(bubble_sort(numbers(n)))
 
-/// Insertion sort: take each element and slide it back to where it belongs.
+/** Insertion sort: take each element and slide it back to where it belongs. */
 insertion_sort(xs: int[]) -> int[] {
     out = copy_of(xs)
     i = 1
@@ -102,7 +102,7 @@ insertion_sort(xs: int[]) -> int[] {
 insertion_sort_case(n: int) -> int =>
     checksum(insertion_sort(numbers(n)))
 
-/// Selection sort: find the smallest of what is left, put it next.
+/** Selection sort: find the smallest of what is left, put it next. */
 selection_sort(xs: int[]) -> int[] {
     out = copy_of(xs)
     n = out.length()
@@ -128,7 +128,7 @@ selection_sort(xs: int[]) -> int[] {
 selection_sort_case(n: int) -> int =>
     checksum(selection_sort(numbers(n)))
 
-/// `xs` back to front.
+/** `xs` back to front. */
 reversed(xs: int[]) -> int[] {
     out = copy_of(xs)
     low = 0
@@ -147,7 +147,8 @@ reversed(xs: int[]) -> int[] {
 reversed_case(n: int) -> int =>
     checksum(reversed(numbers(n)))
 
-/// The total, the smallest and the largest in one pass, packed into one number.
+/** The total, the smallest and the largest in one pass, packed into one number.
+ */
 sum_min_max(xs: int[]) -> int {
     if xs.length() == 0 {
         0
@@ -171,7 +172,7 @@ sum_min_max(xs: int[]) -> int {
 sum_min_max_case(n: int) -> int =>
     sum_min_max(numbers(n))
 
-/// Fibonacci by the definition: `fib(k) = fib(k-1) + fib(k-2)`.
+/** Fibonacci by the definition: `fib(k) = fib(k-1) + fib(k-2)`. */
 fib_recursive(k: int) -> int {
     if k < 2 {
         k
@@ -180,11 +181,11 @@ fib_recursive(k: int) -> int {
     }
 }
 
-/// `n` is the Fibonacci index, not a list length.
+/** `n` is the Fibonacci index, not a list length. */
 fib_recursive_case(n: int) -> int =>
     fib_recursive(n)
 
-/// The same answer, carrying two values forward instead of re-deriving them.
+/** The same answer, carrying two values forward instead of re-deriving them. */
 fib_iterative(k: int) -> int {
     previous = 0
     current = 1
@@ -202,7 +203,7 @@ fib_iterative(k: int) -> int {
 fib_iterative_case(n: int) -> int =>
     fib_iterative(n % 91)
 
-/// `k!`, exact up to `k = 20`.
+/** `k!`, exact up to `k = 20`. */
 factorial(k: int) -> int {
     out = 1
     i = 2
@@ -214,7 +215,7 @@ factorial(k: int) -> int {
     out
 }
 
-/// Factorials of 0 through 20, `n` times over, summed.
+/** Factorials of 0 through 20, `n` times over, summed. */
 factorial_case(n: int) -> int {
     acc = 0
     i = 0
@@ -225,7 +226,7 @@ factorial_case(n: int) -> int {
     acc
 }
 
-/// The greatest common divisor, by Euclid's remainder loop.
+/** The greatest common divisor, by Euclid's remainder loop. */
 gcd(a: int, b: int) -> int {
     x = abs(a)
     y = abs(b)
@@ -238,7 +239,7 @@ gcd(a: int, b: int) -> int {
     x
 }
 
-/// `gcd(i, n)` for every `i` up to `n`, summed.
+/** `gcd(i, n)` for every `i` up to `n`, summed. */
 gcd_case(n: int) -> int {
     acc = 0
     i = 1
@@ -249,7 +250,7 @@ gcd_case(n: int) -> int {
     acc
 }
 
-/// Is `x` prime, by trial division up to its square root?
+/** Is `x` prime, by trial division up to its square root? */
 is_prime(x: int) -> bool {
     if x < 2 {
         false
@@ -269,7 +270,7 @@ is_prime(x: int) -> bool {
     }
 }
 
-/// How many primes there are up to `limit`, by testing each one.
+/** How many primes there are up to `limit`, by testing each one. */
 prime_count(limit: int) -> int {
     found = 0
     i = 2

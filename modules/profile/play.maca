@@ -1,6 +1,6 @@
 import profile/trace
 
-/// One end of one span.
+/** One end of one span. */
 Event = {
     name: str,
     at: int,
@@ -9,7 +9,7 @@ Event = {
     enter: bool,
 }
 
-/// Every enter and leave in the trace, in the order they happened.
+/** Every enter and leave in the trace, in the order they happened. */
 events(t: Trace) -> Event[] {
     walked = walk_kids(t, roots(t), 0, [])
 
@@ -75,7 +75,7 @@ first_later(acc: Event[], at: int, i: int) -> int {
     }
 }
 
-/// How many milliseconds separate event `i` from the one before it.
+/** How many milliseconds separate event `i` from the one before it. */
 gap_before(evs: Event[], i: int) -> int {
     if i <= 0 || i >= evs.length() {
         0
@@ -84,7 +84,7 @@ gap_before(evs: Event[], i: int) -> int {
     }
 }
 
-/// Walk `evs` in time order, calling `on_event` with the index of each.
+/** Walk `evs` in time order, calling `on_event` with the index of each. */
 replay(evs: Event[], pace: int, on_event) -> int {
     step(evs, pace, 0, on_event)
 
@@ -105,7 +105,9 @@ step(evs: Event[], pace: int, i: int, on_event) -> int {
     }
 }
 
-/// One event as a line: when it happened, how deep it was, and which way it went.
+/** One event as a line: when it happened, how deep it was, and which way it
+ * went.
+ */
 narrate_line(e: Event) -> str {
     arrow = e.enter ? "→" : "←"
     stamp = "{e.at:>6}ms  "
@@ -113,7 +115,7 @@ narrate_line(e: Event) -> str {
     stamp ++ "  ".repeat(e.depth) ++ arrow ++ " " ++ e.name
 }
 
-/// The whole trace as lines, one per event, in the order they happened.
+/** The whole trace as lines, one per event, in the order they happened. */
 narrate(t: Trace) -> str[] => narrate_all(events(t), 0, [])
 
 narrate_all(evs: Event[], i: int, acc: str[]) -> str[] {

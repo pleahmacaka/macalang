@@ -9,17 +9,18 @@ import { bold, dim, ok, bad, grey } from cli/style
 
 Problems = "apps/evals/problems"
 
-/// Where a run writes its table when it is not told otherwise.
-///
-/// A test passes its own path. The committed baseline is written by a
-/// deliberate run and by nothing else, because a suite that overwrites it turns
-/// a measured number into whatever ran last.
+/** Where a run writes its table when it is not told otherwise.
+ *
+ * A test passes its own path. The committed baseline is written by a
+ * deliberate run and by nothing else, because a suite that overwrites it turns
+ * a measured number into whatever ran last.
+ */
 Baseline = "apps/evals/BASELINE.md"
 
-/// What a run is told, which is the whole point of measuring.
+/** What a run is told, which is the whole point of measuring. */
 Condition = Bare | Spec | SpecAndCheck
 
-/// One problem's outcome under one condition.
+/** One problem's outcome under one condition. */
 Outcome = { problem: str, condition: str, passed: bool, why: str }
 
 conditions() -> Condition[] => Bare, Spec, SpecAndCheck
@@ -31,14 +32,15 @@ label(c: Condition) -> str =>
         SpecAndCheck => "spec + one check retry"
     }
 
-/// The command that reads a prompt file and writes Maca to stdout.
-///
-/// A model is a subprocess so the harness does not care which one, and so a
-/// run without one is a clear failure rather than a fabricated number.
+/** The command that reads a prompt file and writes Maca to stdout.
+ *
+ * A model is a subprocess so the harness does not care which one, and so a
+ * run without one is a clear failure rather than a fabricated number.
+ */
 model() -> str =>
     env_or("MACA_EVAL_MODEL", "")
 
-/// The system prompt: what the model is told before the problem.
+/** The system prompt: what the model is told before the problem. */
 preamble(c: Condition) -> str =>
     match c {
         Bare => "Write Maca. Reply with source only, no fences and no prose."
@@ -59,20 +61,21 @@ spec_text() -> str {
 maca() -> str =>
     env_or("MACA", "target/release/maca")
 
-/// Every ported problem, in a stable order so two runs compare.
+/** Every ported problem, in a stable order so two runs compare. */
 problems() -> str[] =>
     find(Problems, ".maca").sort()
 
-/// The stub a model is asked to complete: the file with its body removed.
+/** The stub a model is asked to complete: the file with its body removed. */
 ask(problem: str) -> str =>
     read_file(problem)
 
-/// Replace the stub body with what the model wrote, keeping the porter's test.
-///
-/// The answer is cut at its own `test_` first. A model handed a file that ends
-/// in a test tends to echo the test back, and appending ours on top of that is
-/// a redefinition the C compiler rejects, which scored a correct solution as a
-/// compile failure.
+/** Replace the stub body with what the model wrote, keeping the porter's test.
+ *
+ * The answer is cut at its own `test_` first. A model handed a file that ends
+ * in a test tends to echo the test back, and appending ours on top of that is
+ * a redefinition the C compiler rejects, which scored a correct solution as a
+ * compile failure.
+ */
 completed(problem: str, answer: str) -> str {
     src = read_file(problem)
     at = src.index_of("test_")
@@ -82,7 +85,7 @@ completed(problem: str, answer: str) -> str {
     at < 0 ? body : body ++ "\n\n" ++ src.slice(at, src.length())
 }
 
-/// Run one problem under one condition, and say whether its tests passed.
+/** Run one problem under one condition, and say whether its tests passed. */
 attempt(problem: str, c: Condition) -> Outcome {
     name = basename(problem).replace(".maca", "")
 
@@ -122,19 +125,23 @@ attempt(problem: str, c: Condition) -> Outcome {
 
 Graded = { passed: bool, why: str }
 
-/// One run's scratch directory, stamped so a second run cannot answer for the first.
-///
-/// The harness and its own test both write a problem's answer under the same
-/// name. One shared directory let a `cargo test` overwrite a real run's file
-/// between the check and the run that grades it, which turns a measured number
-/// into whichever process wrote last.
+/** One run's scratch directory, stamped so a second run cannot answer for the
+ * first.
+ *
+ * The harness and its own test both write a problem's answer under the same
+ * name. One shared directory let a `cargo test` overwrite a real run's file
+ * between the check and the run that grades it, which turns a measured number
+ * into whichever process wrote last.
+ */
 Scratch = join(env_or("TMPDIR", "/tmp"), "maca-evals-{now_ms()}")
 
-/// Write the answer beside the test and run it, which is the only grader that counts.
-///
-/// Pass and fail come from the exit status rather than from the words the
-/// runner printed. Matching on prose is how this scored a passing solution
-/// zero: a one-test file says "1 test passed", not "tests passed".
+/** Write the answer beside the test and run it, which is the only grader that
+ * counts.
+ *
+ * Pass and fail come from the exit status rather than from the words the
+ * runner printed. Matching on prose is how this scored a passing solution
+ * zero: a one-test file says "1 test passed", not "tests passed".
+ */
 grade(problem: str, answer: str) -> Graded {
     make_dir(Scratch)
     file = join(Scratch, basename(problem))
@@ -153,7 +160,9 @@ grade(problem: str, answer: str) -> Graded {
     }
 }
 
-/// Hand the prompt to the model as a file, because a prompt is larger than an argument list should carry.
+/** Hand the prompt to the model as a file, because a prompt is larger than an
+ * argument list should carry.
+ */
 ask_model(system: str, problem: str) -> str {
     make_dir(Scratch)
     prompt = join(Scratch, "prompt.txt")

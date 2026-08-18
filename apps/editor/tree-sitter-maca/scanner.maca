@@ -16,29 +16,32 @@ Feed = 10
 
 Newline = 0
 
-/// The character tree-sitter is about to read, or -1 at the end of the input.
+/** The character tree-sitter is about to read, or -1 at the end of the input.
+ */
 ts_look() -> int
 
-/// Take the character and drop it, which is what skips whitespace.
+/** Take the character and drop it, which is what skips whitespace. */
 ts_take()
 
-/// Whether the grammar accepts this token where the scan is standing.
+/** Whether the grammar accepts this token where the scan is standing. */
 ts_ok(sym: int) -> bool
 
-/// Name the token the scan produced.
+/** Name the token the scan produced. */
 ts_emit(sym: int)
 
 blank(c: int) -> bool =>
     c == Space || c == Tab || c == Return || c == Feed
 
-/// A line opening with an operator, a method dot, a closing bracket or a comma
-/// carries on the line before it. `/` is not one: it opens a comment.
+/** A line opening with an operator, a method dot, a closing bracket or a comma
+ * carries on the line before it. `/` is not one: it opens a comment.
+ */
 continues_line(c: int) -> bool =>
     c == 63 || c == 58 || c == 43 || c == 45 || c == 42 || c == 37
         || c == 60 || c == 62 || c == 61 || c == 38 || c == 124 || c == 46
         || c == 41 || c == 93 || c == 125 || c == 44
 
-/// One scan: skip the whitespace, then answer whether a separator stands here.
+/** One scan: skip the whitespace, then answer whether a separator stands here.
+ */
 scan_newline() -> int {
     crossed = false
 

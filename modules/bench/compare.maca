@@ -3,10 +3,10 @@ import { grouped } from bench/report
 import { table_aligned } from cli/show
 import { ok, bad, note, yellow } from cli/style
 
-/// What happened to one case since the baseline.
+/** What happened to one case since the baseline. */
 Verdict = Faster | Slower | Same | Fresh | Missing | Unclear
 
-/// How much a case moved.
+/** How much a case moved. */
 Delta = {
     name: str,
     size: int,
@@ -16,10 +16,12 @@ Delta = {
     verdict: Verdict,
 }
 
-/// The fraction a case has to move before it counts as having moved.
+/** The fraction a case has to move before it counts as having moved. */
 Tolerance = 0.05
 
-/// Pair every case in `now` with its baseline, then list the baseline cases that `now` no longer has.
+/** Pair every case in `now` with its baseline, then list the baseline cases
+ * that `now` no longer has.
+ */
 compare(before: Result[], now: Result[], tolerance: float) -> Delta[] =>
     paired(before, now, 0, tolerance, []) ++ dropped(before, now, 0, [])
 
@@ -44,7 +46,7 @@ dropped(before: Result[], now: Result[], i: int, acc: Delta[]) -> Delta[] {
     }
 }
 
-/// One baseline result against one new one.
+/** One baseline result against one new one. */
 delta(before: Result, now: Result, tolerance: float) -> Delta {
     was = ns_per_op(before)
     is_now = ns_per_op(now)
@@ -108,7 +110,7 @@ scan_names(rs: Result[], name: str, i: int) -> int {
     }
 }
 
-/// The word for a verdict.
+/** The word for a verdict. */
 label(v: Verdict) -> str {
     match v {
         Faster => "faster"
@@ -120,7 +122,9 @@ label(v: Verdict) -> str {
     }
 }
 
-/// The verdict with the mark that goes in front of it: `✓ faster`, `✗ slower`.
+/** The verdict with the mark that goes in front of it: `✓ faster`, `✗
+ * slower`.
+ */
 marked(v: Verdict) -> str {
     match v {
         Faster => ok(label(v))
@@ -132,7 +136,7 @@ marked(v: Verdict) -> str {
     }
 }
 
-/// How far a case moved, as a signed percentage, so `-20` is a fifth faster.
+/** How far a case moved, as a signed percentage, so `-20` is a fifth faster. */
 percent_change(d: Delta) -> float {
     if d.ratio <= 0.0 || d.base_ns <= 0.0 {
         0.0
@@ -141,11 +145,11 @@ percent_change(d: Delta) -> float {
     }
 }
 
-/// Did anything get slower?
+/** Did anything get slower? */
 regressed(ds: Delta[]) -> bool =>
     count_of(ds, Slower) > 0
 
-/// How many cases got the given verdict.
+/** How many cases got the given verdict. */
 count_of(ds: Delta[], want: Verdict) -> int =>
     tally(ds, want, 0, 0)
 
@@ -159,7 +163,9 @@ tally(ds: Delta[], want: Verdict, i: int, acc: int) -> int {
     }
 }
 
-/// One line saying how the run went as a whole, for the top of a report or the end of a CI log.
+/** One line saying how the run went as a whole, for the top of a report or the
+ * end of a CI log.
+ */
 summary(ds: Delta[]) -> str {
     head = "{ds.length()} cases: {count_of(ds, Faster)} faster,"
         ++ " {count_of(ds, Slower)} slower, {count_of(ds, Same)} unchanged,"
@@ -174,7 +180,7 @@ summary(ds: Delta[]) -> str {
     }
 }
 
-/// The column headings, in the order `comparison_row` fills them.
+/** The column headings, in the order `comparison_row` fills them. */
 comparison_columns() -> str[] =>
     ["case", "size", "was ns/op", "now ns/op", "ratio", "change", ""]
 
@@ -208,7 +214,7 @@ change_cell(d: Delta) -> str {
     }
 }
 
-/// Every delta as one aligned table.
+/** Every delta as one aligned table. */
 comparison_table(ds: Delta[]) -> str =>
     table_aligned(comparison_columns(), comparison_rows(ds, 0, []))
 

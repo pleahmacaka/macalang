@@ -1,4 +1,4 @@
-/// The reason phrase for a status code.
+/** The reason phrase for a status code. */
 reason(code: int) -> str {
     if code == 200 {
         "OK"
@@ -57,11 +57,13 @@ class_reason(code: int) -> str {
     }
 }
 
-/// Did this code succeed?
+/** Did this code succeed? */
 is_ok(code: int) -> bool =>
     code >= 200 && code < 300
 
-/// The MIME type for a filename's extension, `application/octet-stream` when nothing matches.
+/** The MIME type for a filename's extension, `application/octet-stream` when
+ * nothing matches.
+ */
 content_type(path: str) -> str {
     ext = extension_of(path)
 

@@ -3,10 +3,10 @@ import { object_of } from std/json
 import { Response, json } from http/response
 import { runtime_script } from signal/dom
 
-/// Where a builder publishes patches and a poll reads them.
+/** Where a builder publishes patches and a poll reads them. */
 Feed = { dir: str }
 
-/// A feed under `dir`, which is created if it is not there yet.
+/** A feed under `dir`, which is created if it is not there yet. */
 feed(dir: str) -> Feed {
     make_dir(dir)
     Feed { dir = dir }
@@ -16,10 +16,10 @@ Keep = 16
 
 Step = 100
 
-/// The path the browser polls.
+/** The path the browser polls. */
 PollPath = "/_maca/hmr"
 
-/// Publish `ops` as generation `gen`, and say whether it went.
+/** Publish `ops` as generation `gen`, and say whether it went. */
 publish(f: Feed, gen: int, ops: str) -> bool {
     if write_file(patch_file(f, gen), ops) {
         remove_file(patch_file(f, gen - Keep))
@@ -29,7 +29,7 @@ publish(f: Feed, gen: int, ops: str) -> bool {
     }
 }
 
-/// The newest generation published, or 0 when nothing has been.
+/** The newest generation published, or 0 when nothing has been. */
 generation(f: Feed) -> int {
     at = f.dir ++ "/generation"
 
@@ -40,7 +40,7 @@ generation(f: Feed) -> int {
     }
 }
 
-/// The ops published as `gen`, or "[]" when that generation is gone.
+/** The ops published as `gen`, or "[]" when that generation is gone. */
 patch_of(f: Feed, gen: int) -> str {
     at = patch_file(f, gen)
 
@@ -53,10 +53,10 @@ patch_of(f: Feed, gen: int) -> str {
 
 patch_file(f: Feed, gen: int) -> str => f.dir ++ "/" ++ str(gen) ++ ".json"
 
-/// Is this the dev channel's own request?
+/** Is this the dev channel's own request? */
 is_poll(req: Request) -> bool => req.path == PollPath
 
-/// Answer a poll, holding the connection for up to `budget_ms`.
+/** Answer a poll, holding the connection for up to `budget_ms`. */
 answer(f: Feed, req: Request, budget_ms: int) -> Response =>
     json(waited(f, seen(req), budget_ms))
 
@@ -87,7 +87,7 @@ waited(f: Feed, since: int, budget_ms: int) -> str {
     message(f, since, gen)
 }
 
-/// One poll's answer, as the JSON the client reads.
+/** One poll's answer, as the JSON the client reads. */
 message(f: Feed, since: int, gen: int) -> str {
     if since == Fresh || gen <= since {
         object_of(["gen"], [str(gen)])
@@ -98,7 +98,9 @@ message(f: Feed, since: int, gen: int) -> str {
     }
 }
 
-/// Every generation after `since` up to `gen`, as one array of ops in published order.
+/** Every generation after `since` up to `gen`, as one array of ops in published
+ * order.
+ */
 ops_since(f: Feed, since: int, gen: int) -> str =>
     "[" ++ merged(f, since + 1, gen, []).join(",") ++ "]"
 
@@ -121,7 +123,7 @@ unbracketed(arr: str) -> str {
     }
 }
 
-/// Is every generation between `since` and `gen` still on disk, whole?
+/** Is every generation between `since` and `gen` still on disk, whole? */
 have_all(f: Feed, since: int, gen: int) -> bool => present(f, since + 1, gen)
 
 present(f: Feed, at: int, gen: int) -> bool {
@@ -140,10 +142,10 @@ whole(f: Feed, gen: int) -> bool {
     file_exists(at) && read_file(at).trim().ends_with("]")
 }
 
-/// What a dev-mode page needs in its `<head>`, and the whole of it.
+/** What a dev-mode page needs in its `<head>`, and the whole of it. */
 dev_head() -> str => runtime_script() ++ poll_script()
 
-/// The poll loop, in a `<script>`.
+/** The poll loop, in a `<script>`. */
 poll_script() -> str => script(poll_js())
 
 poll_js() -> str =>

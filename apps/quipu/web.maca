@@ -9,7 +9,8 @@ import { view } from apps/quipu/view
 
 Sample = "greet(who: str) -> str => \"hi {{who}}\"\n\nmain() -> int {{\n    info(greet(\"web\"))\n    0\n}}\n"
 
-/// What the page opens with, since there is no directory to walk in a browser.
+/** What the page opens with, since there is no directory to walk in a browser.
+ */
 shown_state() -> Ide =>
     Ide { root = "maca.dev", files = ["greet.maca"], open = "greet.maca",
           text = Sample, target = "native", panel = "names", output = "",

@@ -102,7 +102,9 @@ test_a_reply_says_plainly_whether_it_landed() {
            "and a request that never arrived did not land")
 }
 
-/// The one test that needs the network, and it is skipped rather than failed when there is none.
+/** The one test that needs the network, and it is skipped rather than failed
+ * when there is none.
+ */
 test_a_real_request_comes_back_when_the_network_is_there() {
     if env_or("MACA_NET_TESTS", "") == "" {
         assert(true, "reaching the network is opt-in: set MACA_NET_TESTS=1")

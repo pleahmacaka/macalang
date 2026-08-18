@@ -1,6 +1,6 @@
 // std/text: string work that sits one level above the `str` builtins.
 
-/// The lines of `s`, without their terminators.
+/** The lines of `s`, without their terminators. */
 lines(s: str) -> str[] {
     parts = s.replace("\r\n", "\n").split("\n")
     n = parts.length()
@@ -12,7 +12,7 @@ lines(s: str) -> str[] {
     }
 }
 
-/// Whitespace-separated words, with empty runs dropped.
+/** Whitespace-separated words, with empty runs dropped. */
 words(s: str) -> str[] =>
     keep_nonempty(s.replace("\t", " ").replace("\n", " ").split(" "), 0, [])
 
@@ -26,7 +26,9 @@ keep_nonempty(xs: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// Split on the *first* occurrence only: `split_once("a=b=c", "=")` is `["a", "b=c"]`.
+/** Split on the *first* occurrence only: `split_once("a=b=c", "=")` is `["a",
+ * "b=c"]`.
+ */
 split_once(s: str, sep: str) -> str[] {
     at = s.index_of(sep)
 
@@ -37,7 +39,7 @@ split_once(s: str, sep: str) -> str[] {
     }
 }
 
-/// Remove `p` from the front, or leave `s` alone.
+/** Remove `p` from the front, or leave `s` alone. */
 strip_prefix(s: str, p: str) -> str {
     if s.starts_with(p) {
         s.slice(p.length(), s.length())
@@ -46,7 +48,7 @@ strip_prefix(s: str, p: str) -> str {
     }
 }
 
-/// Remove `p` from the end, or leave `s` alone.
+/** Remove `p` from the end, or leave `s` alone. */
 strip_suffix(s: str, p: str) -> str {
     if s.ends_with(p) {
         s.slice(0, s.length() - p.length())
@@ -55,7 +57,7 @@ strip_suffix(s: str, p: str) -> str {
     }
 }
 
-/// `index_of` starting from `start`, as an absolute index, or -1.
+/** `index_of` starting from `start`, as an absolute index, or -1. */
 index_of_from(s: str, pat: str, start: int) -> int {
     at = if start < 0 { 0 } else { start }
 
@@ -72,7 +74,7 @@ index_of_from(s: str, pat: str, start: int) -> int {
     }
 }
 
-/// The index of the *last* occurrence of `pat`, or -1.
+/** The index of the *last* occurrence of `pat`, or -1. */
 last_index_of(s: str, pat: str) -> int =>
     scan_last(s, pat, 0, -1)
 
@@ -86,7 +88,7 @@ scan_last(s: str, pat: str, at: int, best: int) -> int {
     }
 }
 
-/// The text between `open` and `close`, or "" if either marker is missing.
+/** The text between `open` and `close`, or "" if either marker is missing. */
 between(s: str, open: str, close: str) -> str {
     at = s.index_of(open)
 
@@ -104,14 +106,14 @@ between(s: str, open: str, close: str) -> str {
     }
 }
 
-/// The four characters that would otherwise be markup, as entities.
+/** The four characters that would otherwise be markup, as entities. */
 escape_html(s: str) -> str =>
     s.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
 
-/// How many non-overlapping times `pat` occurs in `s`.
+/** How many non-overlapping times `pat` occurs in `s`. */
 count(s: str, pat: str) -> int {
     if pat.length() == 0 {
         0
@@ -130,7 +132,7 @@ count_from(s: str, pat: str, at: int, n: int) -> int {
     }
 }
 
-/// `Title Case`, one word at a time.
+/** `Title Case`, one word at a time. */
 title_case(s: str) -> str =>
     join_words(words(s).map(capitalize), 0, "")
 
@@ -152,7 +154,7 @@ join_words(ws: str[], i: int, acc: str) -> str {
     }
 }
 
-/// Add `pad` to the start of every line.
+/** Add `pad` to the start of every line. */
 indent(s: str, pad: str) -> str =>
     lines(s).map(l => pad_unless_empty(l, pad)).join("\n")
 
@@ -164,7 +166,7 @@ pad_unless_empty(line: str, pad: str) -> str {
     }
 }
 
-/// Remove the longest run of leading spaces common to every non-empty line.
+/** Remove the longest run of leading spaces common to every non-empty line. */
 dedent(s: str) -> str {
     cut = common_indent(lines(s), 0, -1)
 
@@ -213,7 +215,7 @@ leading_spaces(cs: str[], i: int) -> int {
     }
 }
 
-/// Fold `s` to lines of at most `width` bytes, breaking between words.
+/** Fold `s` to lines of at most `width` bytes, breaking between words. */
 wrap(s: str, width: int) -> str =>
     fill(words(s), 0, width, "", "")
 

@@ -16,7 +16,7 @@ scratch() -> str {
     dir
 }
 
-/// A model that solves one problem, so the count is the harness's own.
+/** A model that solves one problem, so the count is the harness's own. */
 stand_in(dir: str) -> str {
     at = dir ++ "/model.sh"
 
@@ -88,7 +88,7 @@ test_the_harness_counts_what_the_model_solved_and_grades_apart_each_run() {
                ++ "graded both")
 }
 
-/// The path after `maca run` on one line of prose.
+/** The path after `maca run` on one line of prose. */
 named_run(line: str) -> str {
     rest = line.split("maca run ").get(1)
     word = rest.split(" ").get(0).split("\r").get(0)

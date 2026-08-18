@@ -33,8 +33,8 @@ main() -> int {
 | Form | Meaning |
 |---|---|
 | `// text` | a comment |
-| `/// text` | a doc comment: the marker MacaDoc reads |
-| `//// text` | a comment again; four slashes are not a doc comment |
+| `/* text */` | a comment too |
+| `/** text */` | a doc comment: the block MacaDoc reads |
 
 ## Declarations
 

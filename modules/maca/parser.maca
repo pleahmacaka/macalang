@@ -73,7 +73,9 @@ scan_type(ts: Token[], i: int) -> PType {
     }
 }
 
-/// `(int, str) -> bool` names a function, and every back end reads that spelling back.
+/** `(int, str) -> bool` names a function, and every back end reads that
+ * spelling back.
+ */
 fn_type(ts: Token[], i: int, shut: int) -> PType {
     args = fn_type_args(ts, i + 1, shut, "")
 
@@ -165,7 +167,9 @@ mk_arrow_fn(ts: Token[], name: str, ret: str, params: Expr[],
 
 ArrowRead = ABlock | ARecord | ABoth
 
-/// A brace after `=>` holds fields when every entry is a distinct `name = value`, and a comma settles it.
+/** A brace after `=>` holds fields when every entry is a distinct `name =
+ * value`, and a comma settles it.
+ */
 arrow_read(ts: Token[], open: int) -> ArrowRead {
     shut = brace_end(ts, open + 1, 0)
 
@@ -223,7 +227,8 @@ brace_step(kind: Kind, j: int, shut: int) -> int {
     }
 }
 
-/// The field an entry names, which is a name, an `=`, and something after it.
+/** The field an entry names, which is a name, an `=`, and something after it.
+ */
 entry_field(ts: Token[], from: int, upto: int) -> str {
     if upto - from > 2 && ts.get(from).kind == TIdent
             && ts.get(from + 1).kind == Eq {
@@ -298,7 +303,9 @@ starts_local_fn(ts: Token[], i: int) -> bool {
     }
 }
 
-/// A function written inside a body is the name of a lambda, because C has no nested function.
+/** A function written inside a body is the name of a lambda, because C has no
+ * nested function.
+ */
 parse_local_fn(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     made = parse_fn(ts, i)
     held = made.snode
@@ -308,7 +315,9 @@ parse_local_fn(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
                                e_lambda(held.params, body_expr(held.body)))])
 }
 
-/// A block answers with its last expression, or with the name its last statement set.
+/** A block answers with its last expression, or with the name its last
+ * statement set.
+ */
 body_expr(stmts: Stmt[]) -> Expr {
     n = stmts.length()
     last = stmts.get(n - 1)
@@ -379,7 +388,8 @@ parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
     Module { items = out, errors = errs }
 }
 
-/// `const` says the name is bound once, and the item after it is the binding.
+/** `const` says the name is bound once, and the item after it is the binding.
+ */
 frozen_one(one: POne) -> POne {
     if one.made.length() == 0 {
         one
@@ -388,7 +398,9 @@ frozen_one(one: POne) -> POne {
     }
 }
 
-/// One item and where the next one starts, so the file is read by a loop and not by a stack.
+/** One item and where the next one starts, so the file is read by a loop and
+ * not by a stack.
+ */
 parse_one_item(ts: Token[], i: int) -> POne {
     if ts.get(i).kind == KwImport {
         mk_pone([], import_end(ts, i + 1), [])
@@ -419,7 +431,9 @@ parse_const_item(ts: Token[], i: int) -> POne {
     mk_pone([made], past_as_const(ts, got.next), [])
 }
 
-/// Config mode writes a whole dotted path on the left of `=`, and it is one name.
+/** Config mode writes a whole dotted path on the left of `=`, and it is one
+ * name.
+ */
 parse_path_item(ts: Token[], i: int) -> POne {
     end = path_end(ts, i + 1)
     got = parse_list_expr(ts, bind_eq_at(ts, end) + 1)
@@ -499,7 +513,9 @@ is_record_decl(ts: Token[], i: int) -> bool {
         && typed_fields(ts, at + 2)
 }
 
-/// A `:` in the braces gives a field its type; an `=` gives it a value, and that is a literal.
+/** A `:` in the braces gives a field its type; an `=` gives it a value, and
+ * that is a literal.
+ */
 typed_fields(ts: Token[], i: int) -> bool =>
     ts.get(i).kind == RBrace
         || (ts.get(i).kind == TIdent && ts.get(i + 1).kind == Colon)
@@ -592,7 +608,7 @@ parse_fn_item(ts: Token[], i: int) -> POne {
     mk_pone([ps.snode], ps.snext, arrow_doubt(ts, i))
 }
 
-/// Both readings hold, so neither is taken, and the two spellings are named.
+/** Both readings hold, so neither is taken, and the two spellings are named. */
 arrow_doubt(ts: Token[], i: int) -> str[] {
     pp = parse_params(ts, i + 2, [])
     at = after_return_type(ts, pp.pnext + 1)
@@ -655,7 +671,9 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     }
 }
 
-/// `...rest: int` is one parameter holding every argument left, so it is a list.
+/** `...rest: int` is one parameter holding every argument left, so it is a
+ * list.
+ */
 rest_param(ts: Token[], i: int) -> Expr =>
     e_param(ts.get(i).text, param_type(ts, i) ++ "[]") with { ival = 1 }
 
@@ -738,7 +756,8 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     parse_bin(ts, mk_pexpr(node, rhs.next), min_prec)
 }
 
-/// `x |> f(a)` is `f(x, a)`, so the piped value arrives as the first argument.
+/** `x |> f(a)` is `f(x, a)`, so the piped value arrives as the first argument.
+ */
 piped(lhs: Expr, rhs: Expr) -> Expr {
     if rhs.kind == ECall {
         e_call(rhs.text, [lhs] ++ rhs.children)
@@ -928,7 +947,8 @@ formatted(piece: str) -> Expr {
     }
 }
 
-/// The `:` opening a trailing format spec, or -1 when the colon is a ternary's.
+/** The `:` opening a trailing format spec, or -1 when the colon is a ternary's.
+ */
 spec_start(cs: str[], i: int) -> int {
     if i >= 0 && is_spec_char(cs.get(i)) {
         spec_start(cs, i - 1)
@@ -1134,7 +1154,7 @@ parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     parse_arms(ts, body.next, acc ++ [p.node, body.node])
 }
 
-/// An arm may answer with a block, the same way a branch of an `if` does.
+/** An arm may answer with a block, the same way a branch of an `if` does. */
 parse_arm_body(ts: Token[], i: int) -> PExpr {
     if ts.get(i).kind == LBrace {
         parse_branch(ts, i)
@@ -1143,7 +1163,8 @@ parse_arm_body(ts: Token[], i: int) -> PExpr {
     }
 }
 
-/// `"done", id => …` matches a list by position without brackets around it.
+/** `"done", id => …` matches a list by position without brackets around it.
+ */
 parse_commas(ts: Token[], p: PExpr) -> PExpr {
     if ts.get(p.next).kind != Comma {
         p
@@ -1165,7 +1186,10 @@ gathered(ts: Token[], p: PExpr) -> PExpr {
     }
 }
 
-/// `Red | Green => …` is one arm that matches either, so the alternatives hang off one node.
+/** `Red | Green => …` is one arm that matches either, so the alternatives
+ * hang
+ * off one node.
+ */
 parse_alts(ts: Token[], p: PExpr) -> PExpr {
     if ts.get(p.next).kind != Bar {
         p
@@ -1204,7 +1228,9 @@ parse_pattern(ts: Token[], i: int) -> PExpr {
     }
 }
 
-/// `[]`, `[x]` and `[x, ..rest]`: the cells the arm names, and whether a rest closes them.
+/** `[]`, `[x]` and `[x, ..rest]`: the cells the arm names, and whether a rest
+ * closes them.
+ */
 parse_cells_pattern(ts: Token[], i: int, p: Expr) -> PExpr {
     if ts.get(i).kind == Eof || ts.get(i).kind == RBracket {
         mk_pexpr(p, i + 1)
@@ -1219,7 +1245,9 @@ parse_cells_pattern(ts: Token[], i: int, p: Expr) -> PExpr {
     }
 }
 
-/// `{ head, tail }` names the fields it wants, and matches whatever record carries them.
+/** `{ head, tail }` names the fields it wants, and matches whatever record
+ * carries them.
+ */
 parse_fields_pattern(ts: Token[], i: int, p: Expr) -> PExpr {
     if ts.get(i).kind == Eof || ts.get(i).kind == RBrace {
         mk_pexpr(p, i + 1)
@@ -1295,7 +1323,9 @@ parse_lambda_body(ts: Token[], at: int) -> PExpr {
     }
 }
 
-/// A lambda body may be the setter form `x = e`, which is an assignment and not a binding.
+/** A lambda body may be the setter form `x = e`, which is an assignment and not
+ * a binding.
+ */
 lambda_setter(ts: Token[], lhs: PExpr) -> PExpr {
     if ts.get(lhs.next).kind != Eq {
         lhs
@@ -1356,7 +1386,9 @@ parse_record_lit(ts: Token[], i: int, name: str) -> PExpr {
     mk_pexpr(e_record(name, rf.aitems), rf.anext)
 }
 
-/// A value written as bare braces names no record, which is what a config's nesting is.
+/** A value written as bare braces names no record, which is what a config's
+ * nesting is.
+ */
 parse_anon_record(ts: Token[], i: int) -> PExpr {
     rf = parse_lit_fields(ts, i + 1, [])
     mk_pexpr(e_record("", rf.aitems), rf.anext)
@@ -1384,7 +1416,9 @@ parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     }
 }
 
-/// `xs = a, b` in braces is one field holding a list, because a field of its own would say `=`.
+/** `xs = a, b` in braces is one field holding a list, because a field of its
+ * own would say `=`.
+ */
 lit_value(ts: Token[], i: int) -> PExpr {
     v = parse_expr(ts, i)
 

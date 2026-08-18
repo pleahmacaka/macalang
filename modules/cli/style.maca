@@ -1,4 +1,4 @@
-/// Should output carry escape codes right now?
+/** Should output carry escape codes right now? */
 enabled() -> bool {
     if env("NO_COLOR") != "" {
         false
@@ -9,7 +9,7 @@ enabled() -> bool {
     }
 }
 
-/// `s` wrapped in an SGR code, or `s` unchanged where colour is off.
+/** `s` wrapped in an SGR code, or `s` unchanged where colour is off. */
 paint(code: str, s: str) -> str {
     if !enabled() || s == "" {
         s
@@ -18,7 +18,7 @@ paint(code: str, s: str) -> str {
     }
 }
 
-/// How many columns `s` takes on screen.
+/** How many columns `s` takes on screen. */
 width(s: str) -> int {
     n = s.length()
     out = 0
@@ -112,19 +112,19 @@ skip_escape(s: str, from: int) -> int {
     i + 1
 }
 
-/// Pad `s` to `w` columns, counting what shows rather than what is stored.
+/** Pad `s` to `w` columns, counting what shows rather than what is stored. */
 pad(s: str, w: int) -> str {
     short = w - width(s)
     short > 0 ? s ++ " ".repeat(short) : s
 }
 
-/// Right-align `s` within `w` columns, for a column of numbers.
+/** Right-align `s` within `w` columns, for a column of numbers. */
 pad_left(s: str, w: int) -> str {
     short = w - width(s)
     short > 0 ? " ".repeat(short) ++ s : s
 }
 
-/// Drop every escape sequence, leaving the text a file should get.
+/** Drop every escape sequence, leaving the text a file should get. */
 plain(s: str) -> str {
     n = s.length()
     out = ""
@@ -153,7 +153,9 @@ magenta(s: str) -> str => paint("35", s)
 cyan(s: str) -> str => paint("36", s)
 grey(s: str) -> str => paint("90", s)
 
-/// The four things a command line says about what happened, each with the marker and colour it always has.
+/** The four things a command line says about what happened, each with the
+ * marker and colour it always has.
+ */
 ok(s: str) -> str => green("✓") ++ " " ++ s
 warn(s: str) -> str => yellow("!") ++ " " ++ s
 bad(s: str) -> str => red("✗") ++ " " ++ s

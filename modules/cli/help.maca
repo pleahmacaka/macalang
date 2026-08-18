@@ -1,7 +1,7 @@
 import { Cmd, Opt } from cli/spec
 import { bold, dim, grey, pad, width } from cli/style
 
-/// The whole help page for `c`.
+/** The whole help page for `c`. */
 help(c: Cmd) -> str {
     out = bold(c.name) ++ (c.about == "" ? "" : ": " ++ c.about) ++ "\n\n"
     out = out ++ bold("Usage") ++ "\n  " ++ usage(c) ++ "\n"
@@ -12,7 +12,7 @@ help(c: Cmd) -> str {
     out ++ "\n" ++ bold("Options") ++ "\n" ++ opt_lines(c, 0, "") ++ help_line(c)
 }
 
-/// The one line that shows how the command is invoked.
+/** The one line that shows how the command is invoked. */
 usage(c: Cmd) -> str {
     line = c.name
     if c.opts.length() > 0 {

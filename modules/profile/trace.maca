@@ -1,6 +1,8 @@
 import std/json
 
-/// One timed region: when it opened, when it closed, how deep it sat, and which span it opened inside.
+/** One timed region: when it opened, when it closed, how deep it sat, and which
+ * span it opened inside.
+ */
 Span = {
     name: str,
     start: int,
@@ -10,17 +12,19 @@ Span = {
     closed: bool,
 }
 
-/// A whole run: a label naming what was measured, and the spans in the order they were opened.
+/** A whole run: a label naming what was measured, and the spans in the order
+ * they were opened.
+ */
 Trace = {
     label: str,
     spans: Span[],
 }
 
-/// A trace from a label and a list of spans.
+/** A trace from a label and a list of spans. */
 trace(label: str, spans: Span[]) -> Trace =>
     Trace { label = label, spans = spans }
 
-/// A span, with the two fields most callers don't care about defaulted.
+/** A span, with the two fields most callers don't care about defaulted. */
 region(name: str, start: int, end: int) -> Span =>
     Span {
         name = name,
@@ -31,13 +35,13 @@ region(name: str, start: int, end: int) -> Span =>
         closed = true,
     }
 
-/// How long a span lasted, in milliseconds.
+/** How long a span lasted, in milliseconds. */
 duration(s: Span) -> int => s.end - s.start
 
-/// How many spans the run recorded.
+/** How many spans the run recorded. */
 span_count(t: Trace) -> int => t.spans.length()
 
-/// The elapsed time of the whole run: the last end minus the first start.
+/** The elapsed time of the whole run: the last end minus the first start. */
 wall(t: Trace) -> int {
     if t.spans.length() == 0 {
         0
@@ -46,7 +50,7 @@ wall(t: Trace) -> int {
     }
 }
 
-/// When the run began: the earliest moment any span opened.
+/** When the run began: the earliest moment any span opened. */
 origin(t: Trace) -> int {
     if t.spans.length() == 0 {
         0
@@ -75,10 +79,14 @@ last_end(xs: Span[], i: int, best: int) -> int {
     }
 }
 
-/// The indices of the spans that are not inside any other, in the order they opened.
+/** The indices of the spans that are not inside any other, in the order they
+ * opened.
+ */
 roots(t: Trace) -> int[] => kids_of(t.spans, -1, 0, [])
 
-/// The indices of the spans opened directly inside span `i`, in the order they opened.
+/** The indices of the spans opened directly inside span `i`, in the order they
+ * opened.
+ */
 children(t: Trace, i: int) -> int[] => kids_of(t.spans, i, 0, [])
 
 kids_of(xs: Span[], parent: int, i: int, acc: int[]) -> int[] {
@@ -97,7 +105,9 @@ held_by(xs: Span[], i: int) -> int {
     p >= 0 && p < i ? p : -1
 }
 
-/// How many levels deep the run nested: 0 for an empty trace, 1 for a trace with no nesting at all.
+/** How many levels deep the run nested: 0 for an empty trace, 1 for a trace
+ * with no nesting at all.
+ */
 levels(t: Trace) -> int => deepest(t.spans, 0, 0)
 
 deepest(xs: Span[], i: int, best: int) -> int {
@@ -110,7 +120,9 @@ deepest(xs: Span[], i: int, best: int) -> int {
     }
 }
 
-/// The indices of the spans at depth `d`, in the order they opened: one row of a flame chart.
+/** The indices of the spans at depth `d`, in the order they opened: one row of
+ * a flame chart.
+ */
 level(t: Trace, d: int) -> int[] => at_depth(t.spans, d, 0, [])
 
 at_depth(xs: Span[], d: int, i: int, acc: int[]) -> int[] {
@@ -123,7 +135,7 @@ at_depth(xs: Span[], d: int, i: int, acc: int[]) -> int[] {
     }
 }
 
-/// The total time span `i` spent inside the regions it opened.
+/** The total time span `i` spent inside the regions it opened. */
 child_time(t: Trace, i: int) -> int => sum_kids(t, children(t, i), 0, 0)
 
 sum_kids(t: Trace, ids: int[], i: int, acc: int) -> int {
@@ -134,14 +146,18 @@ sum_kids(t: Trace, ids: int[], i: int, acc: int) -> int {
     }
 }
 
-/// The time span `i` spent in its own code: its duration minus the time its children took.
+/** The time span `i` spent in its own code: its duration minus the time its
+ * children took.
+ */
 self_time(t: Trace, i: int) -> int {
     own = duration(t.spans.get(i)) - child_time(t, i)
 
     own > 0 ? own : 0
 }
 
-/// The names of the regions that were started and never stopped, outermost first.
+/** The names of the regions that were started and never stopped, outermost
+ * first.
+ */
 leaked(t: Trace) -> str[] => unclosed(t.spans, 0, [])
 
 unclosed(xs: Span[], i: int, acc: str[]) -> str[] {
@@ -154,7 +170,7 @@ unclosed(xs: Span[], i: int, acc: str[]) -> str[] {
     }
 }
 
-/// The index of the first span named `name`, or -1.
+/** The index of the first span named `name`, or -1. */
 find_span(t: Trace, name: str) -> int => scan_name(t.spans, name, 0)
 
 scan_name(xs: Span[], name: str, i: int) -> int {
@@ -167,7 +183,7 @@ scan_name(xs: Span[], name: str, i: int) -> int {
     }
 }
 
-/// The trace as JSON: a label and an array of span objects.
+/** The trace as JSON: a label and an array of span objects. */
 to_json(t: Trace) -> str {
     parts = span_objects(t.spans, 0, [])
     body = parts.join(",")
@@ -193,7 +209,7 @@ span_json(s: Span) -> str {
     head ++ "," ++ when ++ "," ++ where ++ "\}"
 }
 
-/// A trace read back from `to_json`.
+/** A trace read back from `to_json`. */
 from_json(src: str) -> Trace =>
     trace(get(src, "label"), read_spans(items(get(src, "spans")), 0, []))
 

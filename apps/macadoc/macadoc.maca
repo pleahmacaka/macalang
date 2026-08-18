@@ -74,11 +74,8 @@ module_blurb(lines: str[], i: int, acc: str[]) -> str[] {
     }
 }
 
-is_doc(line: str) -> bool =>
-    line.starts_with("///") && !line.starts_with("////")
-
 is_plain_comment(line: str) -> bool =>
-    line.starts_with("//") && !is_doc(line)
+    line.starts_with("//")
 
 comment_body(line: str) -> str {
     body = drop_slashes(line, 0)
@@ -106,8 +103,6 @@ scan(lines: str[], i: int, doc: str[], acc: Item[]) -> Item[] {
         shut = block_shut(lines, i)
 
         scan(lines, shut + 1, doc ++ block_body(lines, i, shut, []), acc)
-    } else if is_doc(lines.get(i)) {
-        scan(lines, i + 1, doc ++ [comment_body(lines.get(i))], acc)
     } else if doc.length() == 0 {
         scan(lines, i + 1, [], acc)
     } else if !is_decl(lines.get(i)) {
@@ -1048,7 +1043,9 @@ total_items(ms: Module[], i: int) -> int {
     }
 }
 
-/// `/**` opens a doc block the way `///` opens a doc line; a bare `/*` is an ordinary comment.
+/** `/**` opens a doc block the way `///` opens a doc line; a bare `/*` is an
+ * ordinary comment.
+ */
 opens_block(line: str) -> bool =>
     line.trim().starts_with("/**")
 
@@ -1073,7 +1070,7 @@ block_body(lines: str[], from: int, upto: int, acc: str[]) -> str[] {
     while i <= upto && i < lines.length() {
         said = block_line(lines.get(i))
 
-        if said != "" {
+        if said != "" || i < upto {
             out = out.push(said)
         }
 
@@ -1083,14 +1080,35 @@ block_body(lines: str[], from: int, upto: int, acc: str[]) -> str[] {
     out
 }
 
-/// A line inside a block sheds its opener, its closer, and the `*` that lines it up.
+/** A line inside a block sheds its opener, its closer, and the `*` that lines
+ * it up.
+ */
 block_line(line: str) -> str {
-    said = line.trim()
-    open_cut = said.starts_with("/**") ? said.slice(3, said.length()) : said
-    shut_cut = open_cut.ends_with("*/")
-        ? open_cut.slice(0, open_cut.length() - 2)
-        : open_cut
-    bare = shut_cut.trim()
+    said = shed_marks(line.trim())
 
-    bare.starts_with("*") ? bare.slice(1, bare.length()).trim() : bare
+    said.starts_with(" ") ? said.slice(1, said.length()) : said
+}
+
+/** The opener, the closer and the `*` that lines the block up go; the
+ * indent past them stays, because an indented run is a code block.
+ */
+shed_marks(said: str) -> str {
+    opened = said.starts_with("/**") ? said.slice(3, said.length()) : said
+    starred = opened.starts_with("*") && !opened.starts_with("*/")
+        ? opened.slice(1, opened.length())
+        : opened
+
+    starred.ends_with("*/")
+        ? unpadded(starred.slice(0, starred.length() - 2))
+        : starred
+}
+
+unpadded(s: str) -> str {
+    out = s
+
+    while out.ends_with(" ") {
+        out = out.slice(0, out.length() - 1)
+    }
+
+    out
 }

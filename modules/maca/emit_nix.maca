@@ -2,14 +2,16 @@ import maca/ast
 
 NixUser = "alice"
 
-/// The NixOS module a config-mode file describes, as Nix source.
+/** The NixOS module a config-mode file describes, as Nix source. */
 nemit_module(m: Module) -> str =>
     "{{ config, pkgs, lib, ... }}:\n{{\n"
         ++ nix_block(nix_binds(m.items, 0, false, []), 1, 0, "")
         ++ nix_home(nix_binds(m.items, 0, true, []), NixUser)
         ++ "}}\n"
 
-/// What a user owns rides under home-manager, keyed by the name the manifest gives.
+/** What a user owns rides under home-manager, keyed by the name the manifest
+ * gives.
+ */
 nix_home(ls: str[], user: str) -> str {
     if ls.length() == 0 {
         ""
@@ -65,7 +67,8 @@ nix_at_home(s: Stmt) -> bool {
         || nix_path3(p, "user", "home", "dirs")
 }
 
-/// A binding that declares a type names a program, and a program is the user's.
+/** A binding that declares a type names a program, and a program is the user's.
+ */
 nix_program(s: Stmt) -> bool =>
     s.ret != "" && s.name.split(".").length() == 1
 
@@ -95,7 +98,9 @@ nix_path2(p: str[], a: str, b: str) -> bool =>
 nix_path3(p: str[], a: str, b: str, c: str) -> bool =>
     p.length() == 3 && p.get(0) == a && p.get(1) == b && p.get(2) == c
 
-/// A service or a program is on because it was written down, so `enable` is implied.
+/** A service or a program is on because it was written down, so `enable` is
+ * implied.
+ */
 nix_enabled(v: Expr) -> str {
     if v.kind != ERecord {
         nvalue(v)
@@ -191,7 +196,9 @@ nix_cond(e: Expr) -> str =>
     "(if {nvalue(e.children.get(0))} then {nvalue(e.children.get(1))}"
         ++ " else {nvalue(e.children.get(2))})"
 
-/// Nix has no integer division and no remainder, so both are built from `builtins.div`.
+/** Nix has no integer division and no remainder, so both are built from
+ * `builtins.div`.
+ */
 nix_binary(e: Expr) -> str {
     l = nvalue(e.children.get(0))
     r = nvalue(e.children.get(1))
@@ -214,7 +221,9 @@ nix_infix(op: str) -> bool =>
         || op == "<" || op == ">" || op == "<=" || op == ">="
         || op == "&&" || op == "||"
 
-/// `user.home.dirs` names directories to keep, and keeping them destroys nothing.
+/** `user.home.dirs` names directories to keep, and keeping them destroys
+ * nothing.
+ */
 nix_xdg_dirs(v: Expr) -> str =>
     "xdg.userDirs = {{\n  enable = true;\n  createDirectories = true;\n"
         ++ nix_dir_lines(nix_elems(v), 0, "") ++ "};"

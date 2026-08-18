@@ -1,4 +1,4 @@
-/// Three times what this module's own reading says.
+/** Three times what this module's own reading says. */
 snug_use() -> int => fits("ab")
 
 fits(s: str) -> int => s.length() * 3

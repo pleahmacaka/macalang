@@ -1,6 +1,6 @@
 import { bold, dim, grey, pad, pad_left, width } from cli/style
 
-/// A table with a header row, columns as wide as their widest cell.
+/** A table with a header row, columns as wide as their widest cell. */
 table(header: str[], rows: str[][]) -> str {
     cols = header.length()
     w = widths(header, rows, cols)
@@ -27,7 +27,7 @@ table(header: str[], rows: str[][]) -> str {
     out
 }
 
-/// The same table with the numeric columns right-aligned.
+/** The same table with the numeric columns right-aligned. */
 table_aligned(header: str[], rows: str[][]) -> str {
     cols = header.length()
     w = widths(header, rows, cols)
@@ -131,7 +131,7 @@ digits_only(s: str, i: int) -> bool {
     }
 }
 
-/// A horizontal rule, optionally with a title sitting in it.
+/** A horizontal rule, optionally with a title sitting in it. */
 rule(title: str) -> str {
     w = 60
     if title == "" {
@@ -143,7 +143,7 @@ rule(title: str) -> str {
     }
 }
 
-/// A box around `body`, with `title` in its top edge.
+/** A box around `body`, with `title` in its top edge. */
 panel(title: str, body: str) -> str {
     lines = body.split("\n")
     inner = widest(lines, 0, width(title) + 2)
@@ -167,13 +167,15 @@ widest(lines: str[], i: int, best: int) -> int {
     }
 }
 
-/// ` key value`: a labelled fact, with the label dimmed so the value is what the eye lands on.
+/** ` key value`: a labelled fact, with the label dimmed so the value is what
+ * the eye lands on.
+ */
 kv(key: str, value: str) -> str => "  " ++ dim(pad(key, 14)) ++ value
 
-/// A bulleted line.
+/** A bulleted line. */
 bullet(s: str) -> str => "  " ++ grey("•") ++ " " ++ s
 
-/// `[####----] n%`: a progress bar of a given width.
+/** `[####----] n%`: a progress bar of a given width. */
 bar(done: int, total: int, w: int) -> str {
     share = total > 0 ? done * w / total : 0
     filled = share > w ? w : (share < 0 ? 0 : share)
@@ -182,7 +184,7 @@ bar(done: int, total: int, w: int) -> str {
     "[" ++ body ++ "] " ++ pad_left("{pct}%", 4)
 }
 
-/// The same line, rewritten in place: carriage return, no newline.
+/** The same line, rewritten in place: carriage return, no newline. */
 redraw(s: str) {
     if is_tty() {
         print("\r" ++ s)

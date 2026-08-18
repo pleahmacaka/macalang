@@ -1,4 +1,4 @@
-/// One `--name` the command accepts.
+/** One `--name` the command accepts. */
 Opt = {
     long: str,
     short: str,
@@ -7,7 +7,7 @@ Opt = {
     takes: bool,
 }
 
-/// One positional.
+/** One positional. */
 Arg = {
     name: str,
     help: str,
@@ -21,11 +21,11 @@ Cmd = {
     args: Arg[],
 }
 
-/// A command with a name and one line saying what it does.
+/** A command with a name and one line saying what it does. */
 command(name: str, about: str) -> Cmd =>
     Cmd { name = name, about = about, opts = [], args = [] }
 
-/// `--long value` / `-s value`, with `fallback` when it is not given.
+/** `--long value` / `-s value`, with `fallback` when it is not given. */
 opt(c: Cmd, long: str, short: str, help: str, fallback: str) -> Cmd =>
     c with {
         opts = c.opts.push(Opt {
@@ -37,7 +37,7 @@ opt(c: Cmd, long: str, short: str, help: str, fallback: str) -> Cmd =>
         })
     }
 
-/// `--long` / `-s`, present or absent.
+/** `--long` / `-s`, present or absent. */
 flag(c: Cmd, long: str, short: str, help: str) -> Cmd =>
     c with {
         opts = c.opts.push(Opt {
@@ -49,21 +49,23 @@ flag(c: Cmd, long: str, short: str, help: str) -> Cmd =>
         })
     }
 
-/// One positional, in the order it is written.
+/** One positional, in the order it is written. */
 arg(c: Cmd, name: str, help: str) -> Cmd => add_arg(c, name, help, false)
 
-/// A positional that takes the rest of the command line.
+/** A positional that takes the rest of the command line. */
 rest(c: Cmd, name: str, help: str) -> Cmd => add_arg(c, name, help, true)
 
 add_arg(c: Cmd, name: str, help: str, many: bool) -> Cmd =>
     c with { args = c.args.push(Arg { name = name, help = help, many = many }) }
 
-/// The option `--<long>` names, or one with an empty `long` if there is none.
+/** The option `--<long>` names, or one with an empty `long` if there is none.
+ */
 find_long(c: Cmd, long: str) -> Opt {
     match_at(c.opts, 0, long, true)
 }
 
-/// The option `-<short>` names, or one with an empty `long` if there is none.
+/** The option `-<short>` names, or one with an empty `long` if there is none.
+ */
 find_short(c: Cmd, short: str) -> Opt {
     match_at(c.opts, 0, short, false)
 }
@@ -80,10 +82,11 @@ match_at(opts: Opt[], i: int, want: str, by_long: bool) -> Opt {
     }
 }
 
-/// Did a lookup find anything?
+/** Did a lookup find anything? */
 found(o: Opt) -> bool => o.long != ""
 
-/// The long names the command accepts, for a `did you mean` on a misspelling.
+/** The long names the command accepts, for a `did you mean` on a misspelling.
+ */
 long_names(c: Cmd) -> str[] => names_from(c.opts, 0, [])
 
 names_from(opts: Opt[], i: int, acc: str[]) -> str[] {

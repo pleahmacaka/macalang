@@ -1,2 +1,2 @@
-/// How many columns `s` takes.
+/** How many columns `s` takes. */
 fits(s: str) -> int => s.length()

@@ -270,7 +270,9 @@ test_a_project_outside_the_tree_reads_the_library_it_was_pointed_at() {
 
 CarriedPackages = ["std", "cli", "web", "http", "signal", "profile"]
 
-/// Every file the compiler is supposed to travel with, read off the tree rather than off a list.
+/** Every file the compiler is supposed to travel with, read off the tree rather
+ * than off a list.
+ */
 carried_files() -> str[] {
     out: str[] = []
 

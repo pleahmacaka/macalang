@@ -5,13 +5,19 @@
 // three functions below are what that is written in terms of, and a program
 // that only wants the sugar never calls them.
 
-/// The value saved under `key`, or `fallback` when the browser has nothing there.
+/** The value saved under `key`, or `fallback` when the browser has nothing
+ * there.
+ */
 local_start(key: str, fallback: a) -> a
 
-/// Save `value` under `key` and answer it, so assigning a stored name is the save.
+/** Save `value` under `key` and answer it, so assigning a stored name is the
+ * save.
+ */
 local_store(key: str, value: a) -> a
 
-/// Forget whatever is saved under `key`, so the next visit starts from the default again.
+/** Forget whatever is saved under `key`, so the next visit starts from the
+ * default again.
+ */
 local_forget(key: str) -> bool
 
 import "storage.js" """

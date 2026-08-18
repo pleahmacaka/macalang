@@ -38,7 +38,7 @@ Bound = {
     hit: bool
 }
 
-/// What a run left behind: its output, why it stopped, and its exit code.
+/** What a run left behind: its output, why it stopped, and its exit code. */
 RunOut = {
     output: str
     fault:  str
@@ -159,7 +159,7 @@ def_index(it: Interp, name: str) -> int =>
 is_ctor(it: Interp, name: str) -> bool =>
     seek_slot(it.ctors, name, it.ctors.length() - 1) >= 0
 
-/// Run a parsed module's `main`, answering what it printed and how it ended.
+/** Run a parsed module's `main`, answering what it printed and how it ended. */
 run_module(m: Module) -> RunOut {
     it = new_interp(m)
     at = def_index(it, "main")

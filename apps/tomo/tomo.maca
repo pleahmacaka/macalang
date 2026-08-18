@@ -460,28 +460,30 @@ toc_entry(text: str) -> str =>
        a(class=link_class(false) ++ " pl-4 text-[0.82rem]",
          href="#" ++ slug(text), escape_html(text))) ++ "\n"
 
-/// What dev mode adds to a page.
+/** What dev mode adds to a page. */
 Dev = {
-    /// Do the three regions carry `data-signal` markers for the patcher?
+    /** Do the three regions carry `data-signal` markers for the patcher? */
     on: bool,
-    /// Extra `<head>` markup: the patcher, and the poll loop that feeds it.
+    /** Extra `<head>` markup: the patcher, and the poll loop that feeds it. */
     extra: str,
 }
 
-/// Dev mode off, which is how the book is published.
+/** Dev mode off, which is how the book is published. */
 published() -> Dev => Dev { on = false, extra = "" }
 
-/// The parts of a chapter page that its Markdown decides.
+/** The parts of a chapter page that its Markdown decides. */
 Parts = {
-    /// The rendered prose, as the `<article>`'s children.
+    /** The rendered prose, as the `<article>`'s children. */
     article: str,
-    /// The page's heading list, as the table-of-contents `<nav>`'s children.
+    /** The page's heading list, as the table-of-contents `<nav>`'s children. */
     toc: str,
-    /// The book's chapter list with this page marked, as the sidebar `<ol>`'s children.
+    /** The book's chapter list with this page marked, as the sidebar `<ol>`'s
+     * children.
+     */
     nav: str,
 }
 
-/// The three parts, rendered.
+/** The three parts, rendered. */
 parts_of(chs: str[], titles: str[], ci: int, md: str) -> Parts =>
     Parts {
         article = "\n" ++ render(md),
@@ -489,10 +491,10 @@ parts_of(chs: str[], titles: str[], ci: int, md: str) -> Parts =>
         nav = side_items(chs, titles, chs.get(ci), 0),
     }
 
-/// Which page a region belongs to: `"en/05-strings"`.
+/** Which page a region belongs to: `"en/05-strings"`. */
 page_key(lang: str, ch: str) -> str => lang ++ "/" ++ ch
 
-/// One region's store key: `"article:en/05-strings"`.
+/** One region's store key: `"article:en/05-strings"`. */
 region_key(part: str, key: str) -> str => part ++ ":" ++ key
 
 article_region(d: Dev, key: str, inner: str) -> str {
@@ -1084,7 +1086,9 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
     1
 }
 
-/// The page the book opens on: what each volume is for and where it starts, because the contents are already beside it in the sidebar.
+/** The page the book opens on: what each volume is for and where it starts,
+ * because the contents are already beside it in the sidebar.
+ */
 opening(title: str, lang: str, chs: str[], titles: str[]) -> str =>
     h1(class=md_class("h1"), escape_html(title))
         ++ p(class=md_class("p"), opening_blurb(lang))
@@ -1296,7 +1300,7 @@ build_chapter(root: str, out: str, title: str, langs: str, lang: str,
     }
 }
 
-/// One chapter's page, written where the book wants it.
+/** One chapter's page, written where the book wants it. */
 write_chapter(d: Dev, out: str, title: str, langs: str, lang: str, chs: str[],
               titles: str[], ci: int, p: Parts) -> int {
     dir = out ++ "/" ++ lang
@@ -1306,7 +1310,7 @@ write_chapter(d: Dev, out: str, title: str, langs: str, lang: str, chs: str[],
     1
 }
 
-/// One chapter's page, as markup.
+/** One chapter's page, as markup. */
 chapter_page(d: Dev, title: str, langs: str, lang: str, chs: str[],
              titles: str[], ci: int, p: Parts) -> str {
     key = page_key(lang, chs.get(ci))

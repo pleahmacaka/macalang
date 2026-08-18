@@ -10,13 +10,17 @@ jv_id(name: str) -> str {
     }
 }
 
-/// One Java compilation unit: the module's types, then the class its functions live in.
+/** One Java compilation unit: the module's types, then the class its functions
+ * live in.
+ */
 jvmemit_module(m: Module, name: str) -> str =>
     jv_types(m.items, 0, "") ++ "public final class {name} {{\n"
         ++ jvm_helpers()
         ++ jv_members(m.items, jv_fn_names(m.items, 0, []), 0, "") ++ "}}\n"
 
-/// Java has no free function, so what the emitted code leans on are static methods of that class.
+/** Java has no free function, so what the emitted code leans on are static
+ * methods of that class.
+ */
 jvm_helpers() -> str =>
     "    static <T> java.util.List<T> _cat(java.util.List<T> a,"
         ++ " java.util.List<T> b) {{ var o = new java.util.ArrayList<T>(a);"
@@ -51,7 +55,9 @@ jv_enum(s: Stmt) -> str =>
 jv_variant_name(v: Expr) -> str =>
     v.text
 
-/// A field is written by name, because Java has no named argument and a literal may write them in any order.
+/** A field is written by name, because Java has no named argument and a literal
+ * may write them in any order.
+ */
 jv_class(s: Stmt) -> str =>
     "final class {s.name} {{\n" ++ jv_fields(s.params, 0, "")
         ++ jv_setters(s.name, s.params, 0, "") ++ "}}\n\n"
@@ -96,7 +102,9 @@ jv_members(items: Stmt[], fns: str[], i: int, acc: str) -> str {
 jv_bind(s: Stmt, items: Stmt[], fns: str[]) -> str =>
     jv_is_impl(s, fns) ? jv_impl(s, items) : jv_const(s)
 
-/// A declared type over a record of functions or lambdas is an interface, and Java wants a class for it.
+/** A declared type over a record of functions or lambdas is an interface, and
+ * Java wants a class for it.
+ */
 jv_is_impl(s: Stmt, fns: str[]) -> bool =>
     jv_user_type(s.ret) && s.value.kind == ERecord
         && s.value.children.length() > 0
@@ -129,7 +137,9 @@ jv_impl_methods(fs: Expr[], items: Stmt[], i: int, acc: str) -> str {
     }
 }
 
-/// A field either names a function or is a lambda, and Java wants a method body from both.
+/** A field either names a function or is a lambda, and Java wants a method body
+ * from both.
+ */
 jv_impl_method(f: Expr, items: Stmt[]) -> str {
     if f.children.get(1).kind == ELambda {
         jv_impl_shape(f.children.get(0).text,
@@ -191,7 +201,7 @@ jv_params(ps: Expr[], i: int, acc: str) -> str {
     }
 }
 
-/// Java hands the arguments over as an array, and Maca reads a list.
+/** Java hands the arguments over as an array, and Maca reads a list. */
 jv_main(s: Stmt) -> str =>
     "    public static void main(String[] _argv) {{\n" ++ jv_argv(s.params)
         ++ jv_body(s.body, "", 2) ++ "    }}\n\n"
@@ -246,7 +256,9 @@ jv_stmt(s: Stmt, last: bool, ret: str, ind: int) -> str {
     }
 }
 
-/// A branch with no `else` answers with nothing, and a Java method still owes its caller a value.
+/** A branch with no `else` answers with nothing, and a Java method still owes
+ * its caller a value.
+ */
 jv_fallback(wants: bool, ret: str, pad: str) -> str {
     if wants {
         "{pad}return {jv_zero(ret)};\n"
@@ -265,7 +277,9 @@ jv_while(e: Expr, ind: int) -> str {
         ++ jv_body(e.stmts, "", ind + 1) ++ "{pad}}}\n"
 }
 
-/// A range is a counted loop rather than a list, because that is what a loop over one costs in Java.
+/** A range is a counted loop rather than a list, because that is what a loop
+ * over one costs in Java.
+ */
 jv_for(e: Expr, ind: int) -> str {
     pad = jv_pad(ind, "")
     over = e.children.get(0)
@@ -323,7 +337,9 @@ jv_pad(n: int, acc: str) -> str {
     }
 }
 
-/// A statement that only names a value does nothing, and Java refuses to write it down.
+/** A statement that only names a value does nothing, and Java refuses to write
+ * it down.
+ */
 jv_pure(e: Expr) -> bool =>
     e.kind == EInt || e.kind == EFloat || e.kind == EBool || e.kind == EStr
         || e.kind == EIdent
@@ -368,7 +384,9 @@ jv_expr(e: Expr) -> str =>
 jv_string(s: str) -> str =>
     "\"" ++ s ++ "\""
 
-/// A variant is a Java enum constant, which is only named through the enum that holds it.
+/** A variant is a Java enum constant, which is only named through the enum that
+ * holds it.
+ */
 jv_name(e: Expr) -> str {
     if jv_upper(e.text) && jv_user_type(e.ty) && e.ty != e.text {
         "{e.ty}.{e.text}"
@@ -411,7 +429,9 @@ jv_unary(e: Expr) -> str {
     }
 }
 
-/// Text and lists are compared by value, and Java compares those two by address.
+/** Text and lists are compared by value, and Java compares those two by
+ * address.
+ */
 jv_binary(e: Expr) -> str {
     l = e.children.get(0)
     r = e.children.get(1)
@@ -597,7 +617,9 @@ jv_char_test(name: str) -> str {
     }
 }
 
-/// A `switch` takes an int, a string or an enum, so an int scrutinee is narrowed to one.
+/** A `switch` takes an int, a string or an enum, so an int scrutinee is
+ * narrowed to one.
+ */
 jv_scrutinee(e: Expr) -> str {
     on = e.children.get(0)
 
@@ -645,7 +667,9 @@ jv_action(e: Expr) -> str {
     }
 }
 
-/// `Red | Green` is one arm over two constants, which Java writes as two labels.
+/** `Red | Green` is one arm over two constants, which Java writes as two
+ * labels.
+ */
 jv_label(p: Expr) -> str {
     if p.kind == EBinary && p.text == "|" {
         "{jv_label(p.children.get(0))}, {jv_label(p.children.get(1))}"
@@ -677,7 +701,9 @@ jv_type(ty: str) -> str {
     }
 }
 
-/// Java holds nothing but a reference in a list, so a number in one is the boxed number.
+/** Java holds nothing but a reference in a list, so a number in one is the
+ * boxed number.
+ */
 jv_boxed(ty: str) -> str {
     named = jv_type(ty)
 
@@ -692,7 +718,9 @@ jv_boxed(ty: str) -> str {
     }
 }
 
-/// Every construct this target cannot honour, named the way the author wrote it.
+/** Every construct this target cannot honour, named the way the author wrote
+ * it.
+ */
 jvmemit_errors(m: Module) -> str[] =>
     jv_item_errors(m.items, jv_fn_names(m.items, 0, []), 0, [])
 
