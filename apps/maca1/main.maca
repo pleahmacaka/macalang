@@ -1818,9 +1818,12 @@ cache_store(key: str, out: str) -> bool {
 /** Which foreign header the emitted C reaches for is which library the link is
  * told about.
  */
+/** An include only counts at the start of a line: the compiler carries the FFI
+ * runtimes as string literals, and a literal must not link a library.
+ */
 link_flags(code: str) -> str[] {
-    sq = code.index_of("#include <sqlite3.h>") >= 0
-    py = code.index_of("#include <Python.h>") >= 0
+    sq = includes_line(code, "#include <sqlite3.h>")
+    py = includes_line(code, "#include <Python.h>")
 
     if sq && py {
         cc_flags() ++ sqlite_flags() ++ python_flags()
@@ -1879,6 +1882,9 @@ build_fresh(src: str, out: str) -> int {
 /** The C compiler is `$MACA_CC`, else `cc`, which is what lets one machine
  * build for another.
  */
+includes_line(code: str, want: str) -> bool =>
+    code.starts_with(want) || code.index_of("\n{want}") >= 0
+
 cc_run(args: str[]) -> int {
     named = env("MACA_CC")
     argv = named == "" ? ["cc"] : nonempty(named.split(" "), 0, [])
