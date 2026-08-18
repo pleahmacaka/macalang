@@ -72,10 +72,10 @@ import "scanner.c" """
 static TSLexer *maca_ts_lexer;
 static const bool *maca_ts_valid;
 
-long ts_look(void) { return (long)maca_ts_lexer->lookahead; }
-long ts_take(void) { maca_ts_lexer->advance(maca_ts_lexer, true); return 0; }
-long ts_ok(long sym) { return maca_ts_valid[sym] ? 1 : 0; }
-long ts_emit(long sym) { maca_ts_lexer->result_symbol = (TSSymbol)sym; return 0; }
+long long ts_look(void) { return (long long)maca_ts_lexer->lookahead; }
+long long ts_take(void) { maca_ts_lexer->advance(maca_ts_lexer, true); return 0; }
+long long ts_ok(long long sym) { return maca_ts_valid[sym] ? 1 : 0; }
+long long ts_emit(long long sym) { maca_ts_lexer->result_symbol = (TSSymbol)sym; return 0; }
 
 void *tree_sitter_maca_external_scanner_create(void) { return NULL; }
 void tree_sitter_maca_external_scanner_destroy(void *p) { (void)p; }

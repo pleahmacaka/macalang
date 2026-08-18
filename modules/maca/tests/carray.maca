@@ -19,7 +19,7 @@ test_a_record_element_is_read_back_as_a_record() {
 
     assert(out.index_of("(*(R*)xs.data[0]).n") >= 0,
            "the cell is a boxed R, so the field reads through the pointer")
-    assert(out.index_of("((long)xs.data[0]).n") < 0,
+    assert(out.index_of("((long long)xs.data[0]).n") < 0,
            "and never as an int, which is not a structure or union")
 }
 
@@ -28,8 +28,8 @@ test_a_record_element_is_boxed_into_the_cell() {
 
     assert(out.index_of("maca_box(sizeof(R), (R[]){{ (R){{ .n = 1 }} }})") >= 0,
            "a record is copied to the heap and the cell holds its address")
-    assert(out.index_of("(long)((R){{ .n = 1 }})") < 0,
-           "a struct is not an arithmetic type, so it cannot be cast to long")
+    assert(out.index_of("(long long)((R){{ .n = 1 }})") < 0,
+           "a struct is not an arithmetic type, so it cannot be cast to long long")
 }
 
 test_the_preamble_carries_the_box_helper() {
@@ -42,7 +42,7 @@ test_a_push_boxes_the_element_it_appends() {
 
     assert(out.index_of("maca_list_pushed(xs, maca_box(sizeof(R),") >= 0,
            "the appended cell is boxed like any other")
-    assert(out.index_of("(long)(R)") < 0,
+    assert(out.index_of("(long long)(R)") < 0,
            "the old lowering cast the struct itself, and lost its parentheses")
 }
 
@@ -66,7 +66,7 @@ test_a_float_element_is_boxed_because_a_cell_would_truncate_it() {
     out = c_for("f(xs: float[]) -> float => xs.get(0)")
 
     assert(out.index_of("(*(double*)xs.data[0])") >= 0,
-           "a double read out of a long cell would have lost its fraction")
+           "a double read out of a long long cell would have lost its fraction")
 }
 
 test_a_field_of_a_boxed_element_reads_through_the_box() {
@@ -81,16 +81,16 @@ test_a_string_element_is_read_back_as_a_string() {
 
     assert(out.index_of("(const char*)xs.data[0]") >= 0,
            "a str cell is a pointer, not an int")
-    assert(out.index_of("((long)xs.data[0])") < 0,
+    assert(out.index_of("((long long)xs.data[0])") < 0,
            "reading it as an int is what strlen refused")
 }
 
 test_an_int_list_is_left_exactly_as_it_was() {
     out = c_for("f(xs: int[], v: int) -> int[] => xs.push(xs.get(0) + v)")
 
-    assert(out.index_of("((long)xs.data[0])") >= 0,
+    assert(out.index_of("((long long)xs.data[0])") >= 0,
            "an int fits a cell, so it is read straight out")
-    assert(out.index_of("maca_list_pushed(xs, (long)(") >= 0,
+    assert(out.index_of("maca_list_pushed(xs, (long long)(") >= 0,
            "and written straight in, with no box in sight")
     assert(out.index_of("maca_box") == out.index_of("maca_box(int n,"),
            "the only mention of the helper is the preamble that defines it")
@@ -106,8 +106,8 @@ test_a_list_whose_element_is_unknown_is_still_a_list() {
 }
 
 test_an_int_is_the_width_stage_zero_gives_it() {
-    assert(c_for("f(n: int) -> int => n").index_of("long f(long n)") >= 0,
-           "a Maca int is 64 bits, which C spells long, not int")
+    assert(c_for("f(n: int) -> int => n").index_of("long long f(long long n)") >= 0,
+           "a Maca int is 64 bits, which C spells long long, because Windows makes long 32 bits")
     assert(c_for("f(t: str) -> int => int(t)").index_of("atol(t)") >= 0,
            "and reading one out of text is atol, because atoi wraps at 2^31")
     assert(c_for("main() -> int => 0").index_of("int main(") >= 0,
@@ -116,8 +116,8 @@ test_an_int_is_the_width_stage_zero_gives_it() {
 
 test_a_function_is_declared_before_any_body() {
     out = c_for("f() -> int => g() g() -> int => 1")
-    proto = out.index_of("long g();")
-    body = out.index_of("long f() {{")
+    proto = out.index_of("long long g();")
+    body = out.index_of("long long f() {{")
 
     assert(proto >= 0,
            "C wants a declaration before the call, so every function gets one")
@@ -128,7 +128,7 @@ test_a_function_is_declared_before_any_body() {
 test_a_prototype_carries_the_definitions_parameter_types() {
     out = c_for("f(a: str, b: int[]) -> int => 0")
 
-    assert(out.index_of("long f(const char* a, MacaList b);") >= 0,
+    assert(out.index_of("long long f(const char* a, MacaList b);") >= 0,
            "a prototype that disagreed with the definition is a conflict")
 }
 
@@ -224,9 +224,9 @@ test_a_fold_reads_the_cell_at_a_type_wider_than_a_cell() {
 test_a_main_that_takes_arguments_gets_a_c_shim() {
     out = c_for("main(args: str[]) -> int => args.length()")
 
-    assert(out.index_of("long maca_main(MacaList args)") >= 0,
+    assert(out.index_of("long long maca_main(MacaList args)") >= 0,
            "the Maca body keeps its list parameter, under another name")
-    assert(out.index_of("long maca_main(MacaList args);") >= 0,
+    assert(out.index_of("long long maca_main(MacaList args);") >= 0,
            "and the prototype is renamed with it, or the two would conflict")
     assert(out.index_of("int main(int argc, char** argv)"
                         ++ " {{ return maca_main(maca_args(argc, argv)); }}")
@@ -293,16 +293,16 @@ test_upper_copies_a_string_and_folds_a_single_character() {
 test_a_called_parameter_is_declared_as_a_closure() {
     out = c_for(Higher)
 
-    assert(out.index_of("long run(MacaList xs, MacaFn f)") >= 0,
+    assert(out.index_of("long long run(MacaList xs, MacaFn f)") >= 0,
            "the parameter carries a function and what it captured")
-    assert(out.index_of("long run(MacaList xs, MacaFn f);") >= 0,
+    assert(out.index_of("long long run(MacaList xs, MacaFn f);") >= 0,
            "and the prototype says the same, or the two would conflict")
-    assert(out.index_of("MacaList xs, long f") < 0,
+    assert(out.index_of("MacaList xs, long long f") < 0,
            "an int is not callable, which is what C said before")
     assert(out.index_of("run(xs, (MacaFn){{ (void*)p, (MacaList){{0, 0}} }})")
                >= 0,
            "a top-level name reaches it as a closure over nothing")
-    assert(out.index_of("long p(const char* c)") >= 0,
+    assert(out.index_of("long long p(const char* c)") >= 0,
            "the callee keeps its own signature, so the cast is not a lie")
 }
 
@@ -337,7 +337,7 @@ test_a_mapped_result_is_boxed_when_the_callee_returns_a_record() {
 
     assert(boxed.index_of("maca_box(sizeof(R), (R[]){{ w(") >= 0,
            "the callee's return type is what decides the cell's shape")
-    assert(flat.index_of("_r.data[_i] = (long)(n(") >= 0,
+    assert(flat.index_of("_r.data[_i] = (long long)(n(") >= 0,
            "an int fits a cell, so it is written straight in")
 }
 
@@ -348,11 +348,11 @@ test_a_string_element_is_found_by_content_and_not_by_address() {
 
     assert(out.index_of("maca_list_index_of_str(xs, w)") >= 0,
            "two equal strings at different addresses are the same element")
-    assert(out.index_of("maca_list_index_of(xs, (long)(w))") < 0,
+    assert(out.index_of("maca_list_index_of(xs, (long long)(w))") < 0,
            "comparing the cells compared the addresses, so every lookup missed")
     assert(has.index_of("(maca_list_index_of_str(xs, w) >= 0)") >= 0,
            "contains asks the same question, so it reads the same way")
-    assert(cells.index_of("maca_list_index_of(xs, (long)(v))") >= 0,
+    assert(cells.index_of("maca_list_index_of(xs, (long long)(v))") >= 0,
            "an int is its own value, so the cell comparison still stands")
     assert(c_for("f() -> int => 1")
                .index_of("maca_list_index_of_str(MacaList a,") >= 0,
@@ -486,12 +486,12 @@ test_the_last_str_methods_lower_to_the_c_library() {
 test_a_constant_is_emitted_once_at_file_scope() {
     out = c_for("Seed = 1000 f() -> int => Seed")
 
-    assert(out.index_of("static const long Seed = 1000;") >= 0,
+    assert(out.index_of("static const long long Seed = 1000;") >= 0,
            "a top-level binding is a definition, not a statement")
     assert(c_for("seed = 1000 f() -> int => seed")
-               .index_of("static long seed = 1000;") >= 0,
+               .index_of("static long long seed = 1000;") >= 0,
            "and a lowercase one is module state, which a body is allowed to assign")
-    assert(out.index_of("Seed = 1000") < out.index_of("long f("),
+    assert(out.index_of("Seed = 1000") < out.index_of("long long f("),
            "and stands before the function that reads it")
 }
 
@@ -528,20 +528,20 @@ test_a_list_edit_copies_rather_than_writing_through_the_receiver() {
     assert(c_for("f(xs: int[]) -> int[] => xs.reverse()")
                .index_of("maca_list_reverse(xs)") >= 0, "reverse")
     assert(c_for("f(xs: int[]) -> int[] => xs.insert(0, 9)")
-               .index_of("maca_list_insert(xs, 0, (long)(9))") >= 0, "insert")
+               .index_of("maca_list_insert(xs, 0, (long long)(9))") >= 0, "insert")
     assert(c_for("f(xs: int[]) -> int[] => xs.remove(0)")
                .index_of("maca_list_remove(xs, 0)") >= 0, "remove")
     assert(c_for("f(xs: int[]) -> int[] => xs.set(0, 9)")
-               .index_of("maca_list_set(xs, 0, (long)(9))") >= 0, "set")
+               .index_of("maca_list_set(xs, 0, (long long)(9))") >= 0, "set")
 }
 
 test_a_fold_over_a_list_reads_the_cell_at_the_elements_type() {
     total = c_for("f(xs: int[]) -> int => xs.sum()")
     least = c_for("f(xs: int[]) -> int => xs.min()")
 
-    assert(total.index_of("_a += ((long)_q.data[_qi])") >= 0,
+    assert(total.index_of("_a += ((long long)_q.data[_qi])") >= 0,
            "a sum accumulates the cell read as its own type")
-    assert(least.index_of("if (((long)_q.data[_qi]) < _a)") >= 0,
+    assert(least.index_of("if (((long long)_q.data[_qi]) < _a)") >= 0,
            "and min compares the same reading, not the raw cell")
 }
 
@@ -549,9 +549,9 @@ test_a_lambda_is_inlined_where_the_loop_needs_it() {
     kept = c_for("f(xs: int[]) -> int[] => xs.filter(v => v > 1)")
     folded = c_for("f(xs: int[]) -> int => xs.reduce(0, (a, b) => a + b)")
 
-    assert(kept.index_of("if (({{ long v = ((long)_m.data[_i]); (v > 1); }}))") >= 0,
+    assert(kept.index_of("if (({{ long long v = ((long long)_m.data[_i]); (v > 1); }}))") >= 0,
            "the predicate becomes a statement expression, not a call")
-    assert(folded.index_of("_acc = ({{ long a = _acc;") >= 0,
+    assert(folded.index_of("_acc = ({{ long long a = _acc;") >= 0,
            "and the reducer takes the accumulator as its first binder")
 }
 
@@ -570,7 +570,7 @@ test_a_for_binds_the_element_and_a_break_leaves() {
     each = c_for("f(xs: int[]) -> int {{ t = 0 for v in xs {{ t = t + v }} t }}")
     out = c_for("f(n: int) -> int {{ i = 0 while i < n {{ break }} i }}")
 
-    assert(each.index_of("long v = ((long)_f.data[_fi]);") >= 0,
+    assert(each.index_of("long long v = ((long long)_f.data[_fi]);") >= 0,
            "the binder is the element, read at the element's type")
     assert(out.index_of("break;") >= 0, "and a jump is the C keyword")
 }

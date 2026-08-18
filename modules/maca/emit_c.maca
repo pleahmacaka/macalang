@@ -5,7 +5,7 @@ import maca/styles
 quoted(s: str) -> str =>
     "\"" ++ s ++ "\""
 
-Reserved = " auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while bool class new delete this template typeof unix linux i386 abs bind clock close div exit free index link listen log open pow read remove stat strlen time write "
+Reserved = " auto break case char const continue default do double else enum extern float for goto if inline int long long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while bool class new delete this template typeof unix linux i386 abs bind clock close div exit free index link listen log open pow read remove stat strlen time write "
 
 c_id(name: str) -> str {
     if Reserved.index_of(" {name} ") >= 0 {
@@ -65,8 +65,8 @@ emit_for_range(e: Expr, over: Expr) -> str {
     lo = emit_expr(over.children.get(0))
     hi = emit_expr(over.children.get(1))
 
-    "{{ long _fl = {lo}; long _fh = {hi};"
-        ++ " for (long _fi = _fl; _fi < _fh; _fi++) {{ long"
+    "{{ long long _fl = {lo}; long long _fh = {hi};"
+        ++ " for (long long _fi = _fl; _fi < _fh; _fi++) {{ long long"
         ++ " {c_id(e.text)} = _fi; {block_stmts(e.stmts, 0)}}} }}"
 }
 
@@ -106,11 +106,11 @@ emit_spawn(call: Expr) -> str {
         "maca_spawn((MacaTask){task}, 0)"
     } else if n == 1 {
         "maca_spawn((MacaTask){task},"
-            ++ " (long)({emit_expr(call.children.get(0))}))"
+            ++ " (long long)({emit_expr(call.children.get(0))}))"
     } else {
         "maca_spawn2((MacaTask2){task},"
-            ++ " (long)({emit_expr(call.children.get(0))}),"
-            ++ " (long)({emit_expr(call.children.get(1))}))"
+            ++ " (long long)({emit_expr(call.children.get(0))}),"
+            ++ " (long long)({emit_expr(call.children.get(1))}))"
     }
 }
 
@@ -183,7 +183,7 @@ c_cell_of(el: str, code: str) -> str {
 
         "maca_box(sizeof({ct}), ({ct}[]){{ {code} }})"
     } else {
-        "(long)({code})"
+        "(long long)({code})"
     }
 }
 
@@ -203,7 +203,7 @@ c_uncell(el: str, code: str) -> str {
     } else if el == "str" {
         "((const char*)({code}))"
     } else {
-        "((long)({code}))"
+        "((long long)({code}))"
     }
 }
 
@@ -213,7 +213,7 @@ c_cell_at(recv: str, el: str, ix: str) -> str {
     } else if el == "str" {
         "((const char*){recv}.data[{ix}])"
     } else {
-        "((long){recv}.data[{ix}])"
+        "((long long){recv}.data[{ix}])"
     }
 }
 
@@ -258,14 +258,14 @@ emit_map_method(e: Expr, recv: str) -> str {
     }
 }
 
-/** Every cell is a long, so a read casts back to what the map was declared
+/** Every cell is a long long, so a read casts back to what the map was declared
  * over.
  */
 c_map_read(val: str, call: str) -> str {
     if c_boxed(val) {
         "(*({type_c(val)}*){call})"
     } else if val == "int" || val == "bool" {
-        "((long){call})"
+        "((long long){call})"
     } else {
         "((const char*){call})"
     }
@@ -428,13 +428,13 @@ emit_list_method(e: Expr, recv: str, el: str) -> str {
         "maca_list_remove({recv}, {arg1})"
     } else if e.text == "enumerate" {
         c_over(recv, "MacaList _r; _r.len = _q.len;"
-            ++ " _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long));"
+            ++ " _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long long));"
             ++ " {over} _r.data[_qi] = maca_box(sizeof(MacaEntry),"
             ++ " (MacaEntry[]){{ (MacaEntry){{ _qi, _q.data[_qi] }} }});"
             ++ " _r;")
     } else if e.text == "index_of_by" {
         c_over(recv, "int _a = -1; {over}"
-            ++ " if ({c_apply(e.children.get(1), el, cell, "long")})"
+            ++ " if ({c_apply(e.children.get(1), el, cell, "long long")})"
             ++ " {{ _a = _qi; break; }} _a;")
     } else if e.text == "sort_by" {
         emit_sort_by(e, recv, el)
@@ -457,10 +457,10 @@ emit_sort_by(e: Expr, recv: str, el: str) -> str {
     "({{ MacaList _s = {recv};"
         ++ " MacaList _r = maca_list_slice(_s, 0, _s.len);"
         ++ " {kt}* _k = ({kt}*)maca_cells((_r.len ? _r.len : 1)"
-        ++ " * (long)sizeof({kt}));"
+        ++ " * (long long)sizeof({kt}));"
         ++ " for (int _i = 0; _i < _r.len; _i++) _k[_i] = {got};"
         ++ " for (int _i = 1; _i < _r.len; _i++) {{"
-        ++ " long _v = _r.data[_i]; {kt} _kv = _k[_i]; int _j = _i - 1;"
+        ++ " long long _v = _r.data[_i]; {kt} _kv = _k[_i]; int _j = _i - 1;"
         ++ " while (_j >= 0 && {ahead}) {{ _r.data[_j + 1] = _r.data[_j];"
         ++ " _k[_j + 1] = _k[_j]; _j--; }}"
         ++ " _r.data[_j + 1] = _v; _k[_j + 1] = _kv; }} _r; }})"
@@ -533,7 +533,7 @@ emit_map(e: Expr) -> str {
                     c_apply(f, el, cell, type_c(c_elem_of(e.ty))))
 
     "({{ MacaList _m = {src}; MacaList _r; _r.len = _m.len;"
-        ++ " _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long));"
+        ++ " _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long long));"
         ++ " for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = {got};"
         ++ " _r; }})"
 }
@@ -542,10 +542,10 @@ emit_filter(e: Expr) -> str {
     src = emit_expr(e.children.get(0))
     el = c_elem_of(e.children.get(0).ty)
     cell = c_cell_at("_m", el, "_i")
-    kept = c_apply(e.children.get(1), el, cell, "long")
+    kept = c_apply(e.children.get(1), el, cell, "long long")
 
     "({{ MacaList _m = {src}; MacaList _r; _r.len = 0;"
-        ++ " _r.data = maca_cells((_m.len ? _m.len : 1) * sizeof(long));"
+        ++ " _r.data = maca_cells((_m.len ? _m.len : 1) * sizeof(long long));"
         ++ " for (int _i = 0; _i < _m.len; _i++)"
         ++ " if ({kept}) _r.data[_r.len++] = _m.data[_i]; _r; }})"
 }
@@ -789,7 +789,7 @@ c_int_of(ty: str, args: str) -> str {
     if ty == "int" {
         args
     } else if ty == "float" || ty == "bool" {
-        "((long)({args}))"
+        "((long long)({args}))"
     } else {
         "atol({args})"
     }
@@ -1333,7 +1333,7 @@ type_c(ty: str) -> str {
     } else if c_sized_float(ty) {
         ty == "f32" ? "float" : "double"
     } else if ty == "" || ty == "int" || ty == "bool" || c_sized_number(ty) {
-        "long"
+        "long long"
     } else {
         ty
     }
@@ -1363,7 +1363,7 @@ c_name(s: Stmt) -> str {
  * answers text.
  */
 c_ret(s: Stmt) -> str {
-    if s.name == "main" && !c_shimmed(s) && type_c(s.ret) == "long" {
+    if s.name == "main" && !c_shimmed(s) && type_c(s.ret) == "long long" {
         "int"
     } else {
         type_c(s.ret)
@@ -1454,14 +1454,14 @@ guessed_c_type(e: Expr) -> str =>
         EBinary => concat_c_type(e)
         EMethod => method_c_type(e)
         ECall   => call_c_type(e)
-        _       => "long"
+        _       => "long long"
     }
 
 call_c_type(e: Expr) -> str {
     if c_str_call(e.text) {
         "const char*"
     } else {
-        "long"
+        "long long"
     }
 }
 
@@ -1480,7 +1480,7 @@ method_c_type(e: Expr) -> str {
     } else if c_texty_method(e.text) {
         "const char*"
     } else {
-        "long"
+        "long long"
     }
 }
 
@@ -1502,7 +1502,7 @@ concat_c_type(e: Expr) -> str {
     } else if e.text == "++" {
         "const char*"
     } else {
-        "long"
+        "long long"
     }
 }
 
@@ -1590,17 +1590,17 @@ c_preamble() -> str =>
         ++ "static char* maca_full_path(const char* p, char* r) {{ return"
         ++ " realpath(p, r); }}\n#endif\n" ++
     "typedef float f32x4 __attribute__((vector_size(16)));\ntypedef float f32x8 __attribute__((vector_size(32)));\ntypedef double f64x2 __attribute__((vector_size(16)));\ntypedef double f64x4 __attribute__((vector_size(32)));\ntypedef int i32x4 __attribute__((vector_size(16)));\ntypedef int i32x8 __attribute__((vector_size(32)));\n" ++
-    "typedef struct maca_hdr {{ long size; long used; }} maca_hdr;\nstatic long maca_allocs = 0;\n" ++
-    "static long* maca_cells(long bytes) {{ long n = bytes > 0 ? bytes : (long)sizeof(long); maca_hdr* h = (maca_hdr*)malloc(sizeof(maca_hdr) + (size_t)n); if (!h) {{ fputs(\"out of memory\\n\", stderr); exit(1); }} h->size = n; h->used = n / (long)sizeof(long); maca_allocs++; return (long*)(h + 1); }}\n" ++
-    "static long maca_alloc_count(void) {{ return maca_allocs; }}\nstatic long maca_reuse_count(void) {{ return 0; }}\n" ++
+    "typedef struct maca_hdr {{ long long size; long long used; }} maca_hdr;\nstatic long long maca_allocs = 0;\n" ++
+    "static long long* maca_cells(long long bytes) {{ long long n = bytes > 0 ? bytes : (long long)sizeof(long long); maca_hdr* h = (maca_hdr*)malloc(sizeof(maca_hdr) + (size_t)n); if (!h) {{ fputs(\"out of memory\\n\", stderr); exit(1); }} h->size = n; h->used = n / (long long)sizeof(long long); maca_allocs++; return (long long*)(h + 1); }}\n" ++
+    "static long long maca_alloc_count(void) {{ return maca_allocs; }}\nstatic long long maca_reuse_count(void) {{ return 0; }}\n" ++
     "static char* maca_cat(const char* a, const char* b) {{ char* r = malloc(strlen(a) + strlen(b) + 1); strcpy(r, a); strcat(r, b); return r; }}\n" ++
-    "static char* maca_int_to_str(long n) {{ char* r = malloc(24); snprintf(r, 24, \"%ld\", n); return r; }}\n" ++
+    "static char* maca_int_to_str(long long n) {{ char* r = malloc(24); snprintf(r, 24, \"%lld\", n); return r; }}\n" ++
     "static char* maca_float_to_str(double x) {{ char* r = malloc(32); if (x == (double)(long long)x && x < 1e15 && x > -1e15) snprintf(r, 32, \"%.1f\", x); else snprintf(r, 32, \"%g\", x); return r; }}\n" ++
     "static char* maca_fixed(double x, int n) {{ if (n < 0) n = 0; if (n > 17) n = 17; int need = snprintf(NULL, 0, \"%.*f\", n, x); char* r = malloc((size_t)need + 1); snprintf(r, (size_t)need + 1, \"%.*f\", n, x); return r; }}\n" ++
     "static const char* maca_bool_to_str(int b) {{ return b ? \"true\" : \"false\"; }}\n" ++
     "static char* maca_upper(const char* s) {{ size_t n = strlen(s); char* r = malloc(n + 1); for (size_t i = 0; i < n; i++) r[i] = toupper((unsigned char)s[i]); r[n] = 0; return r; }}\n" ++
-    "typedef struct {{ long* data; int len; }} MacaList;\n" ++
-    "typedef struct {{ long index_mc; long value; }} MacaEntry;\n" ++
+    "typedef struct {{ long long* data; int len; }} MacaList;\n" ++
+    "typedef struct {{ long long index_mc; long long value; }} MacaEntry;\n" ++
     "typedef struct {{ void* fn; MacaList env; }} MacaFn;\n" ++
     "typedef struct {{ MacaList keys; MacaList vals; }} MacaMap;\n" ++
     "static MacaMap maca_map_new(void) {{ MacaMap m; m.keys.data = NULL; m.keys.len = 0; m.vals.data = NULL; m.vals.len = 0; return m; }}\n" ++
@@ -1608,35 +1608,35 @@ c_preamble() -> str =>
     "static int maca_map_has(MacaMap m, const char* k) {{ return maca_map_at(m, k) >= 0; }}\n" ++
     "static MacaList maca_list_sorted(MacaList a, int kind);\nstatic MacaList maca_map_keys(MacaMap m) {{ return maca_list_sorted(m.keys, 1); }}\n" ++
     "static MacaList maca_map_vals(MacaMap m) {{ return m.vals; }}\n" ++
-    "static long maca_map_or(MacaMap m, const char* k, long d) {{ int i = maca_map_at(m, k); return i < 0 ? d : m.vals.data[i]; }}\n" ++
-    "static long maca_map_get(MacaMap m, const char* k) {{ return maca_map_or(m, k, 0); }}\n" ++
-    "static MacaMap maca_map_remove(MacaMap m, const char* k) {{ int at = maca_map_at(m, k); if (at < 0) return m; MacaMap r; r.keys.len = m.keys.len - 1; r.vals.len = r.keys.len; r.keys.data = maca_cells((r.keys.len ? r.keys.len : 1) * sizeof(long)); r.vals.data = maca_cells((r.vals.len ? r.vals.len : 1) * sizeof(long)); int w = 0; for (int i = 0; i < m.keys.len; i++) {{ if (i == at) continue; r.keys.data[w] = m.keys.data[i]; r.vals.data[w] = m.vals.data[i]; w++; }} return r; }}\n" ++
-    "static MacaMap maca_map_set(MacaMap m, const char* k, long v) {{ int i = maca_map_at(m, k); MacaMap r; if (i >= 0) {{ r = m; r.vals.data = maca_cells((m.vals.len ? m.vals.len : 1) * sizeof(long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long)); r.vals.data[i] = v; return r; }} r.keys.len = m.keys.len + 1; r.vals.len = m.vals.len + 1; r.keys.data = maca_cells(r.keys.len * sizeof(long)); r.vals.data = maca_cells(r.vals.len * sizeof(long)); memcpy(r.keys.data, m.keys.data, m.keys.len * sizeof(long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long)); r.keys.data[m.keys.len] = (long)k; r.vals.data[m.vals.len] = v; return r; }}\n" ++
-    "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = n > 0 ? maca_cells(n * sizeof(long)) : 0; l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long); va_end(ap); return l; }}\n" ++
-    "static MacaList maca_list_cat(MacaList a, MacaList b) {{ MacaList l; l.len = a.len + b.len; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data, a.len * sizeof(long)); memcpy(l.data + a.len, b.data, b.len * sizeof(long)); return l; }}\n" ++
-    "static MacaList maca_list_pushed(MacaList a, long v) {{ maca_hdr* h = a.data ? ((maca_hdr*)a.data) - 1 : 0; long room = h ? h->size / (long)sizeof(long) : 0; if (!h || a.len != h->used || a.len >= room) {{ long want = a.len * 2 > 8 ? a.len * 2 : 8; long* g = maca_cells(want * (long)sizeof(long)); if (a.len > 0) memcpy(g, a.data, (size_t)a.len * sizeof(long)); a.data = g; h = ((maca_hdr*)g) - 1; }} a.data[a.len] = v; a.len++; h->used = a.len; return a; }}\n" ++
-    "static MacaList maca_list_slice(MacaList a, int lo, int hi) {{ if (lo < 0) lo = 0; if (hi > a.len) hi = a.len; if (hi < lo) hi = lo; MacaList l; l.len = hi - lo; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data + lo, l.len * sizeof(long)); return l; }}\n" ++
-    "static int maca_list_index_of(MacaList a, long v) {{ for (int i = 0; i < a.len; i++) if (a.data[i] == v) return i; return -1; }}\n" ++
+    "static long long maca_map_or(MacaMap m, const char* k, long long d) {{ int i = maca_map_at(m, k); return i < 0 ? d : m.vals.data[i]; }}\n" ++
+    "static long long maca_map_get(MacaMap m, const char* k) {{ return maca_map_or(m, k, 0); }}\n" ++
+    "static MacaMap maca_map_remove(MacaMap m, const char* k) {{ int at = maca_map_at(m, k); if (at < 0) return m; MacaMap r; r.keys.len = m.keys.len - 1; r.vals.len = r.keys.len; r.keys.data = maca_cells((r.keys.len ? r.keys.len : 1) * sizeof(long long)); r.vals.data = maca_cells((r.vals.len ? r.vals.len : 1) * sizeof(long long)); int w = 0; for (int i = 0; i < m.keys.len; i++) {{ if (i == at) continue; r.keys.data[w] = m.keys.data[i]; r.vals.data[w] = m.vals.data[i]; w++; }} return r; }}\n" ++
+    "static MacaMap maca_map_set(MacaMap m, const char* k, long long v) {{ int i = maca_map_at(m, k); MacaMap r; if (i >= 0) {{ r = m; r.vals.data = maca_cells((m.vals.len ? m.vals.len : 1) * sizeof(long long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long long)); r.vals.data[i] = v; return r; }} r.keys.len = m.keys.len + 1; r.vals.len = m.vals.len + 1; r.keys.data = maca_cells(r.keys.len * sizeof(long long)); r.vals.data = maca_cells(r.vals.len * sizeof(long long)); memcpy(r.keys.data, m.keys.data, m.keys.len * sizeof(long long)); memcpy(r.vals.data, m.vals.data, m.vals.len * sizeof(long long)); r.keys.data[m.keys.len] = (long long)k; r.vals.data[m.vals.len] = v; return r; }}\n" ++
+    "static MacaList maca_listv(int n, ...) {{ MacaList l; l.data = n > 0 ? maca_cells(n * sizeof(long long)) : 0; l.len = n; va_list ap; va_start(ap, n); for (int i = 0; i < n; i++) l.data[i] = va_arg(ap, long long); va_end(ap); return l; }}\n" ++
+    "static MacaList maca_list_cat(MacaList a, MacaList b) {{ MacaList l; l.len = a.len + b.len; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long long)); memcpy(l.data, a.data, a.len * sizeof(long long)); memcpy(l.data + a.len, b.data, b.len * sizeof(long long)); return l; }}\n" ++
+    "static MacaList maca_list_pushed(MacaList a, long long v) {{ maca_hdr* h = a.data ? ((maca_hdr*)a.data) - 1 : 0; long long room = h ? h->size / (long long)sizeof(long long) : 0; if (!h || a.len != h->used || a.len >= room) {{ long long want = a.len * 2 > 8 ? a.len * 2 : 8; long long* g = maca_cells(want * (long long)sizeof(long long)); if (a.len > 0) memcpy(g, a.data, (size_t)a.len * sizeof(long long)); a.data = g; h = ((maca_hdr*)g) - 1; }} a.data[a.len] = v; a.len++; h->used = a.len; return a; }}\n" ++
+    "static MacaList maca_list_slice(MacaList a, int lo, int hi) {{ if (lo < 0) lo = 0; if (hi > a.len) hi = a.len; if (hi < lo) hi = lo; MacaList l; l.len = hi - lo; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long long)); memcpy(l.data, a.data + lo, l.len * sizeof(long long)); return l; }}\n" ++
+    "static int maca_list_index_of(MacaList a, long long v) {{ for (int i = 0; i < a.len; i++) if (a.data[i] == v) return i; return -1; }}\n" ++
     "static int maca_list_index_of_str(MacaList a, const char* v) {{ for (int i = 0; i < a.len; i++) if (strcmp((const char*)a.data[i], v) == 0) return i; return -1; }}\n" ++
     "static int maca_str_index_of(const char* a, const char* b) {{ const char* p = strstr(a, b); return p ? (int)(p - a) : -1; }}\n" ++
     "static char* maca_str_slice(const char* s, int from, int to) {{ int n = (int)strlen(s); if (from < 0) from = 0; if (to > n) to = n; if (to < from) to = from; int m = to - from; char* r = malloc(m + 1); memcpy(r, s + from, m); r[m] = 0; return r; }}\n" ++
     "static int maca_ends_with(const char* s, const char* suf) {{ size_t n = strlen(s), m = strlen(suf); return m <= n && memcmp(s + n - m, suf, m) == 0; }}\n" ++
     "static char* maca_list_join(MacaList a, const char* sep) {{ size_t n = 1; for (int i = 0; i < a.len; i++) n += strlen((const char*)a.data[i]) + strlen(sep); char* r = malloc(n); r[0] = 0; for (int i = 0; i < a.len; i++) {{ if (i) strcat(r, sep); strcat(r, (const char*)a.data[i]); }} return r; }}\n" ++
-    "static long maca_box(int n, const void* p) {{ void* r = malloc(n); memcpy(r, p, n); return (long)r; }}\n" ++
-    "static MacaList maca_chars(const char* s) {{ int n = (int)strlen(s); MacaList l; l.len = n; l.data = maca_cells((n ? n : 1) * sizeof(long)); for (int i = 0; i < n; i++) {{ char* c = malloc(2); c[0] = s[i]; c[1] = 0; l.data[i] = (long)c; }} return l; }}\n" ++
-    "static MacaList maca_args(int argc, char** argv) {{ MacaList l; l.len = argc - 1; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long)); for (int i = 0; i < l.len; i++) l.data[i] = (long)argv[i + 1]; return l; }}\n" ++
-    "static char* maca_read_file(const char* path) {{ struct stat st; if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {{ char* e = malloc(1); e[0] = 0; return e; }} FILE* f = fopen(path, \"rb\"); if (!f) {{ char* e = malloc(1); e[0] = 0; return e; }} fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = malloc(n + 1); size_t got = fread(r, 1, n, f); r[got] = 0; fclose(f); return r; }}\n" ++
+    "static long long maca_box(int n, const void* p) {{ void* r = malloc(n); memcpy(r, p, n); return (long long)r; }}\n" ++
+    "static MacaList maca_chars(const char* s) {{ int n = (int)strlen(s); MacaList l; l.len = n; l.data = maca_cells((n ? n : 1) * sizeof(long long)); for (int i = 0; i < n; i++) {{ char* c = malloc(2); c[0] = s[i]; c[1] = 0; l.data[i] = (long long)c; }} return l; }}\n" ++
+    "static MacaList maca_args(int argc, char** argv) {{ MacaList l; l.len = argc - 1; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long long)); for (int i = 0; i < l.len; i++) l.data[i] = (long long)argv[i + 1]; return l; }}\n" ++
+    "static char* maca_read_file(const char* path) {{ struct stat st; if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {{ char* e = malloc(1); e[0] = 0; return e; }} FILE* f = fopen(path, \"rb\"); if (!f) {{ char* e = malloc(1); e[0] = 0; return e; }} fseek(f, 0, SEEK_END); long long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = malloc(n + 1); size_t got = fread(r, 1, n, f); r[got] = 0; fclose(f); return r; }}\n" ++
     "static int maca_write_file(const char* path, const char* text) {{ FILE* f = fopen(path, \"wb\"); if (!f) return 0; fputs(text, f); fclose(f); return 1; }}\n" ++
     "static char* maca_str_at(const char* s, int i) {{ char* r = malloc(2); r[0] = (i >= 0 && i < (int)strlen(s)) ? s[i] : 0; r[1] = 0; return r; }}\n" ++
-    "static MacaList maca_range(int lo, int hi) {{ MacaList l; l.len = hi > lo ? hi - lo : 0; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long)); for (int i = 0; i < l.len; i++) l.data[i] = lo + i; return l; }}\n" ++
-    "static MacaList maca_list_reverse(MacaList a) {{ MacaList l = maca_list_slice(a, 0, a.len); for (int i = 0; i < l.len / 2; i++) {{ long t = l.data[i]; l.data[i] = l.data[l.len - 1 - i]; l.data[l.len - 1 - i] = t; }} return l; }}\n" ++
-    "static int maca_cmp_cell(const void* a, const void* b) {{ long x = *(const long*)a, y = *(const long*)b; return (x > y) - (x < y); }}\n" ++
-    "static int maca_cmp_cell_str(const void* a, const void* b) {{ return strcmp((const char*)*(const long*)a, (const char*)*(const long*)b); }}\n" ++
-    "static int maca_cmp_cell_float(const void* a, const void* b) {{ double x = *(double*)*(const long*)a, y = *(double*)*(const long*)b; return (x > y) - (x < y); }}\n" ++
-    "static MacaList maca_list_sorted(MacaList a, int kind) {{ MacaList l = maca_list_slice(a, 0, a.len); if (l.len > 1) qsort(l.data, (size_t)l.len, sizeof(long), kind == 1 ? maca_cmp_cell_str : kind == 2 ? maca_cmp_cell_float : maca_cmp_cell); return l; }}\n" ++
-    "static MacaList maca_list_set(MacaList a, int at, long v) {{ MacaList l = maca_list_slice(a, 0, a.len); if (at >= 0 && at < l.len) l.data[at] = v; return l; }}\n" ++
-    "static MacaList maca_list_insert(MacaList a, int at, long v) {{ if (at < 0) at = 0; if (at > a.len) at = a.len; MacaList l; l.len = a.len + 1; l.data = maca_cells((size_t)l.len * sizeof(long)); memcpy(l.data, a.data, (size_t)at * sizeof(long)); l.data[at] = v; memcpy(l.data + at + 1, a.data + at, (size_t)(a.len - at) * sizeof(long)); return l; }}\n" ++
-    "static MacaList maca_list_remove(MacaList a, int at) {{ if (at < 0 || at >= a.len) return maca_list_slice(a, 0, a.len); MacaList l; l.len = a.len - 1; l.data = maca_cells((size_t)(l.len ? l.len : 1) * sizeof(long)); memcpy(l.data, a.data, (size_t)at * sizeof(long)); memcpy(l.data + at, a.data + at + 1, (size_t)(l.len - at) * sizeof(long)); return l; }}\n" ++
+    "static MacaList maca_range(int lo, int hi) {{ MacaList l; l.len = hi > lo ? hi - lo : 0; l.data = maca_cells((l.len ? l.len : 1) * sizeof(long long)); for (int i = 0; i < l.len; i++) l.data[i] = lo + i; return l; }}\n" ++
+    "static MacaList maca_list_reverse(MacaList a) {{ MacaList l = maca_list_slice(a, 0, a.len); for (int i = 0; i < l.len / 2; i++) {{ long long t = l.data[i]; l.data[i] = l.data[l.len - 1 - i]; l.data[l.len - 1 - i] = t; }} return l; }}\n" ++
+    "static int maca_cmp_cell(const void* a, const void* b) {{ long long x = *(const long long*)a, y = *(const long long*)b; return (x > y) - (x < y); }}\n" ++
+    "static int maca_cmp_cell_str(const void* a, const void* b) {{ return strcmp((const char*)*(const long long*)a, (const char*)*(const long long*)b); }}\n" ++
+    "static int maca_cmp_cell_float(const void* a, const void* b) {{ double x = *(double*)*(const long long*)a, y = *(double*)*(const long long*)b; return (x > y) - (x < y); }}\n" ++
+    "static MacaList maca_list_sorted(MacaList a, int kind) {{ MacaList l = maca_list_slice(a, 0, a.len); if (l.len > 1) qsort(l.data, (size_t)l.len, sizeof(long long), kind == 1 ? maca_cmp_cell_str : kind == 2 ? maca_cmp_cell_float : maca_cmp_cell); return l; }}\n" ++
+    "static MacaList maca_list_set(MacaList a, int at, long long v) {{ MacaList l = maca_list_slice(a, 0, a.len); if (at >= 0 && at < l.len) l.data[at] = v; return l; }}\n" ++
+    "static MacaList maca_list_insert(MacaList a, int at, long long v) {{ if (at < 0) at = 0; if (at > a.len) at = a.len; MacaList l; l.len = a.len + 1; l.data = maca_cells((size_t)l.len * sizeof(long long)); memcpy(l.data, a.data, (size_t)at * sizeof(long long)); l.data[at] = v; memcpy(l.data + at + 1, a.data + at, (size_t)(a.len - at) * sizeof(long long)); return l; }}\n" ++
+    "static MacaList maca_list_remove(MacaList a, int at) {{ if (at < 0 || at >= a.len) return maca_list_slice(a, 0, a.len); MacaList l; l.len = a.len - 1; l.data = maca_cells((size_t)(l.len ? l.len : 1) * sizeof(long long)); memcpy(l.data, a.data, (size_t)at * sizeof(long long)); memcpy(l.data + at, a.data + at + 1, (size_t)(l.len - at) * sizeof(long long)); return l; }}\n" ++
     "static char* maca_trim(const char* s) {{ const char* a = s; while (*a == ' ' || *a == '\\t' || *a == '\\n' || *a == '\\r') a++; const char* b = s + strlen(s); while (b > a && (b[-1] == ' ' || b[-1] == '\\t' || b[-1] == '\\n' || b[-1] == '\\r')) b--; size_t n = (size_t)(b - a); char* r = malloc(n + 1); memcpy(r, a, n); r[n] = 0; return r; }}\n" ++
     "static char* maca_lower(const char* s) {{ size_t n = strlen(s); char* r = malloc(n + 1); for (size_t i = 0; i < n; i++) r[i] = tolower((unsigned char)s[i]); r[n] = 0; return r; }}\n" ++
     "static int maca_starts_with(const char* s, const char* p) {{ size_t n = strlen(p); return strlen(s) >= n && memcmp(s, p, n) == 0; }}\n" ++
@@ -1645,7 +1645,7 @@ c_preamble() -> str =>
     "static char* maca_replace(const char* s, const char* from, const char* to) {{ if (!*from) return maca_cat(s, \"\"); size_t lf = strlen(from), lt = strlen(to), hits = 0; for (const char* p = strstr(s, from); p; p = strstr(p + lf, from)) hits++; char* r = malloc(strlen(s) + hits * (lt > lf ? lt - lf : 0) + 1); char* w = r; const char* p = s; for (;;) {{ const char* hit = strstr(p, from); if (!hit) {{ strcpy(w, p); break; }} memcpy(w, p, (size_t)(hit - p)); w += hit - p; memcpy(w, to, lt); w += lt; p = hit + lf; }} return r; }}\n" ++
     "static char* maca_pad(const char* s, int w, const char* p, int at_start) {{ if (!*p) p = \" \"; size_t len = strlen(s); if (w <= 0 || (size_t)w <= len) return maca_cat(s, \"\"); size_t fill = (size_t)w - len, pl = strlen(p); char* r = malloc((size_t)w + 1); char* into = at_start ? r : r + len; for (size_t i = 0; i < fill; i++) into[i] = p[i % pl]; memcpy(at_start ? r + fill : r, s, len); r[(size_t)w] = 0; return r; }}\n" ++
     "static char* maca_pad_start(const char* s, int w, const char* p) {{ return maca_pad(s, w, p, 1); }}\nstatic char* maca_pad_end(const char* s, int w, const char* p) {{ return maca_pad(s, w, p, 0); }}\nstatic char* maca_pad_center(const char* s, int w, const char* p) {{ if (!*p) p = \" \"; size_t len = strlen(s); if (w <= 0 || (size_t)w <= len) return maca_cat(s, \"\"); size_t fill = (size_t)w - len, left = fill / 2, pl = strlen(p); char* r = malloc((size_t)w + 1); for (size_t i = 0; i < left; i++) r[i] = p[i % pl]; memcpy(r + left, s, len); for (size_t i = left + len; i < (size_t)w; i++) r[i] = p[(i - left - len) % pl]; r[(size_t)w] = 0; return r; }}\n" ++
-    "static MacaList maca_split(const char* s, const char* sep) {{ MacaList l; int cap = 8; l.len = 0; l.data = maca_cells(cap * sizeof(long)); if (!*sep) {{ l.data[l.len++] = (long)maca_cat(s, \"\"); return l; }} size_t ls = strlen(sep); const char* p = s; for (;;) {{ if (l.len == cap) {{ cap *= 2; long* d = maca_cells(cap * sizeof(long)); memcpy(d, l.data, (size_t)l.len * sizeof(long)); l.data = d; }} const char* hit = strstr(p, sep); if (!hit) {{ l.data[l.len++] = (long)maca_str_slice(p, 0, (int)strlen(p)); break; }} l.data[l.len++] = (long)maca_str_slice(p, 0, (int)(hit - p)); p = hit + ls; }} return l; }}\n" ++
+    "static MacaList maca_split(const char* s, const char* sep) {{ MacaList l; int cap = 8; l.len = 0; l.data = maca_cells(cap * sizeof(long long)); if (!*sep) {{ l.data[l.len++] = (long long)maca_cat(s, \"\"); return l; }} size_t ls = strlen(sep); const char* p = s; for (;;) {{ if (l.len == cap) {{ cap *= 2; long long* d = maca_cells(cap * sizeof(long long)); memcpy(d, l.data, (size_t)l.len * sizeof(long long)); l.data = d; }} const char* hit = strstr(p, sep); if (!hit) {{ l.data[l.len++] = (long long)maca_str_slice(p, 0, (int)strlen(p)); break; }} l.data[l.len++] = (long long)maca_str_slice(p, 0, (int)(hit - p)); p = hit + ls; }} return l; }}\n" ++
     "static int maca_failed_count = 0;\nstatic int maca_failures(void) {{ return maca_failed_count; }}\n" ++
     "static int maca_assert(int cond, const char* msg) {{ if (cond) return 1; maca_failed_count++; fprintf(stderr, \"assertion failed: %s\\n\", msg && *msg ? msg : \"(no message)\"); return 0; }}\n" ++
     "static int maca_assert_eq(const char* got, const char* want, const char* msg) {{ if (!got) got = \"\"; if (!want) want = \"\"; if (strcmp(got, want) == 0) return 1; maca_failed_count++; fprintf(stderr, \"assertion failed: %s\\n  got:  %s\\n  want: %s\\n\", msg && *msg ? msg : \"(no message)\", got, want); return 0; }}\n" ++
@@ -1653,16 +1653,16 @@ c_preamble() -> str =>
     "static char* maca_env(const char* name) {{ const char* v = getenv(name); return maca_cat(v ? v : \"\", \"\"); }}\nstatic char* maca_cwd(void) {{ char* r = malloc(4096); if (!getcwd(r, 4096)) r[0] = 0; return r; }}\n" ++
     "static int maca_chdir(const char* p) {{ return chdir(p) == 0; }}\nstatic int maca_is_tty(void) {{ return isatty(1); }}\n" ++
     "static int maca_file_exists(const char* p) {{ struct stat st; return stat(p, &st) == 0; }}\nstatic int maca_is_dir(const char* p) {{ struct stat st; return stat(p, &st) == 0 && S_ISDIR(st.st_mode); }}\n" ++
-    "static long maca_file_size(const char* p) {{ struct stat st; return stat(p, &st) == 0 ? (long)st.st_size : -1; }}\nstatic long maca_modified_ms(const char* p) {{ struct stat st; return stat(p, &st) == 0 ? (long)(st.st_mtime * 1000) : -1; }}\n" ++
+    "static long long maca_file_size(const char* p) {{ struct stat st; return stat(p, &st) == 0 ? (long long)st.st_size : -1; }}\nstatic long long maca_modified_ms(const char* p) {{ struct stat st; return stat(p, &st) == 0 ? (long long)(st.st_mtime * 1000) : -1; }}\n" ++
     "static int maca_make_dir(const char* p) {{ char* d = maca_cat(p, \"\"); for (char* q = d + 1; *q; q++) if (*q == '/') {{ *q = 0; maca_mkdir(d); *q = '/'; }} maca_mkdir(d); return maca_is_dir(d); }}\n" ++
     "static int maca_remove_file(const char* p) {{ return unlink(p) == 0; }}\nstatic int maca_remove_dir(const char* p) {{ DIR* d = opendir(p); if (!d) return 0; struct dirent* it; while ((it = readdir(d))) {{ if (strcmp(it->d_name, \".\") == 0 || strcmp(it->d_name, \"..\") == 0) continue; char* c = maca_cat(p, maca_cat(\"/\", it->d_name)); if (maca_is_dir(c)) maca_remove_dir(c); else maca_remove_file(c); }} closedir(d); return rmdir(p) == 0; }}\n" ++
     "static int maca_copy_bytes(const char* src, const char* dst) {{ FILE* a = fopen(src, \"rb\"); if (!a) return 0; FILE* b = fopen(dst, \"wb\"); if (!b) {{ fclose(a); return 0; }} char buf[8192]; size_t n; while ((n = fread(buf, 1, sizeof buf, a)) > 0) fwrite(buf, 1, n, b); fclose(a); fclose(b); return 1; }}\n" ++
-    "static MacaList maca_list_dir(const char* p) {{ MacaList l; l.len = 0; int cap = 16; l.data = maca_cells((size_t)cap * sizeof(long)); DIR* d = opendir(p); if (!d) return l; struct dirent* it; while ((it = readdir(d))) {{ if (strcmp(it->d_name, \".\") == 0 || strcmp(it->d_name, \"..\") == 0) continue; if (l.len == cap) {{ cap *= 2; long* g = maca_cells((size_t)cap * sizeof(long)); memcpy(g, l.data, (size_t)l.len * sizeof(long)); l.data = g; }} l.data[l.len++] = (long)maca_cat(it->d_name, \"\"); }} closedir(d); if (l.len > 1) qsort(l.data, (size_t)l.len, sizeof(long), maca_cmp_cell_str); return l; }}\n" ++
+    "static MacaList maca_list_dir(const char* p) {{ MacaList l; l.len = 0; int cap = 16; l.data = maca_cells((size_t)cap * sizeof(long long)); DIR* d = opendir(p); if (!d) return l; struct dirent* it; while ((it = readdir(d))) {{ if (strcmp(it->d_name, \".\") == 0 || strcmp(it->d_name, \"..\") == 0) continue; if (l.len == cap) {{ cap *= 2; long long* g = maca_cells((size_t)cap * sizeof(long long)); memcpy(g, l.data, (size_t)l.len * sizeof(long long)); l.data = g; }} l.data[l.len++] = (long long)maca_cat(it->d_name, \"\"); }} closedir(d); if (l.len > 1) qsort(l.data, (size_t)l.len, sizeof(long long), maca_cmp_cell_str); return l; }}\n" ++
     "static char* maca_real_path(const char* p) {{ char* r = malloc(4096); if (!maca_full_path(p, r)) return maca_cat(p, \"\"); return r; }}\n" ++
     "static char* maca_path_join(const char* a, const char* b) {{ if (!*a) return maca_cat(b, \"\"); if (!*b) return maca_cat(a, \"\"); return a[strlen(a) - 1] == '/' ? maca_cat(a, b) : maca_cat(a, maca_cat(\"/\", b)); }}\n" ++
-    "static long maca_now_ms(void) {{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000); }}\n" ++
+    "static long long maca_now_ms(void) {{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long long)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000); }}\n" ++
     "static char* maca_now_iso(void) {{ time_t t = time(NULL); struct tm g; maca_gmtime(&t, &g); char* r = malloc(32); strftime(r, 32, \"%Y-%m-%dT%H:%M:%SZ\", &g); return r; }}\n" ++
-    "static char* maca_format_time(long ms, const char* fmt) {{ time_t t = (time_t)(ms / 1000); struct tm g; maca_gmtime(&t, &g); char* r = malloc(128); if (!strftime(r, 128, fmt, &g)) r[0] = 0; return r; }}\n" ++
+    "static char* maca_format_time(long long ms, const char* fmt) {{ time_t t = (time_t)(ms / 1000); struct tm g; maca_gmtime(&t, &g); char* r = malloc(128); if (!strftime(r, 128, fmt, &g)) r[0] = 0; return r; }}\n" ++
     "static void maca_sleep_ms(int ms) {{ if (ms > 0) usleep((unsigned)ms * 1000); }}\n" ++
     "static char* maca_input(const char* prompt) {{ if (prompt && *prompt) {{ printf(\"%s\", prompt); fflush(stdout); }} size_t cap = 128, n = 0; char* b = malloc(cap); int c; while ((c = fgetc(stdin)) != EOF && c != '\\n') {{ if (n + 1 >= cap) {{ cap *= 2; char* g = malloc(cap); memcpy(g, b, n); b = g; }} b[n++] = (char)c; }} b[n] = 0; return b; }}\nstatic int maca_at_eof(void) {{ int c = fgetc(stdin); if (c == EOF) return 1; ungetc(c, stdin); return 0; }}\n" ++
     "static char* maca_attr(const char* name, const char* value) {{ if (!name || !*name) return maca_cat(\"\", \"\"); size_t n = strlen(name), v = strlen(value); char* r = malloc(n + v * 6 + 5); char* w = r; *w++ = ' '; memcpy(w, name, n); w += n; *w++ = '='; *w++ = '\"'; for (size_t i = 0; i < v; i++) {{ char c = value[i]; if (c == '&') {{ memcpy(w, \"&amp;\", 5); w += 5; }} else if (c == '<') {{ memcpy(w, \"&lt;\", 4); w += 4; }} else if (c == '>') {{ memcpy(w, \"&gt;\", 4); w += 4; }} else if (c == '\"') {{ memcpy(w, \"&quot;\", 6); w += 6; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
@@ -1743,12 +1743,12 @@ c_process_posix() -> str =>
 c_threads(code: str) -> str {
     if c_uses(code, "maca_spawn") || c_uses(code, "MacaFuture") {
         "#include <pthread.h>\n" ++
-        "typedef long (*MacaTask)(long);\ntypedef long (*MacaTask2)(long, long);\n" ++
-        "typedef struct {{ pthread_t th; MacaTask fn; MacaTask2 fn2; long a; long b; long out; int done; }} MacaFuture;\n" ++
+        "typedef long long (*MacaTask)(long long);\ntypedef long long (*MacaTask2)(long long, long long);\n" ++
+        "typedef struct {{ pthread_t th; MacaTask fn; MacaTask2 fn2; long long a; long long b; long long out; int done; }} MacaFuture;\n" ++
         "static void* maca_task_run(void* p) {{ MacaFuture* f = (MacaFuture*)p; f->out = f->fn2 ? f->fn2(f->a, f->b) : f->fn(f->a); return NULL; }}\n" ++
-        "static MacaFuture* maca_spawn(MacaTask fn, long a) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = fn; f->fn2 = 0; f->a = a; f->b = 0; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
-        "static MacaFuture* maca_spawn2(MacaTask2 fn, long a, long b) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = 0; f->fn2 = fn; f->a = a; f->b = b; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
-        "static long maca_await(MacaFuture* f) {{ if (!f) return 0; if (!f->done) {{ pthread_join(f->th, NULL); f->done = 1; }} return f->out; }}\n"
+        "static MacaFuture* maca_spawn(MacaTask fn, long long a) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = fn; f->fn2 = 0; f->a = a; f->b = 0; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
+        "static MacaFuture* maca_spawn2(MacaTask2 fn, long long a, long long b) {{ MacaFuture* f = malloc(sizeof(MacaFuture)); f->fn = 0; f->fn2 = fn; f->a = a; f->b = b; f->out = 0; f->done = 0; pthread_create(&f->th, NULL, maca_task_run, f); return f; }}\n" ++
+        "static long long maca_await(MacaFuture* f) {{ if (!f) return 0; if (!f->done) {{ pthread_join(f->th, NULL); f->done = 1; }} return f->out; }}\n"
     } else {
         ""
     }
@@ -1770,17 +1770,17 @@ c_http() -> str =>
     "typedef struct {{ int fd; MacaFn fn; }} MacaHttpConn;\n" ++
     "typedef struct {{ char* buf; size_t cap, len; }} MacaHttpBuf;\n" ++
     "static int maca_http_write(int fd, const char* b, size_t n) {{ size_t off = 0; while (off < n) {{ ssize_t w = send(fd, b + off, n - off, MSG_NOSIGNAL); if (w <= 0) return -1; off += (size_t)w; }} return 0; }}\n" ++
-    "static long maca_http_head_end(const char* b, size_t n) {{ for (size_t i = 0; i + 3 < n; i++) if (b[i] == '\\r' && b[i+1] == '\\n' && b[i+2] == '\\r' && b[i+3] == '\\n') return (long)(i + 4); for (size_t i = 0; i + 1 < n; i++) if (b[i] == '\\n' && b[i+1] == '\\n') return (long)(i + 2); return -1; }}\n" ++
-    "static long maca_http_length(const char* h, size_t n) {{ for (size_t i = 0; i + 15 < n; i++) {{ if (i && h[i-1] != '\\n') continue; if (strncasecmp(h + i, \"content-length:\", 15) != 0) continue; size_t j = i + 15; while (j < n && (h[j] == ' ' || h[j] == '\\t')) j++; if (j >= n || h[j] < '0' || h[j] > '9') return -1; long v = 0; while (j < n && h[j] >= '0' && h[j] <= '9') {{ if (v > (long)MACA_HTTP_MAX) return -1; v = v * 10 + (h[j] - '0'); j++; }} return v; }} return 0; }}\n" ++
+    "static long long maca_http_head_end(const char* b, size_t n) {{ for (size_t i = 0; i + 3 < n; i++) if (b[i] == '\\r' && b[i+1] == '\\n' && b[i+2] == '\\r' && b[i+3] == '\\n') return (long long)(i + 4); for (size_t i = 0; i + 1 < n; i++) if (b[i] == '\\n' && b[i+1] == '\\n') return (long long)(i + 2); return -1; }}\n" ++
+    "static long long maca_http_length(const char* h, size_t n) {{ for (size_t i = 0; i + 15 < n; i++) {{ if (i && h[i-1] != '\\n') continue; if (strncasecmp(h + i, \"content-length:\", 15) != 0) continue; size_t j = i + 15; while (j < n && (h[j] == ' ' || h[j] == '\\t')) j++; if (j >= n || h[j] < '0' || h[j] > '9') return -1; long long v = 0; while (j < n && h[j] >= '0' && h[j] <= '9') {{ if (v > (long long)MACA_HTTP_MAX) return -1; v = v * 10 + (h[j] - '0'); j++; }} return v; }} return 0; }}\n" ++
     "static int maca_http_chunked(const char* h, size_t n) {{ for (size_t i = 0; i + 18 < n; i++) {{ if (i && h[i-1] != '\\n') continue; if (strncasecmp(h + i, \"transfer-encoding:\", 18) == 0) return 1; }} return 0; }}\n" ++
     "static int maca_http_closing(const char* m) {{ for (const char* p = m; *p; p++) {{ if (p != m && p[-1] != '\\n') continue; if (p[0] == '\\r' || p[0] == '\\n') break; if (strncasecmp(p, \"connection:\", 11) != 0) continue; const char* v = p + 11; while (*v == ' ' || *v == '\\t') v++; return strncasecmp(v, \"close\", 5) == 0; }} return 0; }}\n" ++
     "static void maca_http_refuse(int fd, const char* line, const char* body) {{ char out[256]; int n = snprintf(out, sizeof(out), \"HTTP/1.1 %s\\r\\nContent-Type: text/plain; charset=utf-8\\r\\nContent-Length: %d\\r\\nConnection: close\\r\\n\\r\\n%s\", line, (int)strlen(body), body); if (n > 0) maca_http_write(fd, out, (size_t)n); }}\n" ++
-    "static int maca_http_take(int fd, MacaHttpBuf* b, char** out) {{ for (;;) {{ long head = maca_http_head_end(b->buf, b->len); if (head >= 0) {{ if (maca_http_chunked(b->buf, (size_t)head)) return 3; long want = maca_http_length(b->buf, (size_t)head); if (want < 0) return 4; if (head + want > (long)MACA_HTTP_MAX) return 2; if ((long)b->len >= head + want) {{ size_t take = (size_t)(head + want); char* req = malloc(take + 1); if (!req) return 1; memcpy(req, b->buf, take); req[take] = 0; memmove(b->buf, b->buf + take, b->len - take); b->len -= take; *out = req; return 0; }} }} if (b->len >= MACA_HTTP_MAX) return 2; if (b->len + 1 >= b->cap) {{ size_t cap = b->cap ? b->cap * 2 : 8192; char* g = realloc(b->buf, cap); if (!g) return 1; b->buf = g; b->cap = cap; }} ssize_t r = recv(fd, b->buf + b->len, b->cap - b->len - 1, 0); if (r <= 0) return 1; b->len += (size_t)r; b->buf[b->len] = 0; }} }}\n" ++
+    "static int maca_http_take(int fd, MacaHttpBuf* b, char** out) {{ for (;;) {{ long long head = maca_http_head_end(b->buf, b->len); if (head >= 0) {{ if (maca_http_chunked(b->buf, (size_t)head)) return 3; long long want = maca_http_length(b->buf, (size_t)head); if (want < 0) return 4; if (head + want > (long long)MACA_HTTP_MAX) return 2; if ((long long)b->len >= head + want) {{ size_t take = (size_t)(head + want); char* req = malloc(take + 1); if (!req) return 1; memcpy(req, b->buf, take); req[take] = 0; memmove(b->buf, b->buf + take, b->len - take); b->len -= take; *out = req; return 0; }} }} if (b->len >= MACA_HTTP_MAX) return 2; if (b->len + 1 >= b->cap) {{ size_t cap = b->cap ? b->cap * 2 : 8192; char* g = realloc(b->buf, cap); if (!g) return 1; b->buf = g; b->cap = cap; }} ssize_t r = recv(fd, b->buf + b->len, b->cap - b->len - 1, 0); if (r <= 0) return 1; b->len += (size_t)r; b->buf[b->len] = 0; }} }}\n" ++
     "static void* maca_http_client(void* arg) {{ MacaHttpConn* c = (MacaHttpConn*)arg; int fd = c->fd; MacaFn fn = c->fn; free(c); struct timeval tv; tv.tv_sec = MACA_HTTP_IDLE; tv.tv_usec = 0; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)); setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)); MacaHttpBuf b; b.buf = NULL; b.cap = 0; b.len = 0; for (;;) {{ char* req = NULL; int st = maca_http_take(fd, &b, &req); if (st == 2) {{ maca_http_refuse(fd, \"413 Payload Too Large\", \"413 Payload Too Large\\n\"); break; }} if (st == 3) {{ maca_http_refuse(fd, \"501 Not Implemented\", \"501 Not Implemented\\n\"); break; }} if (st == 4) {{ maca_http_refuse(fd, \"400 Bad Request\", \"400 Bad Request\\n\"); break; }} if (st != 0) break; int done = maca_http_closing(req); const char* reply = fn.env.len ? ((MacaHttpFat)fn.fn)(fn.env, req) : ((MacaHttpFn)fn.fn)(req); free(req); if (!reply) break; if (maca_http_write(fd, reply, strlen(reply))) break; if (done || maca_http_closing(reply)) break; }} free(b.buf); close(fd); return NULL; }}\n" ++
-    "long http_listen(long port) {{ int srv = socket(AF_INET, SOCK_STREAM, 0); if (srv < 0) return -1; int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)); struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_addr.s_addr = INADDR_ANY; a.sin_port = htons((unsigned short)port); if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(srv); return -2; }} if (listen(srv, 512) < 0) {{ close(srv); return -3; }} return srv; }}\n" ++
+    "long long http_listen(long long port) {{ int srv = socket(AF_INET, SOCK_STREAM, 0); if (srv < 0) return -1; int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)); struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_addr.s_addr = INADDR_ANY; a.sin_port = htons((unsigned short)port); if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(srv); return -2; }} if (listen(srv, 512) < 0) {{ close(srv); return -3; }} return srv; }}\n" ++
     "static int maca_http_serve(int srv, MacaFn fn) {{ if (!fn.fn) return -1; for (;;) {{ int fd = accept(srv, 0, 0); if (fd < 0) continue; int one = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)); MacaHttpConn* c = malloc(sizeof(MacaHttpConn)); if (!c) {{ close(fd); continue; }} c->fd = fd; c->fn = fn; pthread_t th; if (pthread_create(&th, 0, maca_http_client, c) != 0) {{ free(c); close(fd); continue; }} pthread_detach(th); }} return 0; }}\n" ++
-    "const char* http_fetch(const char* host, long port, const char* request) {{ int fd = socket(AF_INET, SOCK_STREAM, 0); if (fd < 0) return \"\"; struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port); inet_pton(AF_INET, host && *host ? host : \"127.0.0.1\", &a.sin_addr); if (connect(fd, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(fd); return \"\"; }} if (maca_http_write(fd, request, strlen(request))) {{ close(fd); return \"\"; }} shutdown(fd, SHUT_WR); size_t cap = 8192, n = 0; char* buf = malloc(cap); if (!buf) {{ close(fd); return \"\"; }} for (;;) {{ if (n + 1 >= cap) {{ cap *= 2; char* g = realloc(buf, cap); if (!g) {{ free(buf); close(fd); return \"\"; }} buf = g; }} ssize_t r = recv(fd, buf + n, cap - n - 1, 0); if (r <= 0) break; n += (size_t)r; }} buf[n] = 0; close(fd); return buf; }}\n" ++
-    "long http_accept_loop(long srv, MacaFn handler) {{ return maca_http_serve(srv, handler); }}\n"
+    "const char* http_fetch(const char* host, long long port, const char* request) {{ int fd = socket(AF_INET, SOCK_STREAM, 0); if (fd < 0) return \"\"; struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port); inet_pton(AF_INET, host && *host ? host : \"127.0.0.1\", &a.sin_addr); if (connect(fd, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(fd); return \"\"; }} if (maca_http_write(fd, request, strlen(request))) {{ close(fd); return \"\"; }} shutdown(fd, SHUT_WR); size_t cap = 8192, n = 0; char* buf = malloc(cap); if (!buf) {{ close(fd); return \"\"; }} for (;;) {{ if (n + 1 >= cap) {{ cap *= 2; char* g = realloc(buf, cap); if (!g) {{ free(buf); close(fd); return \"\"; }} buf = g; }} ssize_t r = recv(fd, buf + n, cap - n - 1, 0); if (r <= 0) break; n += (size_t)r; }} buf[n] = 0; close(fd); return buf; }}\n" ++
+    "long long http_accept_loop(long long srv, MacaFn handler) {{ return maca_http_serve(srv, handler); }}\n"
 
 c_mqtt(protos: str) -> str {
     if protos.index_of("mqtt_") < 0 {
@@ -1800,13 +1800,13 @@ c_mqtt(protos: str) -> str {
         "static int maca_mqtt_send(int fd, unsigned char type_flags, const unsigned char* body, int blen) {{ unsigned char hdr[5]; hdr[0] = type_flags; int hn = 1 + maca_mqtt_enc_remlen(hdr + 1, blen); if (maca_mqtt_write_all(fd, hdr, hn)) return -1; if (blen && maca_mqtt_write_all(fd, body, blen)) return -1; return 0; }}\n" ++
         "static int maca_mqtt_match(const char* f, const char* t) {{ if (*f == '#') return 1; if (*f == 0 && *t == 0) return 1; if (*f == 0 || *t == 0) return 0; const char* fe = f; while (*fe && *fe != '/') fe++; const char* te = t; while (*te && *te != '/') te++; int fl = (int)(fe - f); int ok = (fl == 1 && f[0] == '+') || ((int)(te - t) == fl && strncmp(f, t, fl) == 0); if (!ok) return 0; return maca_mqtt_match(*fe == '/' ? fe + 1 : fe, *te == '/' ? te + 1 : te); }}\n" ++
         "static void maca_mqtt_route(const char* topic, const unsigned char* payload, int plen) {{ pthread_mutex_lock(&maca_mqtt_lock); for (int i = 0; i < maca_mqtt_nsubs; i++) {{ if (maca_mqtt_match(maca_mqtt_subs[i].pat, topic)) {{ unsigned char body[1024]; int n = maca_mqtt_put_str(body, topic); if (plen > 0 && n + plen < (int)sizeof(body)) {{ memcpy(body + n, payload, plen); n += plen; }} maca_mqtt_send(maca_mqtt_subs[i].fd, 0x30, body, n); }} }} pthread_mutex_unlock(&maca_mqtt_lock); }}\n" ++
-        "static void* maca_mqtt_client(void* arg) {{ int fd = (int)(long)arg; unsigned char b1; while (maca_mqtt_read_n(fd, &b1, 1) == 0) {{ int rl = maca_mqtt_read_remlen(fd); if (rl < 0 || rl > 65535) break; unsigned char* body = (unsigned char*)malloc(rl > 0 ? rl : 1); if (rl > 0 && maca_mqtt_read_n(fd, body, rl)) {{ free(body); break; }} int type = b1 >> 4; if (type == 1) {{ unsigned char ack[2] = {{ 0x00, 0x00 }}; maca_mqtt_send(fd, 0x20, ack, 2); }} else if (type == 8) {{ int p = 2; unsigned char subacks[64]; int na = 0; while (p + 2 <= rl) {{ int tl = (body[p] << 8) | body[p + 1]; p += 2; if (p + tl > rl) break; pthread_mutex_lock(&maca_mqtt_lock); if (maca_mqtt_nsubs < MACA_MQTT_MAX_SUBS && tl < 256) {{ maca_mqtt_subs[maca_mqtt_nsubs].fd = fd; memcpy(maca_mqtt_subs[maca_mqtt_nsubs].pat, body + p, tl); maca_mqtt_subs[maca_mqtt_nsubs].pat[tl] = 0; maca_mqtt_nsubs++; }} pthread_mutex_unlock(&maca_mqtt_lock); p += tl + 1; if (na < 64) subacks[na++] = 0x00; }} unsigned char sb[66]; sb[0] = body[0]; sb[1] = body[1]; memcpy(sb + 2, subacks, na); maca_mqtt_send(fd, 0x90, sb, 2 + na); }} else if (type == 3) {{ int tl = (body[0] << 8) | body[1]; char topic[256]; int cl = tl < 255 ? tl : 255; memcpy(topic, body + 2, cl); topic[cl] = 0; int po = 2 + tl; maca_mqtt_route(topic, body + po, rl - po); }} else if (type == 12) {{ maca_mqtt_send(fd, 0xD0, 0, 0); }} else if (type == 14) {{ free(body); break; }} free(body); }} pthread_mutex_lock(&maca_mqtt_lock); int j = 0; for (int i = 0; i < maca_mqtt_nsubs; i++) if (maca_mqtt_subs[i].fd != fd) maca_mqtt_subs[j++] = maca_mqtt_subs[i]; maca_mqtt_nsubs = j; pthread_mutex_unlock(&maca_mqtt_lock); close(fd); return 0; }}\n" ++
-        "long mqtt_broker_run(long port) {{ int srv = socket(AF_INET, SOCK_STREAM, 0); if (srv < 0) return -1; int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)); struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_addr.s_addr = INADDR_ANY; a.sin_port = htons((unsigned short)port); if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0) return -2; if (listen(srv, 128) < 0) return -3; for (;;) {{ int c = accept(srv, 0, 0); if (c < 0) continue; pthread_t th; pthread_create(&th, 0, maca_mqtt_client, (void*)(long)c); pthread_detach(th); }} return 0; }}\n" ++
-        "long mqtt_connect(const char* host, long port) {{ int fd = socket(AF_INET, SOCK_STREAM, 0); if (fd < 0) return -1; struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port); inet_pton(AF_INET, host ? host : \"127.0.0.1\", &a.sin_addr); if (connect(fd, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(fd); return -1; }} unsigned char cx[] = {{ 0, 4, 'M', 'Q', 'T', 'T', 4, 2, 0, 60, 0, 0 }}; maca_mqtt_send(fd, 0x10, cx, sizeof(cx)); unsigned char b1; maca_mqtt_read_n(fd, &b1, 1); int rl = maca_mqtt_read_remlen(fd); unsigned char tmp[8]; if (rl > 0 && rl <= 8) maca_mqtt_read_n(fd, tmp, rl); return fd; }}\n" ++
-        "long mqtt_subscribe(long fd, const char* topic) {{ unsigned char body[512]; body[0] = 0; body[1] = 1; int n = 2 + maca_mqtt_put_str(body + 2, topic); body[n++] = 0; maca_mqtt_send((int)fd, 0x82, body, n); unsigned char b1; maca_mqtt_read_n((int)fd, &b1, 1); int rl = maca_mqtt_read_remlen((int)fd); unsigned char tmp[16]; if (rl > 0 && rl <= 16) maca_mqtt_read_n((int)fd, tmp, rl); return 0; }}\n" ++
-        "long mqtt_publish(long fd, const char* topic, const char* payload) {{ unsigned char body[2048]; int n = maca_mqtt_put_str(body, topic); int pl = (int)strlen(payload ? payload : \"\"); if (n + pl < (int)sizeof(body)) {{ memcpy(body + n, payload, pl); n += pl; }} maca_mqtt_send((int)fd, 0x30, body, n); return 0; }}\n" ++
-        "const char* mqtt_receive(long fd) {{ unsigned char b1; while (maca_mqtt_read_n((int)fd, &b1, 1) == 0) {{ int rl = maca_mqtt_read_remlen((int)fd); if (rl < 0 || rl > 65535) return \"\"; unsigned char* body = (unsigned char*)malloc(rl > 0 ? rl : 1); if (rl > 0 && maca_mqtt_read_n((int)fd, body, rl)) {{ free(body); return \"\"; }} if ((b1 >> 4) == 3) {{ int tl = (body[0] << 8) | body[1]; int po = 2 + tl; int pl = rl - po; char* out = (char*)malloc(pl > 0 ? pl + 1 : 1); if (pl > 0) memcpy(out, body + po, pl); out[pl > 0 ? pl : 0] = 0; free(body); return out; }} free(body); }} return \"\"; }}\n" ++
-        "long mqtt_disconnect(long fd) {{ maca_mqtt_send((int)fd, 0xE0, 0, 0); close((int)fd); return 0; }}\n"
+        "static void* maca_mqtt_client(void* arg) {{ int fd = (int)(long long)arg; unsigned char b1; while (maca_mqtt_read_n(fd, &b1, 1) == 0) {{ int rl = maca_mqtt_read_remlen(fd); if (rl < 0 || rl > 65535) break; unsigned char* body = (unsigned char*)malloc(rl > 0 ? rl : 1); if (rl > 0 && maca_mqtt_read_n(fd, body, rl)) {{ free(body); break; }} int type = b1 >> 4; if (type == 1) {{ unsigned char ack[2] = {{ 0x00, 0x00 }}; maca_mqtt_send(fd, 0x20, ack, 2); }} else if (type == 8) {{ int p = 2; unsigned char subacks[64]; int na = 0; while (p + 2 <= rl) {{ int tl = (body[p] << 8) | body[p + 1]; p += 2; if (p + tl > rl) break; pthread_mutex_lock(&maca_mqtt_lock); if (maca_mqtt_nsubs < MACA_MQTT_MAX_SUBS && tl < 256) {{ maca_mqtt_subs[maca_mqtt_nsubs].fd = fd; memcpy(maca_mqtt_subs[maca_mqtt_nsubs].pat, body + p, tl); maca_mqtt_subs[maca_mqtt_nsubs].pat[tl] = 0; maca_mqtt_nsubs++; }} pthread_mutex_unlock(&maca_mqtt_lock); p += tl + 1; if (na < 64) subacks[na++] = 0x00; }} unsigned char sb[66]; sb[0] = body[0]; sb[1] = body[1]; memcpy(sb + 2, subacks, na); maca_mqtt_send(fd, 0x90, sb, 2 + na); }} else if (type == 3) {{ int tl = (body[0] << 8) | body[1]; char topic[256]; int cl = tl < 255 ? tl : 255; memcpy(topic, body + 2, cl); topic[cl] = 0; int po = 2 + tl; maca_mqtt_route(topic, body + po, rl - po); }} else if (type == 12) {{ maca_mqtt_send(fd, 0xD0, 0, 0); }} else if (type == 14) {{ free(body); break; }} free(body); }} pthread_mutex_lock(&maca_mqtt_lock); int j = 0; for (int i = 0; i < maca_mqtt_nsubs; i++) if (maca_mqtt_subs[i].fd != fd) maca_mqtt_subs[j++] = maca_mqtt_subs[i]; maca_mqtt_nsubs = j; pthread_mutex_unlock(&maca_mqtt_lock); close(fd); return 0; }}\n" ++
+        "long long mqtt_broker_run(long long port) {{ int srv = socket(AF_INET, SOCK_STREAM, 0); if (srv < 0) return -1; int one = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)); struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_addr.s_addr = INADDR_ANY; a.sin_port = htons((unsigned short)port); if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0) return -2; if (listen(srv, 128) < 0) return -3; for (;;) {{ int c = accept(srv, 0, 0); if (c < 0) continue; pthread_t th; pthread_create(&th, 0, maca_mqtt_client, (void*)(long long)c); pthread_detach(th); }} return 0; }}\n" ++
+        "long long mqtt_connect(const char* host, long long port) {{ int fd = socket(AF_INET, SOCK_STREAM, 0); if (fd < 0) return -1; struct sockaddr_in a; memset(&a, 0, sizeof(a)); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port); inet_pton(AF_INET, host ? host : \"127.0.0.1\", &a.sin_addr); if (connect(fd, (struct sockaddr*)&a, sizeof(a)) < 0) {{ close(fd); return -1; }} unsigned char cx[] = {{ 0, 4, 'M', 'Q', 'T', 'T', 4, 2, 0, 60, 0, 0 }}; maca_mqtt_send(fd, 0x10, cx, sizeof(cx)); unsigned char b1; maca_mqtt_read_n(fd, &b1, 1); int rl = maca_mqtt_read_remlen(fd); unsigned char tmp[8]; if (rl > 0 && rl <= 8) maca_mqtt_read_n(fd, tmp, rl); return fd; }}\n" ++
+        "long long mqtt_subscribe(long long fd, const char* topic) {{ unsigned char body[512]; body[0] = 0; body[1] = 1; int n = 2 + maca_mqtt_put_str(body + 2, topic); body[n++] = 0; maca_mqtt_send((int)fd, 0x82, body, n); unsigned char b1; maca_mqtt_read_n((int)fd, &b1, 1); int rl = maca_mqtt_read_remlen((int)fd); unsigned char tmp[16]; if (rl > 0 && rl <= 16) maca_mqtt_read_n((int)fd, tmp, rl); return 0; }}\n" ++
+        "long long mqtt_publish(long long fd, const char* topic, const char* payload) {{ unsigned char body[2048]; int n = maca_mqtt_put_str(body, topic); int pl = (int)strlen(payload ? payload : \"\"); if (n + pl < (int)sizeof(body)) {{ memcpy(body + n, payload, pl); n += pl; }} maca_mqtt_send((int)fd, 0x30, body, n); return 0; }}\n" ++
+        "const char* mqtt_receive(long long fd) {{ unsigned char b1; while (maca_mqtt_read_n((int)fd, &b1, 1) == 0) {{ int rl = maca_mqtt_read_remlen((int)fd); if (rl < 0 || rl > 65535) return \"\"; unsigned char* body = (unsigned char*)malloc(rl > 0 ? rl : 1); if (rl > 0 && maca_mqtt_read_n((int)fd, body, rl)) {{ free(body); return \"\"; }} if ((b1 >> 4) == 3) {{ int tl = (body[0] << 8) | body[1]; int po = 2 + tl; int pl = rl - po; char* out = (char*)malloc(pl > 0 ? pl + 1 : 1); if (pl > 0) memcpy(out, body + po, pl); out[pl > 0 ? pl : 0] = 0; free(body); return out; }} free(body); }} return \"\"; }}\n" ++
+        "long long mqtt_disconnect(long long fd) {{ maca_mqtt_send((int)fd, 0xE0, 0, 0); close((int)fd); return 0; }}\n"
     }
 }
 
@@ -1820,10 +1820,10 @@ c_json_runtime() -> str =>
     "static char* mj_named(const char* what, const char* said) {{ return maca_cat(\"`\", maca_cat(what, maca_cat(\"`: \", said))); }}\n" ++
     "static const char* maca_json_want(const char* t, const char* key, const char* kind) {{ const char* v = mj_field(t, key); if (!v) {{ maca_fail(mj_named(key, \"no such field\")); return \"null\"; }} if (strcmp(maca_json_kind(v), kind) != 0) {{ maca_fail(mj_named(key, maca_cat(\"expected \", maca_cat(kind, maca_cat(\", got \", maca_json_kind(v)))))); return \"null\"; }} return v; }}\n" ++
     "static const char* maca_json_object(const char* t, const char* what) {{ const char* p = mj_ws(t); if (*p != '{{') maca_fail(mj_named(what, maca_cat(\"expected an object, got \", maca_json_kind(p)))); return p; }}\n" ++
-    "static long maca_json_int(const char* v) {{ return (long)strtod(mj_ws(v), 0); }}\nstatic double maca_json_float(const char* v) {{ return strtod(mj_ws(v), 0); }}\nstatic long maca_json_bool(const char* v) {{ return *mj_ws(v) == 't'; }}\n" ++
+    "static long long maca_json_int(const char* v) {{ return (long long)strtod(mj_ws(v), 0); }}\nstatic double maca_json_float(const char* v) {{ return strtod(mj_ws(v), 0); }}\nstatic long long maca_json_bool(const char* v) {{ return *mj_ws(v) == 't'; }}\n" ++
     "static char* maca_json_str(const char* v) {{ const char* p = mj_ws(v); if (*p != '\"') return mj_take(p, mj_end(p)); const char* e = mj_str_end(p); char* r = malloc((size_t)(e - p) + 1); char* w = r; for (const char* q = p + 1; q + 1 < e; q++) {{ if (*q != '\\\\') {{ *w++ = *q; continue; }} q++; char c = *q; *w++ = c == 'n' ? '\\n' : c == 't' ? '\\t' : c == 'r' ? '\\r' : c; }} *w = 0; return r; }}\n" ++
     "static char* maca_json_quote(const char* s) {{ size_t n = strlen(s); char* r = malloc(n * 2 + 3); char* w = r; *w++ = '\"'; for (size_t i = 0; i < n; i++) {{ char c = s[i]; if (c == '\"' || c == '\\\\') {{ *w++ = '\\\\'; *w++ = c; }} else if (c == '\\n') {{ *w++ = '\\\\'; *w++ = 'n'; }} else if (c == '\\r') {{ *w++ = '\\\\'; *w++ = 'r'; }} else if (c == '\\t') {{ *w++ = '\\\\'; *w++ = 't'; }} else {{ *w++ = c; }} }} *w++ = '\"'; *w = 0; return r; }}\n" ++
-    "static MacaList maca_json_items(const char* v) {{ MacaList l = maca_listv(0); const char* p = mj_ws(v); if (*p != '[') return l; p = mj_ws(p + 1); while (*p && *p != ']') {{ const char* e = mj_end(p); l = maca_list_pushed(l, (long)mj_take(p, e)); p = mj_ws(e); if (*p == ',') p = mj_ws(p + 1); }} return l; }}\n"
+    "static MacaList maca_json_items(const char* v) {{ MacaList l = maca_listv(0); const char* p = mj_ws(v); if (*p != '[') return l; p = mj_ws(p + 1); while (*p && *p != ']') {{ const char* e = mj_end(p); l = maca_list_pushed(l, (long long)mj_take(p, e)); p = mj_ws(e); if (*p == ',') p = mj_ws(p + 1); }} return l; }}\n"
 
 /** The JSON text for a value of this type, as one C expression. */
 c_json_text(ty: str, code: str, d: int) -> str {
@@ -2179,21 +2179,21 @@ c_sqlite(protos: str) -> str {
         ""
     } else {
         "#include <sqlite3.h>\n" ++
-        "static long maca_sq_handle(void* p) {{ return (long)(intptr_t)p; }}\n" ++
-        "static sqlite3* maca_sq_db(long h) {{ return (sqlite3*)(intptr_t)h; }}\n" ++
-        "static sqlite3_stmt* maca_sq_stmt(long h) {{ return (sqlite3_stmt*)(intptr_t)h; }}\n" ++
+        "static long long maca_sq_handle(void* p) {{ return (long long)(intptr_t)p; }}\n" ++
+        "static sqlite3* maca_sq_db(long long h) {{ return (sqlite3*)(intptr_t)h; }}\n" ++
+        "static sqlite3_stmt* maca_sq_stmt(long long h) {{ return (sqlite3_stmt*)(intptr_t)h; }}\n" ++
         "static const char* maca_sq_text(const unsigned char* t) {{ return t ? maca_cat((const char*)t, \"\") : \"\"; }}\n" ++
-        "long sqlite_open(const char* path) {{ sqlite3* db = 0; if (sqlite3_open(path, &db) != SQLITE_OK) {{ if (db) sqlite3_close(db); return 0; }} return maca_sq_handle(db); }}\n" ++
-        "long sqlite_close(long db) {{ return sqlite3_close(maca_sq_db(db)); }}\n" ++
-        "long sqlite_exec(long db, const char* sql) {{ char* err = 0; int rc = sqlite3_exec(maca_sq_db(db), sql, 0, 0, &err); if (err) sqlite3_free(err); return rc; }}\n" ++
-        "long sqlite_prepare(long db, const char* sql) {{ sqlite3_stmt* st = 0; if (sqlite3_prepare_v2(maca_sq_db(db), sql, -1, &st, 0) != SQLITE_OK) return 0; return maca_sq_handle(st); }}\n" ++
-        "long sqlite_step(long st) {{ return sqlite3_step(maca_sq_stmt(st)) == SQLITE_ROW; }}\n" ++
-        "long sqlite_column_count(long st) {{ return sqlite3_column_count(maca_sq_stmt(st)); }}\n" ++
-        "const char* sqlite_column_name(long st, long col) {{ return maca_sq_text((const unsigned char*)sqlite3_column_name(maca_sq_stmt(st), (int)col)); }}\n" ++
-        "const char* sqlite_column_text(long st, long col) {{ return maca_sq_text(sqlite3_column_text(maca_sq_stmt(st), (int)col)); }}\n" ++
-        "long sqlite_column_int(long st, long col) {{ return sqlite3_column_int64(maca_sq_stmt(st), (int)col); }}\n" ++
-        "double sqlite_column_float(long st, long col) {{ return sqlite3_column_double(maca_sq_stmt(st), (int)col); }}\n" ++
-        "long sqlite_finalize(long st) {{ return sqlite3_finalize(maca_sq_stmt(st)); }}\n"
+        "long long sqlite_open(const char* path) {{ sqlite3* db = 0; if (sqlite3_open(path, &db) != SQLITE_OK) {{ if (db) sqlite3_close(db); return 0; }} return maca_sq_handle(db); }}\n" ++
+        "long long sqlite_close(long long db) {{ return sqlite3_close(maca_sq_db(db)); }}\n" ++
+        "long long sqlite_exec(long long db, const char* sql) {{ char* err = 0; int rc = sqlite3_exec(maca_sq_db(db), sql, 0, 0, &err); if (err) sqlite3_free(err); return rc; }}\n" ++
+        "long long sqlite_prepare(long long db, const char* sql) {{ sqlite3_stmt* st = 0; if (sqlite3_prepare_v2(maca_sq_db(db), sql, -1, &st, 0) != SQLITE_OK) return 0; return maca_sq_handle(st); }}\n" ++
+        "long long sqlite_step(long long st) {{ return sqlite3_step(maca_sq_stmt(st)) == SQLITE_ROW; }}\n" ++
+        "long long sqlite_column_count(long long st) {{ return sqlite3_column_count(maca_sq_stmt(st)); }}\n" ++
+        "const char* sqlite_column_name(long long st, long long col) {{ return maca_sq_text((const unsigned char*)sqlite3_column_name(maca_sq_stmt(st), (int)col)); }}\n" ++
+        "const char* sqlite_column_text(long long st, long long col) {{ return maca_sq_text(sqlite3_column_text(maca_sq_stmt(st), (int)col)); }}\n" ++
+        "long long sqlite_column_int(long long st, long long col) {{ return sqlite3_column_int64(maca_sq_stmt(st), (int)col); }}\n" ++
+        "double sqlite_column_float(long long st, long long col) {{ return sqlite3_column_double(maca_sq_stmt(st), (int)col); }}\n" ++
+        "long long sqlite_finalize(long long st) {{ return sqlite3_finalize(maca_sq_stmt(st)); }}\n"
     }
 }
 
@@ -2206,7 +2206,7 @@ c_python(protos: str) -> str {
         "static PyObject* maca_py_find(const char* module, const char* func) {{ PyObject* m = PyImport_ImportModule(module); if (!m) return 0; PyObject* f = PyObject_GetAttrString(m, func); Py_DECREF(m); if (f && PyCallable_Check(f)) return f; Py_XDECREF(f); return 0; }}\n" ++
         "const char* py_call(const char* module, const char* func) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallObject(f, 0); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n" ++
         "const char* py_call_s(const char* module, const char* func, const char* arg) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallFunction(f, \"s\", arg ? arg : \"\"); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n" ++
-        "const char* py_call_i(const char* module, const char* func, long n) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallFunction(f, \"L\", (long long)n); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n"
+        "const char* py_call_i(const char* module, const char* func, long long n) {{ Py_Initialize(); const char* out = \"<py error>\"; PyObject* f = maca_py_find(module, func); if (f) {{ PyObject* r = PyObject_CallFunction(f, \"L\", (long long)n); out = maca_py_str(r); Py_XDECREF(r); Py_DECREF(f); }} Py_Finalize(); return out; }}\n"
     }
 }
 
@@ -2444,11 +2444,11 @@ emit_slots(s: Stmt, n: int, i: int) -> str {
  */
 slot_type(s: Stmt, at: int, i: int) -> str {
     if i >= s.params.length() {
-        "long"
+        "long long"
     } else if s.params.get(i).children.length() <= at {
         slot_type(s, at, i + 1)
     } else if s.params.get(i).children.get(at).ty == s.name {
-        "long"
+        "long long"
     } else {
         agreed(type_c(s.params.get(i).children.get(at).ty),
                slot_type(s, at, i + 1))
@@ -2456,7 +2456,7 @@ slot_type(s: Stmt, at: int, i: int) -> str {
 }
 
 agreed(a: str, b: str) -> str =>
-    (b == "long" || a == b) ? a : "long"
+    (b == "long long" || a == b) ? a : "long long"
 
 emit_ctors(s: Stmt, i: int) -> str {
     if i >= s.params.length() {
@@ -2499,7 +2499,7 @@ ctor_assigns(s: Stmt, ps: Expr[], i: int) -> str {
         ""
     } else if ps.get(i).ty == s.name {
         "{s.name}* _b{i} = ({s.name}*)malloc(sizeof({s.name}));"
-            ++ " *_b{i} = _{i}; _v._{i} = (long)_b{i};"
+            ++ " *_b{i} = _{i}; _v._{i} = (long long)_b{i};"
             ++ " {ctor_assigns(s, ps, i + 1)}"
     } else {
         "_v._{i} = _{i}; {ctor_assigns(s, ps, i + 1)}"

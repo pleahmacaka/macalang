@@ -90,10 +90,10 @@ test_setjmp_arrives_only_with_the_try_that_asked_for_it() {
 test_a_choice_in_value_position_is_a_ternary() {
     made = gate_c("pick(c: bool) -> int {{ b = if c {{ 100 }} else {{ 200 }} b }}")
 
-    assert(made.index_of("long b = (c ? 100 : 200);") >= 0,
+    assert(made.index_of("long long b = (c ? 100 : 200);") >= 0,
            "a branch that answers is one expression, not a temporary and two stores")
     assert(gate_c("f(c: bool) -> int {{ a = c ? 10 : 20 a }}")
-               .index_of("long a = (c ? 10 : 20);") >= 0,
+               .index_of("long long a = (c ? 10 : 20);") >= 0,
            "and the ternary the author wrote is the same ternary")
 }
 
@@ -128,7 +128,7 @@ test_a_record_is_a_struct_of_the_fields_it_declared() {
 
     assert(made.index_of("typedef enum {{ Todo, Done }} Status;") >= 0,
            "the sum is an enum")
-    assert(made.index_of("typedef struct {{ long x; long y; }} Point;") >= 0,
+    assert(made.index_of("typedef struct {{ long long x; long long y; }} Point;") >= 0,
            "and the record is a struct in the order it was written")
 }
 
@@ -147,7 +147,7 @@ test_a_reassignment_is_not_a_second_declaration() {
 
     assert(made.index_of("while ((i <= n))") >= 0, "the loop is a while")
     assert(made.index_of("acc = (acc + i);") >= 0
-               && made.index_of("long acc = (acc + i)") < 0,
+               && made.index_of("long long acc = (acc + i)") < 0,
            "the accumulator is written, not shadowed")
     assert(made.index_of("i = (i + 1);") >= 0, "and so is the counter")
 }
@@ -191,7 +191,7 @@ test_a_variant_carrying_a_payload_is_a_tagged_struct() {
                   ++ " Circle(r) => r * r Rect(w, h) => w * h }} }}")
 
     assert(made.index_of("Shape_tag tag;") >= 0, "the value carries which variant it is")
-    assert(made.index_of("static inline Shape Circle(long _0)") >= 0,
+    assert(made.index_of("static inline Shape Circle(long long _0)") >= 0,
            "a variant with a payload is built by a constructor")
     assert(made.index_of("s.tag == Circle_tag") >= 0, "an arm asks the tag")
     assert(made.index_of("r = s._0;") >= 0, "and then reads the payload it named")
@@ -201,7 +201,7 @@ test_an_element_and_a_field_are_both_places_to_write() {
     made = gate_c("P = {{ x: int }}\n"
                   ++ "f(xs: int[], p: P) -> int {{ xs[0] = 9 p.x = 5 0 }}")
 
-    assert(made.index_of("xs.data[0] = (long)(9);") >= 0,
+    assert(made.index_of("xs.data[0] = (long long)(9);") >= 0,
            "an element assignment reaches the backing buffer")
     assert(made.index_of("(p.x = 5);") >= 0,
            "and a field assignment is the whole statement, not a value thrown away")
@@ -226,7 +226,7 @@ test_a_coercion_is_a_cast_rather_than_a_call() {
 
     assert(made.index_of("(double)") >= 0, "float() is the C cast")
     assert(made.index_of("float_mc") < 0, "and not a function of that name")
-    assert(gate_c("g(x: float) -> int => int(x)").index_of("(long)") >= 0,
+    assert(gate_c("g(x: float) -> int => int(x)").index_of("(long long)") >= 0,
            "int() is the cast the other way")
 }
 
@@ -260,7 +260,7 @@ test_a_name_c_has_taken_is_escaped() {
                   ++ "main() -> int {{ new = 5 c = Config {{ default = double(new) }}"
                   ++ " info(\"{{c.default}}\") 0 }}")
 
-    assert(made.index_of("double_mc(") >= 0 && made.index_of("long double(") < 0,
+    assert(made.index_of("double_mc(") >= 0 && made.index_of("long long double(") < 0,
            "a function named after a C keyword would not compile")
     assert(made.index_of("default_mc") >= 0, "nor would a field")
     assert(made.index_of("new_mc") >= 0, "nor a local")
@@ -348,7 +348,7 @@ test_a_local_that_holds_a_function_is_declared_as_a_closure() {
                              ++ " (MacaList){{0, 0}} }}") >= 0,
            "the lifted function is wrapped with an empty"
                ++ " environment: {made}")
-    assert(made.index_of("MacaFn _c = inc; long _a0 = 41;") >= 0,
+    assert(made.index_of("MacaFn _c = inc; long long _a0 = 41;") >= 0,
            "and the call binds the value and its argument once: {made}")
 }
 
@@ -371,7 +371,7 @@ test_a_variant_that_carries_its_own_sum_carries_a_pointer_to_it() {
 
     assert(made.index_of("static inline Tree Node(Tree _0, Tree _1)") >= 0,
            "the constructor takes what the variant declared: {made}")
-    assert(made.index_of("*_b0 = _0; _v._0 = (long)_b0") >= 0,
+    assert(made.index_of("*_b0 = _0; _v._0 = (long long)_b0") >= 0,
            "a struct cannot contain itself, so the payload goes to the heap")
     assert(made.index_of("Tree l = *(Tree*)t._0") >= 0,
            "and the arm reads it back through that pointer: {made}")
@@ -398,7 +398,7 @@ test_a_record_literal_with_no_name_gets_a_struct_of_its_shape() {
                    ++ "    d = {{ port = 80, host = \"e\" }}\n"
                    ++ "    c = d\n    c.port\n}}")
 
-    assert(made.index_of("typedef struct {{ const char* host; long port; }}"
+    assert(made.index_of("typedef struct {{ const char* host; long long port; }}"
                              ++ " MacaAnon_host_str_port_int;") >= 0,
            "the shape became a struct named for its sorted fields: {made}")
     assert(made.index_of("MacaAnon_host_str_port_int c = ") >= 0
@@ -418,7 +418,7 @@ test_a_generic_calling_a_generic_passes_on_its_element_type() {
                    ++ " == \"a\" ? 0 : 1\n}}")
 
     assert(made.index_of("Row at_of__arrRow_fnstr_int(MacaList xs,"
-                             ++ " MacaFn k, long i)") >= 0,
+                             ++ " MacaFn k, long long i)") >= 0,
            "the inner call was specialised at the outer element type: {made}")
     assert(made.index_of("arrany") < 0,
            "not at the variable the generic body still spells: {made}")

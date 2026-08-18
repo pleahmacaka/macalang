@@ -55,7 +55,7 @@ test_an_if_is_an_expression_and_composes() {
 
 test_an_if_lowers_to_a_ternary_in_c() {
     assert_eq(c_of(Picker),
-              "long pick(long n) {{ return ((n > 0) ? 1 : 0);  }}",
+              "long long pick(long long n) {{ return ((n > 0) ? 1 : 0);  }}",
               "C has no if-expression, so it is a ternary")
 }
 
@@ -265,8 +265,8 @@ test_a_variant_carries_its_payload_at_the_type_it_declared() {
                        ++ " f(s: Shape) -> int => match s {{ At(p) => p.x Dot => 0 }}")
 
     assert(made.index_of("P _0;") >= 0,
-           "the slot is the record the variant declared, not a long")
-    assert(made.index_of("long p = s._0") < 0,
+           "the slot is the record the variant declared, not a long long")
+    assert(made.index_of("long long p = s._0") < 0,
            "so the arm binds a record and does not read it as an integer")
 }
 
@@ -283,7 +283,7 @@ test_a_guard_binds_the_name_it_reads() {
 test_a_task_is_spawned_and_awaited_with_no_async_keyword() {
     assert(annotated_c("w(n: int) -> int => n * 2\n"
                        ++ "f() -> int {{ a = spawn w(10)\n await a }}")
-               .contains("maca_spawn((MacaTask)w, (long)(10))"),
+               .contains("maca_spawn((MacaTask)w, (long long)(10))"),
            "a one-argument task is a function pointer and its argument")
     assert(annotated_c("w(a: int, b: int) -> int => a + b\n"
                        ++ "f() -> int {{ t = spawn w(1, 2)\n await t }}")
@@ -348,8 +348,8 @@ test_element_names_its_tag_with_its_first_argument() {
 
 test_a_map_answers_with_the_type_it_was_declared_over() {
     assert(annotated_c("f(m: Map str int) -> int => m.get(\"a\")")
-               .index_of("((long)maca_map_get(m,") >= 0,
-           "a cell holds a long, and an int-valued map reads a number back")
+               .index_of("((long long)maca_map_get(m,") >= 0,
+           "a cell holds a long long, and an int-valued map reads a number back")
     assert(annotated_c("f(m: Map str str) -> str => m.get(\"a\")")
                .index_of("((const char*)maca_map_get(m,") >= 0,
            "where a str-valued one reads text")
@@ -361,7 +361,7 @@ test_a_map_answers_with_the_type_it_was_declared_over() {
 
 test_a_map_lookup_takes_a_fallback_and_a_key_comes_back_out() {
     assert(annotated_c("f(m: Map str str) -> str => m.get(\"a\", \"z\")")
-               .index_of("maca_map_or(m, \"a\", (long)(\"z\"))") >= 0,
+               .index_of("maca_map_or(m, \"a\", (long long)(\"z\"))") >= 0,
            "a second argument is the answer when the key is absent")
     assert(annotated_rust("f(m: Map str str) -> str => m.get(\"a\", \"z\")")
                .index_of("unwrap_or(") >= 0,
@@ -518,7 +518,7 @@ test_index_of_picks_a_list_or_a_string() {
 }
 
 test_push_appends_one_cell() {
-    assert(annotated_c(Grow).index_of("maca_list_pushed(xs, (long)(v))") >= 0,
+    assert(annotated_c(Grow).index_of("maca_list_pushed(xs, (long long)(v))") >= 0,
            "one more cell on the end")
     assert(annotated_rust(Grow).index_of("Rc::make_mut(&mut _v).push(v)") >= 0,
            "Rust pushes onto the same vector when its count is one")
@@ -575,7 +575,7 @@ test_a_branch_with_a_binding_is_a_block() {
 }
 
 test_a_block_branch_lowers_to_a_statement_expression_in_c() {
-    assert(c_of(Guarded).index_of("({{ long d = (n * 2); (d + 1); }})") >= 0,
+    assert(c_of(Guarded).index_of("({{ long long d = (n * 2); (d + 1); }})") >= 0,
            "C declares the local inside a statement expression")
 }
 
@@ -746,7 +746,7 @@ Walker = "total(xs: int[]) -> int {{ acc = 0 for x in xs"
 
 test_a_for_loop_binds_one_element_at_a_time() {
     assert_eq(str(bad_of(Walker).length()), "0", "the loop is read whole")
-    assert(annotated_c(Walker).index_of("long x = ((long)_f.data[_fi]);") >= 0,
+    assert(annotated_c(Walker).index_of("long long x = ((long long)_f.data[_fi]);") >= 0,
            "C walks the block and names each cell")
     assert(annotated_rust(Walker).index_of("for x in (xs.clone()).iter()") >= 0,
            "Rust already has the loop, and the count is what it walks")
@@ -773,7 +773,7 @@ test_a_declaration_with_no_body_is_a_prototype() {
 }
 
 test_a_declaration_still_needs_a_body_to_get_one() {
-    assert(annotated_c("f() -> int => 1").index_of("long f() {{ return 1;") >= 0,
+    assert(annotated_c("f() -> int => 1").index_of("long long f() {{ return 1;") >= 0,
            "a function that has a body still gets it emitted")
 }
 
@@ -843,9 +843,9 @@ test_a_lambda_argument_is_counted_as_one_argument() {
 
 test_a_subscript_reads_and_writes_through_the_lvalue() {
     assert(annotated_c("f(xs: int[]) -> int => xs[0]")
-               .index_of("((long)xs.data[0])") >= 0, "a read is the cell")
+               .index_of("((long long)xs.data[0])") >= 0, "a read is the cell")
     assert(annotated_c("f(xs: int[], v: int) -> int {{ xs[0] = v xs[0] }}")
-               .index_of("xs.data[0] = (long)(v);") >= 0,
+               .index_of("xs.data[0] = (long long)(v);") >= 0,
            "a write assigns the cell, which a cast could not")
 }
 
@@ -866,7 +866,7 @@ test_a_comma_list_in_a_block_is_one_list_value() {
 
 test_a_typed_binding_declares_its_own_type() {
     assert(annotated_c("f() -> int {{ n: int = 5 n }}")
-               .index_of("long n = 5;") >= 0,
+               .index_of("long long n = 5;") >= 0,
            "the annotation is the local's C type")
     assert(annotated_c("f() -> int {{ n: int = 5 n }}").index_of("int int =")
                < 0, "and the type name is never bound as the local")
@@ -965,7 +965,7 @@ test_a_parameter_may_be_declared_a_function() {
 
 test_a_function_parameter_becomes_a_closure_in_c() {
     assert_eq(c_of("call(f: (int) -> int, n: int) -> int => f(n)"),
-              "long call(MacaFn f, long n) {{ return f(n);  }}",
+              "long long call(MacaFn f, long long n) {{ return f(n);  }}",
               "C spells a parameter holding a function as the closure struct")
 }
 

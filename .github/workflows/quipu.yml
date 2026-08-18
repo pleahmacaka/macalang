@@ -41,7 +41,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb1-dev \
-            libasound2-dev libfontconfig-dev libgbm-dev libvulkan-dev
+            libasound2-dev libfontconfig-dev libgbm-dev libvulkan-dev libxkbcommon-x11-dev
       # Windows has no setrlimit, so the stack the compiler needs is asked for
       # at link time; without it the seed segfaults compiling the compiler.
       - name: Build the seed compiler
