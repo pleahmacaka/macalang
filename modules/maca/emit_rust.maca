@@ -287,6 +287,14 @@ rlist_method_of(e: Expr, recv: str) -> str {
         "{{ let mut _v = {recv}; let _i = ({rarg(e, 1)}) as usize;"
             ++ " if _i < _v.len() {{ Rc::make_mut(&mut _v)[_i] = {rarg(e, 2)}; }}"
             ++ " _v }}"
+    } else if e.text == "filter" && el != ""
+            && e.children.get(1).kind == ELambda {
+        lam = e.children.get(1)
+        bound = binder_name(lambda_params(lam).get(0))
+
+        "Rc::new(({recv}).iter().cloned().filter(|_x: &{rtype(el)}|"
+            ++ " {{ let {bound} = _x.clone();"
+            ++ " {remit_expr(lambda_body(lam))} }}).collect::<Vec<_>>())"
     } else if e.text == "filter" && el != "" {
         "Rc::new(({recv}).iter().cloned().filter(|_x: &{rtype(el)}|"
             ++ " ({rarg(e, 1)})(_x.clone())).collect::<Vec<_>>())"
