@@ -1779,8 +1779,13 @@ cc_run(args: str[]) -> int {
 
 /// `[build] cflags` in the manifest here, the flags a program needs to link.
 cc_flags() -> str[] =>
-    nonempty(chain_value(here_chain(), 0, "[build]", "cflags").split(" "),
-             0, [])
+    windows_stack()
+        ++ nonempty(chain_value(here_chain(), 0, "[build]", "cflags")
+                        .split(" "), 0, [])
+
+/// The compiler asks for a 64 MB stack at run time through `setrlimit`, which Windows has no equivalent of, so there it is asked for at link time instead.
+windows_stack() -> str[] =>
+    env("OS") == "Windows_NT" ? ["-Wl,--stack,67108864"] : []
 
 build_cmd(args: str[]) -> int {
     named = build_src(args, 1, "")
@@ -2830,7 +2835,8 @@ target_notes(m: Module, asked: str) -> str[] =>
 foreign_bodies(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
-    } else if items.get(i).kind == SFn && items.get(i).body.length() == 0 {
+    } else if items.get(i).kind == SFn && items.get(i).body.length() == 0
+            && reaches(items, items.get(i).name) {
         foreign_bodies(items, i + 1,
                        acc ++ ["`{items.get(i).name}` is declared with no "
                                    ++ "body, which is an FFI declaration; "
@@ -2848,12 +2854,51 @@ ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {
         acc
     } else {
         ported_errors(items, i + 1, target,
-                      acc ++ ported_error(items.get(i), target))
+                      acc ++ ported_error(items.get(i), target, items))
     }
 }
 
-ported_error(s: Stmt, target: str) -> str[] {
-    if s.kind == SFn && s.body.length() == 0 {
+/// Does anything here reach for that name? A declaration nobody calls is not refused for a body it never needed, and asking per declaration keeps this a scan rather than a set nobody can afford to build.
+reaches(items: Stmt[], name: str) -> bool {
+    i = 0
+
+    while i < items.length() {
+        if body_reaches(items.get(i).body, 0, name) {
+            return true
+        }
+
+        i = i + 1
+    }
+
+    false
+}
+
+body_reaches(body: Stmt[], i: int, name: str) -> bool {
+    if i >= body.length() {
+        return false
+    }
+
+    expr_reaches(body.get(i).value, name) || body_reaches(body, i + 1, name)
+}
+
+expr_reaches(e: Expr, name: str) -> bool {
+    if (e.kind == ECall || e.kind == EIdent) && e.text == name {
+        return true
+    }
+
+    kids_reach(e.children, 0, name) || body_reaches(e.stmts, 0, name)
+}
+
+kids_reach(cs: Expr[], i: int, name: str) -> bool {
+    if i >= cs.length() {
+        return false
+    }
+
+    expr_reaches(cs.get(i), name) || kids_reach(cs, i + 1, name)
+}
+
+ported_error(s: Stmt, target: str, items: Stmt[]) -> str[] {
+    if s.kind == SFn && s.body.length() == 0 && reaches(items, s.name) {
         ["`{s.name}` is declared with no body, which is an FFI declaration, "
              ++ "and --target {target} has no C ABI bridge to reach it; supply "
              ++ "a body, or write the function in a raw block"]

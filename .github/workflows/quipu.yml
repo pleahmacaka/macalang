@@ -42,8 +42,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb1-dev \
             libasound2-dev libfontconfig-dev libgbm-dev libvulkan-dev
+      # Windows has no setrlimit, so the stack the compiler needs is asked for
+      # at link time; without it the seed segfaults compiling the compiler.
       - name: Build the seed compiler
-        run: mkdir -p bin && cc -O1 -o bootstrap/maca bootstrap/maca.c
+        run: |
+          mkdir -p bin
+          case "${{ matrix.os }}" in
+            windows-*) cc -O1 -Wl,--stack,67108864 -o bootstrap/maca bootstrap/maca.c ;;
+            *)         cc -O1 -o bootstrap/maca bootstrap/maca.c ;;
+          esac
         shell: bash
       - name: Build the compiler with the seed
         run: MACA=$PWD/bootstrap/maca ./bootstrap/maca build apps/maca1/main.maca -o bin/maca
