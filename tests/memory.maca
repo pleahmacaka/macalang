@@ -1,7 +1,7 @@
 import std/proc
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-memory"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-memory"
     make_dir(dir)
 
     dir
@@ -10,11 +10,11 @@ scratch() -> str {
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 built(name: str) -> str {
-    bin = scratch() ++ "/" ++ name
+    bin = scratch() + "/" + name
     src = "tests/fixtures/memory/{name}.maca"
     assert_eq(str(exec(maca_bin(), ["build", src, "-o", bin])), "0",
               "{src} has to build before it can be watched")

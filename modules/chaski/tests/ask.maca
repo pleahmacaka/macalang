@@ -47,8 +47,8 @@ test_a_client_carries_what_every_request_shares() {
 }
 
 test_a_reply_is_read_out_of_what_curl_wrote() {
-    raw = "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\n"
-        ++ "X-Rate-Limit: 9\r\n\r\n{{\"id\":\"a\"}}"
+    raw = "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\n" +
+        "X-Rate-Limit: 9\r\n\r\n{{\"id\":\"a\"}}"
     r = ask_read(raw)
 
     assert_eq(str(r.status), "201", "the number is the second word of the line")

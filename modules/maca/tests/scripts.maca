@@ -3,14 +3,14 @@ import std/proc
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 out_path() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-cli-scripts"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-cli-scripts"
     make_dir(dir)
 
-    dir ++ "/out"
+    dir + "/out"
 }
 
 builds(script: str) -> int =>
@@ -39,8 +39,8 @@ test_the_eval_harness_compiles() {
 test_the_front_page_and_the_reference_compile() {
     for script in ["apps/site/home.maca", "apps/macadoc/macadoc.maca"] {
         assert_eq(builds(script), 0,
-            "{script} asks for the stylesheet builtin, so it compiles only "
-                ++ "when that builtin does")
+            "{script} asks for the stylesheet builtin, so it compiles only " +
+                "when that builtin does")
     }
 }
 

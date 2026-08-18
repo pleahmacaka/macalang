@@ -29,7 +29,7 @@ collect_terms(ls: str[], i: int, acc: str[]) -> str[] {
     if i >= ls.length() {
         acc
     } else {
-        collect_terms(ls, i + 1, acc ++ row_terms(ls.get(i)))
+        collect_terms(ls, i + 1, acc + row_terms(ls.get(i)))
     }
 }
 
@@ -71,16 +71,16 @@ test_appendix_d_covers_every_diagnostic_kind() {
     md = read_file(Diagnostics)
 
     for kind in diagnostic_kinds() {
-        assert(md.contains("## " ++ kind), "appendix D has no section for {kind}")
+        assert(md.contains("## " + kind), "appendix D has no section for {kind}")
     }
 }
 
 test_the_table_reader_reads_a_table() {
-    md = "| `const` | declare a constant |\n"
-             ++ "|---|---|\n"
-             ++ "| `fn`, `func` | there is no fn |\n"
-             ++ "not a row\n"
-             ++ "| plain | no term here |\n"
+    md = "| `const` | declare a constant |\n" +
+             "|---|---|\n" +
+             "| `fn`, `func` | there is no fn |\n" +
+             "not a row\n" +
+             "| plain | no term here |\n"
 
     assert_eq(table_terms(md).join(" "), "const fn func",
               "a grouped cell is as many terms as it names")

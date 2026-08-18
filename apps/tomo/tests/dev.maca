@@ -170,5 +170,5 @@ test_dev_mode_adds_only_markers_and_a_script() {
 }
 
 mark(part: str) -> str =>
-    " data-signal=\"" ++ region_key(part, page_key("en", Chs.get(0)))
-        ++ "\" data-signal-as=\"html\""
+    " data-signal=\"" + region_key(part, page_key("en", Chs.get(0))) +
+        "\" data-signal-as=\"html\""

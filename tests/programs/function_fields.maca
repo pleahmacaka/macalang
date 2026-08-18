@@ -92,7 +92,7 @@ test_a_field_may_return_a_record() {
 }
 
 test_a_lambda_can_be_kept_in_a_field() {
-    r = Route { path = "/lam", handle = q => "lambda:" ++ q }
+    r = Route { path = "/lam", handle = q => "lambda:" + q }
 
     assert_eq(r.handle("v"), "lambda:v", "the lambda ran")
 }
@@ -106,8 +106,8 @@ test_a_field_holding_a_function_can_be_replaced() {
 }
 
 test_a_captured_value_survives_being_stored() {
-    prefix = "pre-" ++ "fix"
-    r = Route { path = "/cap", handle = q => prefix ++ ":" ++ q }
+    prefix = "pre-" + "fix"
+    r = Route { path = "/cap", handle = q => prefix + ":" + q }
     filler = "AAAAAAAA"
 
     assert_eq(r.handle("v"), "pre-fix:v", "the capture is intact")

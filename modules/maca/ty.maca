@@ -50,7 +50,7 @@ t_array(el: Ty) -> Ty =>
     t_con("Array", [el])
 
 t_fn(params: Ty[], ret: Ty) -> Ty =>
-    bare(KFn) with { args = params ++ [ret] }
+    bare(KFn) with { args = params + [ret] }
 
 t_rec(labels: str[], types: Ty[], open: bool) -> Ty =>
     bare(KRec) with { labels, args = types, open }
@@ -79,7 +79,7 @@ Instance = {
 fresh(inf: Infer) -> Instance {
     made = t_var(inf.subst.length())
 
-    Instance { infer = Infer { subst = inf.subst ++ [made] }, ty = made }
+    Instance { infer = Infer { subst = inf.subst + [made] }, ty = made }
 }
 
 unbound(inf: Infer, slot: int) -> bool {
@@ -99,8 +99,8 @@ resolve(inf: Infer, t: Ty) -> Ty {
 }
 
 set_slot(inf: Infer, slot: int, t: Ty) -> Infer =>
-    Infer { subst = inf.subst.slice(0, slot) ++ [t]
-                    ++ inf.subst.slice(slot + 1, inf.subst.length()) }
+    Infer { subst = inf.subst.slice(0, slot) + [t] +
+                    inf.subst.slice(slot + 1, inf.subst.length()) }
 
 occurs(inf: Infer, slot: int, t: Ty) -> bool {
     seen = resolve(inf, t)
@@ -257,7 +257,7 @@ free_slots(inf: Infer, t: Ty, seen: int[]) -> int[] {
     known = resolve(inf, t)
 
     if known.kind == KVar && seen.index_of(known.slot) < 0 {
-        seen ++ [known.slot]
+        seen + [known.slot]
     } else if known.kind == KVar {
         seen
     } else {
@@ -284,7 +284,7 @@ fresh_many(inf: Infer, n: int, acc: Ty[]) -> Batch {
     } else {
         made = fresh(inf)
 
-        fresh_many(made.infer, n - 1, acc ++ [made.ty])
+        fresh_many(made.infer, n - 1, acc + [made.ty])
     }
 }
 
@@ -312,8 +312,8 @@ substitute_all(slots: int[], tos: Ty[], ts: Ty[], i: int) -> Ty[] {
     if i >= ts.length() {
         []
     } else {
-        [substitute(slots, tos, ts.get(i))]
-            ++ substitute_all(slots, tos, ts, i + 1)
+        [substitute(slots, tos, ts.get(i))] +
+            substitute_all(slots, tos, ts, i + 1)
     }
 }
 
@@ -354,8 +354,8 @@ show_fields(t: Ty, i: int) -> str {
     } else if i == t.labels.length() - 1 {
         "{t.labels.get(i)}: {show_ty(t.args.get(i))}"
     } else {
-        "{t.labels.get(i)}: {show_ty(t.args.get(i))}, "
-            ++ show_fields(t, i + 1)
+        "{t.labels.get(i)}: {show_ty(t.args.get(i))}, " +
+            show_fields(t, i + 1)
     }
 }
 
@@ -365,6 +365,6 @@ show_joined(ts: Ty[], sep: str, i: int) -> str {
     } else if i == ts.length() - 1 {
         show_ty(ts.get(i))
     } else {
-        show_ty(ts.get(i)) ++ sep ++ show_joined(ts, sep, i + 1)
+        show_ty(ts.get(i)) + sep + show_joined(ts, sep, i + 1)
     }
 }

@@ -25,11 +25,11 @@ collapse(cs: str[], i: int, quoted: bool, acc: str) -> str {
     } else if cs.get(i) == "\\" && quoted {
         collapse(cs, i + 2, quoted, acc)
     } else if cs.get(i) == "\"" {
-        collapse(cs, i + 1, !quoted, acc ++ "\"")
+        collapse(cs, i + 1, !quoted, acc + "\"")
     } else if quoted {
         collapse(cs, i + 1, quoted, acc)
     } else {
-        collapse(cs, i + 1, quoted, acc ++ cs.get(i))
+        collapse(cs, i + 1, quoted, acc + cs.get(i))
     }
 }
 
@@ -37,14 +37,14 @@ has_trailing_space(line: str) -> bool =>
     line.length() > 0 && (line.ends_with(" ") || line.ends_with("\t"))
 
 line_issues(path: str, no: int, line: str) -> Issue[] =>
-    say(path, no, too_wide(line), "line exceeds 80 columns")
-        ++ say(path, no, single_line_if(line),
-               "single-line `if` block; break it across lines")
-        ++ space_issues(path, no, line)
+    say(path, no, too_wide(line), "line exceeds 80 columns") +
+        say(path, no, single_line_if(line),
+               "single-line `if` block; break it across lines") +
+        space_issues(path, no, line)
 
 space_issues(path: str, no: int, line: str) -> Issue[] =>
-    say(path, no, has_trailing_space(line), "trailing whitespace")
-        ++ say(path, no, line.contains("\t"),
+    say(path, no, has_trailing_space(line), "trailing whitespace") +
+        say(path, no, line.contains("\t"),
                "hard tab; Maca indents with four spaces")
 
 say(path: str, no: int, hit: bool, what: str) -> Issue[] {
@@ -66,7 +66,7 @@ scan_lines(path: str, ls: str[], i: int, raw: bool, acc: Issue[]) -> Issue[] {
         } else {
             line_issues(path, i + 1, line)
         }
-        scan_lines(path, ls, i + 1, raw != fence, acc ++ found)
+        scan_lines(path, ls, i + 1, raw != fence, acc + found)
     }
 }
 
@@ -96,7 +96,7 @@ lint_each(paths: str[], i: int, acc: Issue[]) -> Issue[] {
     if i >= paths.length() {
         acc
     } else {
-        lint_each(paths, i + 1, acc ++ lint_path(paths.get(i)))
+        lint_each(paths, i + 1, acc + lint_path(paths.get(i)))
     }
 }
 
@@ -125,7 +125,7 @@ lint_given(paths: str[]) -> int {
     absent = paths.filter(p => !file_exists(p))
 
     if absent.length() > 0 {
-        err(bad("lint: cannot read " ++ absent.join(", ")))
+        err(bad("lint: cannot read " + absent.join(", ")))
         1
     } else {
         report(lint_each(paths, 0, []))
@@ -134,7 +134,7 @@ lint_given(paths: str[]) -> int {
 
 report(issues: Issue[]) -> int {
     for it in issues {
-        info(dim("{it.path}:{it.line}:") ++ " " ++ it.what)
+        info(dim("{it.path}:{it.line}:") + " " + it.what)
     }
 
     if issues.length() == 0 {

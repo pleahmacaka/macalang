@@ -21,7 +21,7 @@ main() -> int {
                   measure("fib recursive", 20, fib_recursive_case, quick()),
                   measure("edit distance", 60, edit_distance_case, quick())]
     info(table_of(algorithms))
-    info(footnote(primitives ++ algorithms))
+    info(footnote(primitives + algorithms))
 
     info("")
     info(heading("the same run, compared against itself"))
@@ -32,7 +32,7 @@ main() -> int {
 against_baseline(now: Result[]) -> str {
     deltas = compare(pretend_older(now, 0, []), now, Tolerance)
 
-    comparison_table(deltas) ++ "\n" ++ summary(deltas)
+    comparison_table(deltas) + "\n" + summary(deltas)
 }
 
 pretend_older(rs: Result[], i: int, acc: Result[]) -> Result[] {

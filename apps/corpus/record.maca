@@ -32,18 +32,18 @@ Failure = {
 
 /** A record as one JSONL line. */
 record_line(r: Record) -> str =>
-    Open ++ field("pkg", r.pkg) ++ "," ++ field("license", r.license) ++ ","
-        ++ field("ts_source", r.ts_source) ++ ","
-        ++ field("maca_source", r.maca_source) ++ ","
-        ++ field("test_result", r.test_result) ++ Close
+    Open + field("pkg", r.pkg) + "," + field("license", r.license) + "," +
+        field("ts_source", r.ts_source) + "," +
+        field("maca_source", r.maca_source) + "," +
+        field("test_result", r.test_result) + Close
 
 /** A failure as one JSONL line. */
 failure_line(f: Failure) -> str =>
-    Open ++ field("pkg", f.pkg) ++ "," ++ field("license", f.license) ++ ","
-        ++ field("stage", f.stage) ++ "," ++ field("why", f.why) ++ Close
+    Open + field("pkg", f.pkg) + "," + field("license", f.license) + "," +
+        field("stage", f.stage) + "," + field("why", f.why) + Close
 
 field(key: str, value: str) -> str =>
-    quote(key) ++ ":" ++ quote(value)
+    quote(key) + ":" + quote(value)
 
 /** Every stage a package can fall out at, named the same way in the log and in
  * the code.

@@ -974,16 +974,16 @@ refusalText(pane: str) -> str {
 
     for p in problems() {
         if p.kind == "refusal" && p.where == pane {
-            why = why.push("  " ++ p.msg)
+            why = why.push("  " + p.msg)
         }
     }
     if len(why) == 0 {
         return ""
     }
-    "the {pane} back end will not lower this program:\n\n"
-        ++ why.join("\n")
-        ++ "\n\nEvery back end has this channel: it names the construct it "
-        ++ "cannot carry\nrather than emitting code that would not compile."
+    "the {pane} back end will not lower this program:\n\n" +
+        why.join("\n") +
+        "\n\nEvery back end has this channel: it names the construct it " +
+        "cannot carry\nrather than emitting code that would not compile."
 }
 
 problemLine(p: Problem) -> str {
@@ -997,8 +997,8 @@ problemLine(p: Problem) -> str {
 }
 
 dropLine(name: str) -> str =>
-    "config mode: `{name}` is a function, and a configuration is options "
-        ++ "rather than code, so it is not in the Nix"
+    "config mode: `{name}` is a function, and a configuration is options " +
+        "rather than code, so it is not in the Nix"
 
 diagnosticsText() -> str {
     lines = []
@@ -1035,7 +1035,7 @@ consoleText() -> str {
         return "(config mode is pure, so there is nothing to run)"
     }
     if ran.error != "" {
-        return ran.output ++ "\n! " ++ ran.error
+        return ran.output + "\n! " + ran.error
     }
     ran.output == "" ? "(no output)" : ran.output
 }
@@ -1074,8 +1074,8 @@ paneText(pane: str) -> str {
     if len(dropped) == 0 {
         return code
     }
-    "this configuration does not carry {dropped.join(", ")}: a config module "
-        ++ "is options, not code.\n\n" ++ code
+    "this configuration does not carry {dropped.join(", ")}: a config module " +
+        "is options, not code.\n\n" + code
 }
 
 previewNote() -> str {
@@ -1093,10 +1093,10 @@ escaped(s: str) -> str =>
 
 outlineHtml() -> str {
     row(s: Sym) -> str =>
-        "<div class='ol-item' onclick='reveal({s.line})'>"
-            ++ "<span class='ol-kind ol-{s.kind}'>{s.kind}</span>"
-            ++ "<span class='ol-name'>{escaped(s.name)}</span>"
-            ++ "<span class='ol-detail'>{escaped(s.detail)}</span></div>"
+        "<div class='ol-item' onclick='reveal({s.line})'>" +
+            "<span class='ol-kind ol-{s.kind}'>{s.kind}</span>" +
+            "<span class='ol-name'>{escaped(s.name)}</span>" +
+            "<span class='ol-detail'>{escaped(s.detail)}</span></div>"
 
     found = symbols()
     if len(found) == 0 {
@@ -1104,7 +1104,7 @@ outlineHtml() -> str {
     }
     out = ""
     for s in found {
-        out = out ++ row(s)
+        out = out + row(s)
     }
     out
 }
@@ -1183,9 +1183,9 @@ stats() -> str {
         return "run a program to profile it"
     }
     tail = ran.truncated ? ", truncated" : ""
-    "{counted(ran.steps)} step{plural(ran.steps)}, "
-        ++ "{counted(ran.calls)} call{plural(ran.calls)}, "
-        ++ "depth {counted(ran.depth)}{tail}"
+    "{counted(ran.steps)} step{plural(ran.steps)}, " +
+        "{counted(ran.calls)} call{plural(ran.calls)}, " +
+        "depth {counted(ran.depth)}{tail}"
 }
 
 flameSvg() -> str =>

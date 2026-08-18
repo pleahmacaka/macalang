@@ -4,7 +4,7 @@ JsReserved = " arguments await case catch class const debugger default delete do
 
 jid(name: str) -> str {
     if JsReserved.index_of(" {name} ") >= 0 {
-        name ++ "_"
+        name + "_"
     } else {
         name
     }
@@ -94,34 +94,34 @@ jemit_while(e: Expr) -> str =>
 
 /** The binder is a local the body may write, so it is `let` and not `const`. */
 jemit_for(e: Expr) -> str =>
-    "for (let {jid(e.text)} of {jemit_expr(e.children.get(0))})"
-        ++ " {{ {jemit_stmts(e.stmts, 0)} }}"
+    "for (let {jid(e.text)} of {jemit_expr(e.children.get(0))})" +
+        " {{ {jemit_stmts(e.stmts, 0)} }}"
 
 /** Arms are pattern and answer in turn, and the first whose test holds answers.
  */
 jemit_match(e: Expr) -> str =>
-    "(() => {{ const _s = {jemit_expr(e.children.get(0))};"
-        ++ " {jemit_arms(e.children, 1)}"
-        ++ "throw new Error(\"no match\"); }})()"
+    "(() => {{ const _s = {jemit_expr(e.children.get(0))};" +
+        " {jemit_arms(e.children, 1)}" +
+        "throw new Error(\"no match\"); }})()"
 
 jemit_arms(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
         ""
     } else {
-        jemit_arm(cs.get(i), cs.get(i + 1)) ++ jemit_arms(cs, i + 2)
+        jemit_arm(cs.get(i), cs.get(i + 1)) + jemit_arms(cs, i + 2)
     }
 }
 
 jemit_arm(p: Expr, body: Expr) -> str =>
-    "if ({jpat_test(p, "_s")}) {{ {jpat_binds(p, "_s")}"
-        ++ "return {jemit_expr(body)}; }} "
+    "if ({jpat_test(p, "_s")}) {{ {jpat_binds(p, "_s")}" +
+        "return {jemit_expr(body)}; }} "
 
 jpat_test(p: Expr, sv: str) -> str {
     if p.kind == EGuard {
         jguard_test(p, sv)
     } else if p.kind == EBinary && p.text == "|" {
-        "({jpat_test(p.children.get(0), sv)}"
-            ++ " || {jpat_test(p.children.get(1), sv)})"
+        "({jpat_test(p.children.get(0), sv)}" +
+            " || {jpat_test(p.children.get(1), sv)})"
     } else if p.kind == EStr {
         "{sv} === {js_str(p.text)}"
     } else if p.text == "_" || p.text == "{{}}" {
@@ -140,16 +140,16 @@ jpat_test(p: Expr, sv: str) -> str {
 /** A guard reads the arm's own names, so the binds run again inside its test.
  */
 jguard_test(p: Expr, sv: str) -> str =>
-    "{jpat_test(p.children.get(0), sv)} && (() => {{"
-        ++ " {jpat_binds(p.children.get(0), sv)}"
-        ++ "return {jemit_expr(p.children.get(1))}; }})()"
+    "{jpat_test(p.children.get(0), sv)} && (() => {{" +
+        " {jpat_binds(p.children.get(0), sv)}" +
+        "return {jemit_expr(p.children.get(1))}; }})()"
 
 jcells_test(p: Expr, sv: str) -> str {
     n = js_cell_count(p)
     how = p.text == "[..]" ? ">=" : "==="
 
-    "Array.isArray({sv}) && {sv}.length {how} {str(n)}"
-        ++ jcell_tests(p, sv, 0, n)
+    "Array.isArray({sv}) && {sv}.length {how} {str(n)}" +
+        jcell_tests(p, sv, 0, n)
 }
 
 js_cell_count(p: Expr) -> int =>
@@ -162,7 +162,7 @@ jcell_tests(p: Expr, sv: str, i: int, n: int) -> str {
         one = jpat_test(p.children.get(i), "{sv}[{str(i)}]")
         here = one == "true" ? "" : " && ({one})"
 
-        here ++ jcell_tests(p, sv, i + 1, n)
+        here + jcell_tests(p, sv, i + 1, n)
     }
 }
 
@@ -188,8 +188,8 @@ jfield_binds(fs: Expr[], sv: str, i: int) -> str {
     if i >= fs.length() {
         ""
     } else {
-        "var {jid(fs.get(i).text)} = {sv}.{jid(fs.get(i).text)}; "
-            ++ jfield_binds(fs, sv, i + 1)
+        "var {jid(fs.get(i).text)} = {sv}.{jid(fs.get(i).text)}; " +
+            jfield_binds(fs, sv, i + 1)
     }
 }
 
@@ -197,8 +197,8 @@ jpayload_binds(cs: Expr[], sv: str, i: int) -> str {
     if i >= cs.length() {
         ""
     } else {
-        "var {jid(cs.get(i).text)} = {sv}._{str(i)}; "
-            ++ jpayload_binds(cs, sv, i + 1)
+        "var {jid(cs.get(i).text)} = {sv}._{str(i)}; " +
+            jpayload_binds(cs, sv, i + 1)
     }
 }
 
@@ -208,14 +208,14 @@ jcell_binds(p: Expr, sv: str, i: int, n: int) -> str {
     } else if i >= n {
         "var {jid(p.children.get(i).text)} = {sv}.slice({str(n)}); "
     } else {
-        jpat_binds(p.children.get(i), "{sv}[{str(i)}]")
-            ++ jcell_binds(p, sv, i + 1, n)
+        jpat_binds(p.children.get(i), "{sv}[{str(i)}]") +
+            jcell_binds(p, sv, i + 1, n)
     }
 }
 
 jemit_ternary(e: Expr) -> str =>
-    "({jemit_expr(e.children.get(0))} ? {jemit_expr(e.children.get(1))}"
-        ++ " : {jemit_else(e.children.get(2))})"
+    "({jemit_expr(e.children.get(0))} ? {jemit_expr(e.children.get(1))}" +
+        " : {jemit_else(e.children.get(2))})"
 
 /** A branch with no else has no value, so what it answers with is never read.
  */
@@ -253,8 +253,8 @@ js_not(op: str) -> str =>
 /** One operator joins strings and lists alike, and only one method does both.
  */
 js_joins(e: Expr) -> bool =>
-    e.text == "++" || (e.text == "+" && js_list(e.children.get(0).ty)
-                          && js_list(e.children.get(1).ty))
+    e.text == "++" || (e.text == "+" && (js_list(e.children.get(0).ty)
+                          || js_list(e.children.get(1).ty)))
 
 /** Two records are equal when their fields are, which `===` does not ask. */
 js_deep(e: Expr) -> bool =>
@@ -262,8 +262,8 @@ js_deep(e: Expr) -> bool =>
         && !js_scalar(e.children.get(1))
 
 jstore(l: Expr, value: str) -> str =>
-    "{jemit_expr(l.children.get(0))}[{jemit_expr(l.children.get(1))}]"
-        ++ " = {value}"
+    "{jemit_expr(l.children.get(0))}[{jemit_expr(l.children.get(1))}]" +
+        " = {value}"
 
 jarg(e: Expr, i: int) -> str {
     if i >= e.children.length() {
@@ -494,8 +494,8 @@ jemit_lambda(e: Expr) -> str =>
     "(({jemit_params(lambda_params(e), 0)}) => {jemit_expr(lambda_body(e))})"
 
 jemit_with(e: Expr) -> str =>
-    "{{ ...{jemit_expr(e.children.get(0))},"
-        ++ " {jemit_fields(e.children, 1)} }}"
+    "{{ ...{jemit_expr(e.children.get(0))}," +
+        " {jemit_fields(e.children, 1)} }}"
 
 jemit_fields(fs: Expr[], i: int) -> str =>
     fs.slice(i, fs.length()).map(jemit_field).join(", ")
@@ -513,8 +513,8 @@ js_binder_name(p: Expr) -> str =>
     jid(p.text)
 
 jemit_block(e: Expr) -> str =>
-    "(() => {{ {jemit_stmts(e.stmts, 0)} return"
-        ++ " {jemit_expr(e.children.get(0))}; }})()"
+    "(() => {{ {jemit_stmts(e.stmts, 0)} return" +
+        " {jemit_expr(e.children.get(0))}; }})()"
 
 jemit_stmts(body: Stmt[], i: int) -> str {
     if i >= body.length() {
@@ -556,16 +556,16 @@ jstmt_of(e: Expr) -> str {
  * position is a chain.
  */
 jmatch_stmt(e: Expr) -> str =>
-    "{{ const _s = {jemit_expr(e.children.get(0))};"
-        ++ " {jarms_stmt(e.children, 1)} }}"
+    "{{ const _s = {jemit_expr(e.children.get(0))};" +
+        " {jarms_stmt(e.children, 1)} }}"
 
 jarms_stmt(cs: Expr[], i: int) -> str {
     if i + 1 >= cs.length() {
         ""
     } else {
         rest = jarms_stmt(cs, i + 2)
-        here = "if ({jpat_test(cs.get(i), "_s")}) {{"
-            ++ " {jpat_binds(cs.get(i), "_s")}{jstmt_of(cs.get(i + 1))} }}"
+        here = "if ({jpat_test(cs.get(i), "_s")}) {{" +
+            " {jpat_binds(cs.get(i), "_s")}{jstmt_of(cs.get(i + 1))} }}"
 
         rest == "" ? here : "{here} else {rest}"
     }
@@ -599,8 +599,8 @@ js_loop(e: Expr) -> bool =>
     e.kind == EWhile || e.kind == EFor
 
 jemit_fn(s: Stmt) -> str =>
-    "{js_waiting(s.body)}function {jid(s.name)}({jemit_params(s.params, 0)})"
-        ++ " {{ {jemit_body(s.body, 0)} }}"
+    "{js_waiting(s.body)}function {jid(s.name)}({jemit_params(s.params, 0)})" +
+        " {{ {jemit_body(s.body, 0)} }}"
 
 /** Only an async function may wait, and every `await` is written inside one. */
 js_waiting(body: Stmt[]) -> str =>
@@ -731,10 +731,10 @@ function _massert_eq(a, b, m) { if (_meq(a, b)) return true; _mfailed++; console
  */
 jemit_module(m: Module) -> str {
     heads = jemit_variants(m.items, 0)
-    rest = jemit_consts(m.items, 0) ++ jemit_items(m.items, 0)
-        ++ jemit_exports(m.items) ++ jemit_entry(m.items, 0)
+    rest = jemit_consts(m.items, 0) + jemit_items(m.items, 0) +
+        jemit_exports(m.items) + jemit_entry(m.items, 0)
 
-    JsPreamble ++ heads ++ js_json_defs(m.items, rest) ++ rest
+    JsPreamble + heads + js_json_defs(m.items, rest) + rest
 }
 
 /** `decode` reads into the type the binding declares, which is the only thing
@@ -745,8 +745,8 @@ js_typed_decode(s: Stmt) -> bool =>
         && s.value.children.length() == 1
 
 js_decoded(s: Stmt) -> str =>
-    "_jdec(JSON.parse({jemit_expr(s.value.children.get(0))}),"
-        ++ " {js_json_ty(s.ret)}, \"\")"
+    "_jdec(JSON.parse({jemit_expr(s.value.children.get(0))})," +
+        " {js_json_ty(s.ret)}, \"\")"
 
 js_json_ty(ty: str) -> str =>
     js_list(ty) ? "[{js_json_ty(ty.slice(0, ty.length() - 2))}]" : js_str(ty)
@@ -758,8 +758,8 @@ js_json_defs(items: Stmt[], body: str) -> str {
     if !body.contains("_jenc(") && !body.contains("_jdec(") {
         ""
     } else {
-        "const _jrecs = {{{js_json_recs(items, 0)}}};\n"
-            ++ "const _jsums = {{{js_json_sums(items, 0)}}};\n" ++ JsonJs
+        "const _jrecs = {{{js_json_recs(items, 0)}}};\n" +
+            "const _jsums = {{{js_json_sums(items, 0)}}};\n" + JsonJs
     }
 }
 
@@ -771,8 +771,8 @@ js_json_recs(items: Stmt[], i: int) -> str {
     } else {
         fields = js_json_fields(items.get(i).params, 0)
 
-        "{js_str(items.get(i).name)}: {{{fields}}}, "
-            ++ js_json_recs(items, i + 1)
+        "{js_str(items.get(i).name)}: {{{fields}}}, " +
+            js_json_recs(items, i + 1)
     }
 }
 
@@ -780,8 +780,8 @@ js_json_fields(fs: Expr[], i: int) -> str {
     if i >= fs.length() {
         ""
     } else {
-        "{js_str(fs.get(i).text)}: {js_json_ty(fs.get(i).ty)}, "
-            ++ js_json_fields(fs, i + 1)
+        "{js_str(fs.get(i).text)}: {js_json_ty(fs.get(i).ty)}, " +
+            js_json_fields(fs, i + 1)
     }
 }
 
@@ -793,8 +793,8 @@ js_json_sums(items: Stmt[], i: int) -> str {
     } else {
         named = js_json_variants(items.get(i).params, 0)
 
-        "{js_str(items.get(i).name)}: {{{named}}}, "
-            ++ js_json_sums(items, i + 1)
+        "{js_str(items.get(i).name)}: {{{named}}}, " +
+            js_json_sums(items, i + 1)
     }
 }
 
@@ -802,8 +802,8 @@ js_json_variants(vs: Expr[], i: int) -> str {
     if i >= vs.length() {
         ""
     } else {
-        "{js_str(vs.get(i).text.lower())}: {jid(vs.get(i).text)}, "
-            ++ js_json_variants(vs, i + 1)
+        "{js_str(vs.get(i).text.lower())}: {jid(vs.get(i).text)}, " +
+            js_json_variants(vs, i + 1)
     }
 }
 
@@ -813,8 +813,8 @@ jemit_variants(items: Stmt[], i: int) -> str {
     } else if items.get(i).kind != SSum {
         jemit_variants(items, i + 1)
     } else {
-        items.get(i).params.map(jemit_variant).join("")
-            ++ jemit_variants(items, i + 1)
+        items.get(i).params.map(jemit_variant).join("") +
+            jemit_variants(items, i + 1)
     }
 }
 
@@ -827,8 +827,8 @@ jemit_variant(v: Expr) -> str {
     } else {
         ps = js_payload_names(v.children, 0)
 
-        "function {jid(v.text)}({ps})"
-            ++ " {{ return {{ $: {js_str(v.text)}, {ps} }}; }}\n"
+        "function {jid(v.text)}({ps})" +
+            " {{ return {{ $: {js_str(v.text)}, {ps} }}; }}\n"
     }
 }
 
@@ -838,7 +838,7 @@ js_payload_names(cs: Expr[], i: int) -> str {
     } else if i == cs.length() - 1 {
         "_{str(i)}"
     } else {
-        "_{str(i)}, " ++ js_payload_names(cs, i + 1)
+        "_{str(i)}, " + js_payload_names(cs, i + 1)
     }
 }
 
@@ -849,8 +849,8 @@ jemit_consts(items: Stmt[], i: int) -> str {
             || items.get(i).name.index_of(".") >= 0 {
         jemit_consts(items, i + 1)
     } else {
-        "let {jid(items.get(i).name)} = {jemit_expr(items.get(i).value)};\n"
-            ++ jemit_consts(items, i + 1)
+        "let {jid(items.get(i).name)} = {jemit_expr(items.get(i).value)};\n" +
+            jemit_consts(items, i + 1)
     }
 }
 
@@ -861,8 +861,8 @@ jemit_exports(items: Stmt[]) -> str {
     if names == "" {
         ""
     } else {
-        "if (typeof module !== \"undefined\")"
-            ++ " Object.assign(module.exports, {{ {names}}});\n"
+        "if (typeof module !== \"undefined\")" +
+            " Object.assign(module.exports, {{ {names}}});\n"
     }
 }
 
@@ -870,7 +870,7 @@ js_exported(items: Stmt[], i: int) -> str {
     if i >= items.length() {
         ""
     } else {
-        js_export_of(items.get(i)) ++ js_exported(items, i + 1)
+        js_export_of(items.get(i)) + js_exported(items, i + 1)
     }
 }
 
@@ -891,16 +891,16 @@ js_variant_ref(v: Expr) -> str =>
  * nobody sees.
  */
 js_mount() -> str =>
-    "\nconst _mroot = typeof document === \"undefined\" "
-        ++ "? null : document.getElementById(\"app\");\n"
-        ++ "_mpaint = () => {{ if (_mroot) {{ _mroot.replaceChildren();"
-        ++ " _mroot.append(main()); }} }};\n_mpaint();\n"
+    "\nconst _mroot = typeof document === \"undefined\" " +
+        "? null : document.getElementById(\"app\");\n" +
+        "_mpaint = () => {{ if (_mroot) {{ _mroot.replaceChildren();" +
+        " _mroot.append(main()); }} }};\n_mpaint();\n"
 
 /** A program answers with a code, and the process answers with the same one. */
 js_exit() -> str =>
-    "\nconst _mexit = main();\nif (typeof process !== \"undefined\" && "
-        ++ "typeof _mexit === \"number\" && _mexit > 0) "
-        ++ "process.exit(_mexit);\n"
+    "\nconst _mexit = main();\nif (typeof process !== \"undefined\" && " +
+        "typeof _mexit === \"number\" && _mexit > 0) " +
+        "process.exit(_mexit);\n"
 
 jemit_entry(items: Stmt[], i: int) -> str {
     if i >= items.length() {
@@ -930,8 +930,8 @@ jemit_items(items: Stmt[], i: int) -> str {
 jemit_host(s: Stmt) -> str {
     ps = js_param_names(s.params, 0)
 
-    "function {jid(s.name)}({ps})"
-        ++ " {{ return _host({js_str(s.name)})({ps}); }}"
+    "function {jid(s.name)}({ps})" +
+        " {{ return _host({js_str(s.name)})({ps}); }}"
 }
 
 js_param_names(ps: Expr[], i: int) -> str {
@@ -940,7 +940,7 @@ js_param_names(ps: Expr[], i: int) -> str {
     } else if i == ps.length() - 1 {
         jid(ps.get(i).text)
     } else {
-        "{jid(ps.get(i).text)}, " ++ js_param_names(ps, i + 1)
+        "{jid(ps.get(i).text)}, " + js_param_names(ps, i + 1)
     }
 }
 

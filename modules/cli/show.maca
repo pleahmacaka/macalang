@@ -9,20 +9,20 @@ table(header: str[], rows: str[][]) -> str {
     i = 0
     while i < cols {
         cell = bold(pad(header.get(i), w.get(i)))
-        out = out ++ cell ++ (i + 1 < cols ? "  " : "")
+        out = out + cell + (i + 1 < cols ? "  " : "")
         i = i + 1
     }
-    out = out ++ "\n"
+    out = out + "\n"
 
     i = 0
     while i < cols {
-        out = out ++ grey("─".repeat(w.get(i))) ++ (i + 1 < cols ? "  " : "")
+        out = out + grey("─".repeat(w.get(i))) + (i + 1 < cols ? "  " : "")
         i = i + 1
     }
-    out = out ++ "\n"
+    out = out + "\n"
 
     for row in rows {
-        out = out ++ row_text(row, w, cols) ++ "\n"
+        out = out + row_text(row, w, cols) + "\n"
     }
     out
 }
@@ -37,29 +37,29 @@ table_aligned(header: str[], rows: str[][]) -> str {
     while i < cols {
         head = numeric_column(rows, i) ? pad_left(header.get(i), w.get(i))
                                       : pad(header.get(i), w.get(i))
-        out = out ++ bold(head) ++ (i + 1 < cols ? "  " : "")
+        out = out + bold(head) + (i + 1 < cols ? "  " : "")
         i = i + 1
     }
-    out = out ++ "\n"
+    out = out + "\n"
 
     i = 0
     while i < cols {
-        out = out ++ grey("─".repeat(w.get(i))) ++ (i + 1 < cols ? "  " : "")
+        out = out + grey("─".repeat(w.get(i))) + (i + 1 < cols ? "  " : "")
         i = i + 1
     }
-    out = out ++ "\n"
+    out = out + "\n"
 
     for row in rows {
         j = 0
         line = ""
         while j < cols {
             cell = j < row.length() ? row.get(j) : ""
-            line = line ++ (numeric_column(rows, j) ? pad_left(cell, w.get(j))
+            line = line + (numeric_column(rows, j) ? pad_left(cell, w.get(j))
                                                     : pad(cell, w.get(j)))
-            line = line ++ (j + 1 < cols ? "  " : "")
+            line = line + (j + 1 < cols ? "  " : "")
             j = j + 1
         }
-        out = out ++ line ++ "\n"
+        out = out + line + "\n"
     }
     out
 }
@@ -85,7 +85,7 @@ row_text(row: str[], w: int[], cols: int) -> str {
     i = 0
     while i < cols {
         cell = i < row.length() ? row.get(i) : ""
-        out = out ++ pad(cell, w.get(i)) ++ (i + 1 < cols ? "  " : "")
+        out = out + pad(cell, w.get(i)) + (i + 1 < cols ? "  " : "")
         i = i + 1
     }
     out
@@ -139,7 +139,7 @@ rule(title: str) -> str {
     } else {
         left = grey("── ")
         right = w - width(title) - 4
-        left ++ bold(title) ++ " " ++ grey("─".repeat(right > 0 ? right : 0))
+        left + bold(title) + " " + grey("─".repeat(right > 0 ? right : 0))
     }
 }
 
@@ -149,12 +149,12 @@ panel(title: str, body: str) -> str {
     inner = widest(lines, 0, width(title) + 2)
 
     edge = "─".repeat(inner - width(title) - 1)
-    out = grey("┌─ ") ++ bold(title) ++ grey(" " ++ edge ++ "┐")
-    out = out ++ "\n"
+    out = grey("┌─ ") + bold(title) + grey(" " + edge + "┐")
+    out = out + "\n"
     for line in lines {
-        out = out ++ grey("│ ") ++ pad(line, inner) ++ grey(" │") ++ "\n"
+        out = out + grey("│ ") + pad(line, inner) + grey(" │") + "\n"
     }
-    out ++ grey("└" ++ "─".repeat(inner + 2) ++ "┘")
+    out + grey("└" + "─".repeat(inner + 2) + "┘")
 }
 
 widest(lines: str[], i: int, best: int) -> int {
@@ -170,23 +170,23 @@ widest(lines: str[], i: int, best: int) -> int {
 /** ` key value`: a labelled fact, with the label dimmed so the value is what
  * the eye lands on.
  */
-kv(key: str, value: str) -> str => "  " ++ dim(pad(key, 14)) ++ value
+kv(key: str, value: str) -> str => "  " + dim(pad(key, 14)) + value
 
 /** A bulleted line. */
-bullet(s: str) -> str => "  " ++ grey("•") ++ " " ++ s
+bullet(s: str) -> str => "  " + grey("•") + " " + s
 
 /** `[####----] n%`: a progress bar of a given width. */
 bar(done: int, total: int, w: int) -> str {
     share = total > 0 ? done * w / total : 0
     filled = share > w ? w : (share < 0 ? 0 : share)
     pct = total > 0 ? done * 100 / total : 0
-    body = "█".repeat(filled) ++ grey("░".repeat(w - filled))
-    "[" ++ body ++ "] " ++ pad_left("{pct}%", 4)
+    body = "█".repeat(filled) + grey("░".repeat(w - filled))
+    "[" + body + "] " + pad_left("{pct}%", 4)
 }
 
 /** The same line, rewritten in place: carriage return, no newline. */
 redraw(s: str) {
     if is_tty() {
-        print("\r" ++ s)
+        print("\r" + s)
     }
 }

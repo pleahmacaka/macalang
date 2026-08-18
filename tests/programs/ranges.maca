@@ -15,7 +15,7 @@ test_a_range_over_a_lists_length_is_its_indices() {
     seen = ""
 
     for i in 0..xs.length() {
-        seen = seen ++ xs[i]
+        seen = seen + xs[i]
     }
 
     assert_eq(seen, "abc", "0..length() reaches every index and no more")

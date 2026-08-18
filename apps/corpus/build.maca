@@ -56,8 +56,8 @@ translate(p: Package) -> str {
     scratch = join(env_or("TMPDIR", "/tmp"), "maca-corpus")
     make_dir(scratch)
     prompt = join(scratch, "prompt.txt")
-    write_file(prompt, spec() ++ "\n\nTranslate this TypeScript to Maca. "
-                       ++ "Reply with Maca source only.\n\n" ++ p.ts)
+    write_file(prompt, spec() + "\n\nTranslate this TypeScript to Maca. " +
+                       "Reply with Maca source only.\n\n" + p.ts)
 
     capture(translator(), [prompt])
 }
@@ -119,17 +119,17 @@ main(argv: str[]) -> int {
 
 run_all(ps: Package[], i: int, kept: int, lost: int) -> int {
     if i >= ps.length() {
-        info(ok("{kept} pairs") ++ dim(", {lost} failures with a reason"))
+        info(ok("{kept} pairs") + dim(", {lost} failures with a reason"))
         0
     } else {
         p = ps.get(i)
         problems = attempt(p)
 
         if problems.length() == 0 {
-            err(ok("  " ++ p.name))
+            err(ok("  " + p.name))
             run_all(ps, i + 1, kept + 1, lost)
         } else {
-            err(grey("  " ++ p.name ++ ": " ++ problems.get(0).stage))
+            err(grey("  " + p.name + ": " + problems.get(0).stage))
             log_failures(problems, 0)
             run_all(ps, i + 1, kept, lost + 1)
         }
@@ -157,7 +157,7 @@ attempt(p: Package) -> Failure[] {
                     ts_source = p.ts,
                     maca_source = maca_src,
                     test_result = "passed",
-                }) ++ "\n")
+                }) + "\n")
                 []
             } else {
                 problems
@@ -172,7 +172,7 @@ log_failures(fs: Failure[], i: int) -> bool {
     if i >= fs.length() {
         true
     } else {
-        append_file(Failures, failure_line(fs.get(i)) ++ "\n")
+        append_file(Failures, failure_line(fs.get(i)) + "\n")
         log_failures(fs, i + 1)
     }
 }

@@ -54,7 +54,7 @@ spec_text() -> str {
     if got.trim() == "" {
         fail "`maca spec --llm` printed nothing: build the toolchain first"
     } else {
-        got ++ "\n\nReply with Maca source only, no fences and no prose."
+        got + "\n\nReply with Maca source only, no fences and no prose."
     }
 }
 
@@ -82,7 +82,7 @@ completed(problem: str, answer: str) -> str {
     theirs = answer.index_of("test_")
     body = theirs < 0 ? answer : answer.slice(0, theirs).trim()
 
-    at < 0 ? body : body ++ "\n\n" ++ src.slice(at, src.length())
+    at < 0 ? body : body + "\n\n" + src.slice(at, src.length())
 }
 
 /** Run one problem under one condition, and say whether its tests passed. */
@@ -109,8 +109,8 @@ attempt(problem: str, c: Condition) -> Outcome {
             }
         } else {
             retried = ask_model(preamble(c),
-                                ask(problem) ++ "\n\nThis failed:\n" ++ graded.why
-                                    ++ "\nFix it and reply with the source only.")
+                                ask(problem) + "\n\nThis failed:\n" + graded.why +
+                                    "\nFix it and reply with the source only.")
             after = grade(problem, retried)
 
             Outcome {
@@ -166,7 +166,7 @@ grade(problem: str, answer: str) -> Graded {
 ask_model(system: str, problem: str) -> str {
     make_dir(Scratch)
     prompt = join(Scratch, "prompt.txt")
-    write_file(prompt, system ++ "\n\n" ++ problem)
+    write_file(prompt, system + "\n\n" + problem)
 
     capture(model(), [prompt])
 }
@@ -186,7 +186,7 @@ measure(cs: Condition[], i: int, acc: Outcome[]) -> Outcome[] {
         acc
     } else {
         info(bold(label(cs.get(i))))
-        measure(cs, i + 1, acc ++ one_condition(problems(), 0, cs.get(i), []))
+        measure(cs, i + 1, acc + one_condition(problems(), 0, cs.get(i), []))
     }
 }
 
@@ -195,7 +195,7 @@ one_condition(ps: str[], i: int, c: Condition, acc: Outcome[]) -> Outcome[] {
         acc
     } else {
         out = attempt(ps.get(i), c)
-        err(out.passed ? ok("  " ++ out.problem) : grey("  " ++ out.problem))
+        err(out.passed ? ok("  " + out.problem) : grey("  " + out.problem))
         one_condition(ps, i + 1, c, acc.push(out))
     }
 }
@@ -206,18 +206,18 @@ report(outs: Outcome[], where: str) -> int {
         1
     } else {
         write_file(where, baseline(outs))
-        info(ok("wrote " ++ where))
+        info(ok("wrote " + where))
         0
     }
 }
 
 baseline(outs: Outcome[]) -> str =>
-    "# Baseline\n\n"
-        ++ "pass@1 over the mechanically ported HumanEval set, by what the model\n"
-        ++ "was told. Regenerate with `maca run apps/evals/run.maca` and commit\n"
-        ++ "the change. The model was `{model()}`.\n\n"
-        ++ "| condition | passed | of | pass@1 |\n|---|---|---|---|\n"
-        ++ rows(conditions(), 0, outs) ++ "\n"
+    "# Baseline\n\n" +
+        "pass@1 over the mechanically ported HumanEval set, by what the model\n" +
+        "was told. Regenerate with `maca run apps/evals/run.maca` and commit\n" +
+        "the change. The model was `{model()}`.\n\n" +
+        "| condition | passed | of | pass@1 |\n|---|---|---|---|\n" +
+        rows(conditions(), 0, outs) + "\n"
 
 rows(cs: Condition[], i: int, outs: Outcome[]) -> str {
     if i >= cs.length() {
@@ -228,7 +228,7 @@ rows(cs: Condition[], i: int, outs: Outcome[]) -> str {
         won = mine.filter(o => o.passed).length()
         pct = mine.length() == 0 ? 0 : won * 100 / mine.length()
 
-        "| {name} | {won} | {mine.length()} | {pct}% |\n"
-            ++ rows(cs, i + 1, outs)
+        "| {name} | {won} | {mine.length()} | {pct}% |\n" +
+            rows(cs, i + 1, outs)
     }
 }

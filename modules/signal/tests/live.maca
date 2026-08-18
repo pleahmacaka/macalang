@@ -26,7 +26,7 @@ test_patch_json_is_the_array_patch_script_wraps() {
 
     assert(ops.starts_with("[\{\"key\":\"a\""), "an array of ops, a first")
     assert(ops.ends_with("\}]"), "and it closes")
-    assert_eq(patch_script(s), "macaSignal(" ++ ops ++ ");",
+    assert_eq(patch_script(s), "macaSignal(" + ops + ");",
               "the script is the array, called")
 }
 
@@ -39,12 +39,12 @@ test_an_empty_patch_is_an_empty_array_and_no_script() {
 
 test_a_region_is_replaced_by_the_value_the_op_carries() {
     s = store().set("body", "<p>one</p>")
-    page = "<main>" ++ html_node(s, "article", "body") ++ "</main>"
+    page = "<main>" + html_node(s, "article", "body") + "</main>"
     s = s.clear_changed().set("body", "<p>two</p>")
 
     assert_eq(apply_patch(page, patch(s)),
-              "<main><article data-signal=\"body\" data-signal-as=\"html\">"
-              ++ "<p>two</p></article></main>",
+              "<main><article data-signal=\"body\" data-signal-as=\"html\">" +
+              "<p>two</p></article></main>",
               "the children changed and the element did not")
 }
 
@@ -60,9 +60,9 @@ test_a_text_node_is_replaced_escaped() {
 
 test_everything_outside_the_region_is_left_alone() {
     s = store().set("body", "old")
-    page = "<div id=\"top\">before</div>"
-        ++ html_node(s, "section", "body")
-        ++ "<details open><summary>s</summary>after</details>"
+    page = "<div id=\"top\">before</div>" +
+        html_node(s, "section", "body") +
+        "<details open><summary>s</summary>after</details>"
     s = s.clear_changed().set("body", "new")
     out = apply_patch(page, patch(s))
 
@@ -74,7 +74,7 @@ test_everything_outside_the_region_is_left_alone() {
 
 test_every_node_bound_to_the_key_is_patched() {
     s = store().set("n", "1")
-    page = text_node(s, "span", "n") ++ "|" ++ text_node(s, "b", "n")
+    page = text_node(s, "span", "n") + "|" + text_node(s, "b", "n")
     s = s.clear_changed().set("n", "2")
     out = apply_patch(page, patch(s))
 
@@ -93,23 +93,23 @@ test_an_op_nothing_is_bound_to_changes_nothing() {
 
 test_a_region_holding_its_own_tag_closes_in_the_right_place() {
     s = store().set("k", "<div>inner</div>")
-    page = html_node(s, "div", "k") ++ "<p>tail</p>"
+    page = html_node(s, "div", "k") + "<p>tail</p>"
     s = s.clear_changed().set("k", "<div>fresh</div>")
 
     assert_eq(apply_patch(page, patch(s)),
-              "<div data-signal=\"k\" data-signal-as=\"html\">"
-              ++ "<div>fresh</div></div><p>tail</p>",
+              "<div data-signal=\"k\" data-signal-as=\"html\">" +
+              "<div>fresh</div></div><p>tail</p>",
               "the region closed at its own close tag, not at its child's")
 }
 
 test_a_longer_tag_sharing_the_prefix_is_not_a_nested_tag() {
     s = store().set("k", "<divider></divider>")
-    page = html_node(s, "div", "k") ++ "<p>tail</p>"
+    page = html_node(s, "div", "k") + "<p>tail</p>"
     s = s.clear_changed().set("k", "done")
     out = apply_patch(page, patch(s))
 
-    assert_eq(out, "<div data-signal=\"k\" data-signal-as=\"html\">done</div>"
-                   ++ "<p>tail</p>",
+    assert_eq(out, "<div data-signal=\"k\" data-signal-as=\"html\">done</div>" +
+                   "<p>tail</p>",
               "the region ended at its own close tag")
 }
 
@@ -144,10 +144,10 @@ test_a_key_holding_a_quote_is_still_found() {
 }
 
 demo_page(s: Store) -> str =>
-    "<body><header>fixed</header>"
-        ++ html_node(s, "article", "body")
-        ++ "<nav>" ++ text_node(s, "span", "count") ++ "</nav>"
-        ++ "<footer>fixed</footer></body>"
+    "<body><header>fixed</header>" +
+        html_node(s, "article", "body") +
+        "<nav>" + text_node(s, "span", "count") + "</nav>" +
+        "<footer>fixed</footer></body>"
 
 filled(body: str, count: str) -> Store =>
     store().set("body", body).set("count", count)

@@ -35,23 +35,23 @@ main(argv: str[]) -> int {
 
 collect_all(names: str[], i: int, kept: int, refused: int) -> int {
     if i >= names.length() {
-        info(ok("{kept} collected") ++ dim(", {refused} refused"))
+        info(ok("{kept} collected") + dim(", {refused} refused"))
         refused > 0 && kept == 0 ? 1 : 0
     } else {
         name = names.get(i)
 
         if collect_one(name) {
-            err(ok("  " ++ name))
+            err(ok("  " + name))
             collect_all(names, i + 1, kept + 1, refused)
         } else {
-            err(grey("  " ++ name ++ ": refused"))
+            err(grey("  " + name + ": refused"))
             collect_all(names, i + 1, kept, refused + 1)
         }
     }
 }
 
 collect_one(name: str) -> bool {
-    metadata = capture("curl", ["-sSL", Registry ++ "/" ++ name])
+    metadata = capture("curl", ["-sSL", Registry + "/" + name])
 
     if metadata.trim() == "" {
         note(name, "", "fetch", "the registry answered nothing")
@@ -84,6 +84,6 @@ note(name: str, spdx: str, stage: str, why: str) -> bool {
                     license = spdx,
                     stage = stage,
                     why = why,
-                }) ++ "\n")
+                }) + "\n")
     false
 }

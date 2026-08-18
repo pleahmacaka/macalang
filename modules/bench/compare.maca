@@ -23,7 +23,7 @@ Tolerance = 0.05
  * that `now` no longer has.
  */
 compare(before: Result[], now: Result[], tolerance: float) -> Delta[] =>
-    paired(before, now, 0, tolerance, []) ++ dropped(before, now, 0, [])
+    paired(before, now, 0, tolerance, []) + dropped(before, now, 0, [])
 
 paired(before: Result[], now: Result[], i: int, tolerance: float,
        acc: Delta[]) -> Delta[] {
@@ -131,8 +131,8 @@ marked(v: Verdict) -> str {
         Slower => bad(label(v))
         Same => note(label(v))
         Fresh => note(label(v))
-        Missing => yellow("!") ++ " " ++ label(v)
-        Unclear => yellow("!") ++ " " ++ label(v)
+        Missing => yellow("!") + " " + label(v)
+        Unclear => yellow("!") + " " + label(v)
     }
 }
 
@@ -167,16 +167,16 @@ tally(ds: Delta[], want: Verdict, i: int, acc: int) -> int {
  * end of a CI log.
  */
 summary(ds: Delta[]) -> str {
-    head = "{ds.length()} cases: {count_of(ds, Faster)} faster,"
-        ++ " {count_of(ds, Slower)} slower, {count_of(ds, Same)} unchanged,"
-        ++ " {count_of(ds, Fresh)} new"
+    head = "{ds.length()} cases: {count_of(ds, Faster)} faster," +
+        " {count_of(ds, Slower)} slower, {count_of(ds, Same)} unchanged," +
+        " {count_of(ds, Fresh)} new"
     gone = count_of(ds, Missing)
     murky = count_of(ds, Unclear)
 
     if gone == 0 && murky == 0 {
         head
     } else {
-        head ++ ", {gone} gone, {murky} not comparable"
+        head + ", {gone} gone, {murky} not comparable"
     }
 }
 

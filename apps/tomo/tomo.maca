@@ -11,7 +11,7 @@ slug_chars(cs: str[], i: int, acc: str) -> str {
     if i >= cs.length() {
         acc
     } else {
-        slug_chars(cs, i + 1, acc ++ slug_char(cs.get(i)))
+        slug_chars(cs, i + 1, acc + slug_char(cs.get(i)))
     }
 }
 
@@ -38,16 +38,16 @@ md_class(kind: str) -> str {
     } else if kind == "p" {
         "my-4"
     } else if kind == "pre" {
-        "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200"
-        ++ " dark:border-zinc-800 p-4 overflow-x-auto my-4"
+        "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200" +
+        " dark:border-zinc-800 p-4 overflow-x-auto my-4"
     } else if kind == "quote" {
-        "border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-4"
-            ++ " text-zinc-600 dark:text-zinc-400"
+        "border-l-2 border-zinc-300 dark:border-zinc-600 pl-4 my-4" +
+            " text-zinc-600 dark:text-zinc-400"
     } else if kind == "table" {
         "block overflow-x-auto border-collapse w-full my-5 text-[0.94rem]"
     } else if kind == "th" {
-        cell_class() ++ " font-sans text-[0.88rem]"
-            ++ " bg-zinc-100 dark:bg-zinc-800"
+        cell_class() + " font-sans text-[0.88rem]" +
+            " bg-zinc-100 dark:bg-zinc-800"
     } else if kind == "td" {
         cell_class()
     } else if kind == "list" {
@@ -61,10 +61,10 @@ cell_class() -> str =>
     "border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-left align-top"
 
 heading(level: str, text: str) -> str =>
-    element("h" ++ level,
+    element("h" + level,
             id=slug(text),
-            class=md_class("h" ++ level),
-            inline(escape_html(text))) ++ "\n"
+            class=md_class("h" + level),
+            inline(escape_html(text))) + "\n"
 
 inline(s: str) -> str =>
     link(bold(code_spans(s)))
@@ -86,15 +86,15 @@ link_at(s: str, open: int) -> str {
     malformed = urlend < 0 || (next >= 0 && next < close)
 
     if malformed {
-        s.substr(0, open + 1)
-            ++ link(s.substr(open + 1, s.length() - open - 1))
+        s.substr(0, open + 1) +
+            link(s.substr(open + 1, s.length() - open - 1))
     } else {
-        s.substr(0, open)
-            ++ a(class="text-inherit underline underline-offset-2"
-                       ++ " decoration-zinc-400",
+        s.substr(0, open) +
+            a(class="text-inherit underline underline-offset-2" +
+                       " decoration-zinc-400",
                  href=href(s.substr(close + 2, urlend - close - 2)),
-                 s.substr(open + 1, close - open - 1))
-            ++ link(s.substr(urlend + 1, s.length() - urlend - 1))
+                 s.substr(open + 1, close - open - 1)) +
+            link(s.substr(urlend + 1, s.length() - urlend - 1))
     }
 }
 
@@ -127,11 +127,11 @@ code_spans(s: str) -> str {
     if close < 0 {
         s
     } else {
-        s.substr(0, open)
-            ++ code(class="bg-zinc-100 dark:bg-zinc-800 px-1"
-                          ++ " font-mono text-[0.88em]",
-                    s.substr(open + 1, close - open - 1))
-            ++ code_spans(s.substr(close + 1, s.length() - close - 1))
+        s.substr(0, open) +
+            code(class="bg-zinc-100 dark:bg-zinc-800 px-1" +
+                          " font-mono text-[0.88em]",
+                    s.substr(open + 1, close - open - 1)) +
+            code_spans(s.substr(close + 1, s.length() - close - 1))
     }
 }
 
@@ -142,9 +142,9 @@ bold(s: str) -> str {
     if close < 0 {
         s
     } else {
-        s.substr(0, open)
-            ++ strong(s.substr(open + 2, close - open - 2))
-            ++ bold(s.substr(close + 2, s.length() - close - 2))
+        s.substr(0, open) +
+            strong(s.substr(open + 2, close - open - 2)) +
+            bold(s.substr(close + 2, s.length() - close - 2))
     }
 }
 
@@ -173,9 +173,9 @@ render_fence(lines: str[], i: int, acc: str, fence: str) -> str {
     stop = fence_end(lines, i + 1)
     lang = fence.substr(3, fence.length() - 3).trim()
     html = pre(class=md_class("pre"),
-               code(class=pre_code_class() ++ lang_class(lang),
+               code(class=pre_code_class() + lang_class(lang),
                     highlight(lang, fence_body(lines, i + 1, stop))))
-    render_lines(lines, stop + 1, acc ++ html ++ "\n")
+    render_lines(lines, stop + 1, acc + html + "\n")
 }
 
 fence_end(lines: str[], i: int) -> int {
@@ -190,7 +190,7 @@ fence_body(lines: str[], at: int, stop: int) -> str {
     if at >= stop {
         ""
     } else {
-        lines.get(at) ++ "\n" ++ fence_body(lines, at + 1, stop)
+        lines.get(at) + "\n" + fence_body(lines, at + 1, stop)
     }
 }
 
@@ -198,13 +198,13 @@ lang_class(lang: str) -> str {
     if lang.length() == 0 {
         ""
     } else {
-        " language-" ++ slug(lang)
+        " language-" + slug(lang)
     }
 }
 
 render_block(lines: str[], i: int, acc: str, line: str) -> str {
     if head_level(line) > 0 {
-        render_lines(lines, i + 1, acc ++ head_html(line))
+        render_lines(lines, i + 1, acc + head_html(line))
     } else if is_table(line) {
         render_table(lines, i, acc)
     } else if is_item(line) {
@@ -259,8 +259,8 @@ render_list(lines: str[], i: int, acc: str) -> str {
     stop = list_end(lines, i)
     tag = if is_numbered(lines.get(i)) { "ol" } else { "ul" }
     html = element(tag, class=md_class("list"),
-                   "\n" ++ list_items(lines, i, stop)) ++ "\n"
-    render_lines(lines, stop, acc ++ html)
+                   "\n" + list_items(lines, i, stop)) + "\n"
+    render_lines(lines, stop, acc + html)
 }
 
 list_end(lines: str[], i: int) -> int {
@@ -275,7 +275,7 @@ list_items(lines: str[], at: int, stop: int) -> str {
     if at >= stop {
         ""
     } else {
-        one_item(lines.get(at)) ++ list_items(lines, at + 1, stop)
+        one_item(lines.get(at)) + list_items(lines, at + 1, stop)
     }
 }
 
@@ -284,9 +284,9 @@ one_item(line: str) -> str {
     text = inline(escape_html(item_text(line, nested)))
 
     if nested {
-        ul(li(text)) ++ "\n"
+        ul(li(text)) + "\n"
     } else {
-        li(class=md_class("li"), text) ++ "\n"
+        li(class=md_class("li"), text) + "\n"
     }
 }
 
@@ -313,12 +313,12 @@ is_rule_row(line: str) -> bool {
 
 render_table(lines: str[], i: int, acc: str) -> str {
     stop = table_end(lines, i)
-    head = thead("\n" ++ row(lines.get(i), "th")) ++ "\n"
+    head = thead("\n" + row(lines.get(i), "th")) + "\n"
     ruled = i + 1 < stop && is_rule_row(lines.get(i + 1))
     body_at = if ruled { i + 2 } else { i + 1 }
-    body = tbody("\n" ++ rows(lines, body_at, stop)) ++ "\n"
-    html = table(class=md_class("table"), "\n" ++ head ++ body) ++ "\n"
-    render_lines(lines, stop, acc ++ html)
+    body = tbody("\n" + rows(lines, body_at, stop)) + "\n"
+    html = table(class=md_class("table"), "\n" + head + body) + "\n"
+    render_lines(lines, stop, acc + html)
 }
 
 table_end(lines: str[], i: int) -> int {
@@ -333,25 +333,25 @@ rows(lines: str[], at: int, stop: int) -> str {
     if at >= stop {
         ""
     } else {
-        row(lines.get(at), "td") ++ rows(lines, at + 1, stop)
+        row(lines.get(at), "td") + rows(lines, at + 1, stop)
     }
 }
 
 row(line: str, tag: str) -> str =>
-    tr(cells(split_cells(line.trim()), 1, tag)) ++ "\n"
+    tr(cells(split_cells(line.trim()), 1, tag)) + "\n"
 
 split_cells(s: str) -> str[] =>
     cell_walk(s.chars(), 0, "", [])
 
 cell_walk(cs: str[], i: int, cur: str, acc: str[]) -> str[] {
     if i >= cs.length() {
-        acc ++ [cur]
+        acc + [cur]
     } else if is_escaped_pipe(cs, i) {
-        cell_walk(cs, i + 2, cur ++ "|", acc)
+        cell_walk(cs, i + 2, cur + "|", acc)
     } else if cs.get(i) == "|" {
-        cell_walk(cs, i + 1, "", acc ++ [cur])
+        cell_walk(cs, i + 1, "", acc + [cur])
     } else {
-        cell_walk(cs, i + 1, cur ++ cs.get(i), acc)
+        cell_walk(cs, i + 1, cur + cs.get(i), acc)
     }
 }
 
@@ -364,7 +364,7 @@ cells(parts: str[], i: int, tag: str) -> str {
     } else {
         cell = element(tag, class=md_class(tag),
                        inline(escape_html(parts.get(i).trim())))
-        cell ++ cells(parts, i + 1, tag)
+        cell + cells(parts, i + 1, tag)
     }
 }
 
@@ -372,7 +372,7 @@ render_quote(lines: str[], i: int, acc: str) -> str {
     stop = quote_block_end(lines, i)
     text = join_quote(lines, i, stop)
     quoted = blockquote(class=md_class("quote"), inline(escape_html(text)))
-    render_lines(lines, stop, acc ++ quoted ++ "\n")
+    render_lines(lines, stop, acc + quoted + "\n")
 }
 
 quote_block_end(lines: str[], i: int) -> int {
@@ -391,7 +391,7 @@ join_quote(lines: str[], at: int, stop: int) -> str {
         if at == stop - 1 {
             text
         } else {
-            text ++ " " ++ join_quote(lines, at + 1, stop)
+            text + " " + join_quote(lines, at + 1, stop)
         }
     }
 }
@@ -403,7 +403,7 @@ render_para(lines: str[], i: int, acc: str) -> str {
     stop = para_end(lines, i)
     text = join_range(lines, i, stop)
     render_lines(lines, stop,
-                 acc ++ p(class=md_class("p"), inline(escape_html(text))) ++ "\n")
+                 acc + p(class=md_class("p"), inline(escape_html(text))) + "\n")
 }
 
 para_end(lines: str[], i: int) -> int {
@@ -424,15 +424,15 @@ join_range(lines: str[], at: int, stop: int) -> str {
     } else if at == stop - 1 {
         lines.get(at).trim()
     } else {
-        lines.get(at).trim() ++ " " ++ join_range(lines, at + 1, stop)
+        lines.get(at).trim() + " " + join_range(lines, at + 1, stop)
     }
 }
 
 toc(md: str) -> str => toc_region(published(), "", toc_list(md))
 
 toc_list(md: str) -> str =>
-    "\n" ++ ul(class="list-none m-0 p-0",
-               "\n" ++ toc_lines(lines(md), 0)) ++ "\n"
+    "\n" + ul(class="list-none m-0 p-0",
+               "\n" + toc_lines(lines(md), 0)) + "\n"
 
 toc_class() -> str =>
     "border-t border-zinc-200 dark:border-zinc-700 mt-3 pt-2"
@@ -441,7 +441,7 @@ toc_lines(lines: str[], i: int) -> str {
     if i >= lines.length() {
         ""
     } else {
-        toc_line(lines.get(i)) ++ toc_lines(lines, i + 1)
+        toc_line(lines.get(i)) + toc_lines(lines, i + 1)
     }
 }
 
@@ -457,8 +457,8 @@ toc_line(line: str) -> str {
 
 toc_entry(text: str) -> str =>
     li(class="my-0",
-       a(class=link_class(false) ++ " pl-4 text-[0.82rem]",
-         href="#" ++ slug(text), escape_html(text))) ++ "\n"
+       a(class=link_class(false) + " pl-4 text-[0.82rem]",
+         href="#" + slug(text), escape_html(text))) + "\n"
 
 /** What dev mode adds to a page. */
 Dev = {
@@ -486,16 +486,16 @@ Parts = {
 /** The three parts, rendered. */
 parts_of(chs: str[], titles: str[], ci: int, md: str) -> Parts =>
     Parts {
-        article = "\n" ++ render(md),
+        article = "\n" + render(md),
         toc = toc_list(md),
         nav = side_items(chs, titles, chs.get(ci), 0),
     }
 
 /** Which page a region belongs to: `"en/05-strings"`. */
-page_key(lang: str, ch: str) -> str => lang ++ "/" ++ ch
+page_key(lang: str, ch: str) -> str => lang + "/" + ch
 
 /** One region's store key: `"article:en/05-strings"`. */
-region_key(part: str, key: str) -> str => part ++ ":" ++ key
+region_key(part: str, key: str) -> str => part + ":" + key
 
 article_region(d: Dev, key: str, inner: str) -> str {
     if d.on {
@@ -510,9 +510,9 @@ toc_region(d: Dev, key: str, inner: str) -> str {
     if d.on {
         nav(data-tomo="toc", class=toc_class(),
             data-signal=region_key("toc", key), data-signal-as="html",
-            inner) ++ "\n"
+            inner) + "\n"
     } else {
-        nav(data-tomo="toc", class=toc_class(), inner) ++ "\n"
+        nav(data-tomo="toc", class=toc_class(), inner) + "\n"
     }
 }
 
@@ -532,11 +532,11 @@ base_css() -> str =>
 """
 
 font_link(up: str) -> str =>
-    element("link", rel="stylesheet", href=up ++ "fonts/fonts.css")
-        ++ "\n"
+    element("link", rel="stylesheet", href=up + "fonts/fonts.css") +
+        "\n"
 
 stylesheet() -> str =>
-    style(base_css() ++ code_css() ++ styles()) ++ "\n"
+    style(base_css() + code_css() + styles()) + "\n"
 
 chapter_nav(chs: str[], idx: int) -> str {
     p = prev_page(chs, idx)
@@ -544,24 +544,24 @@ chapter_nav(chs: str[], idx: int) -> str {
     nav(aria-label="Chapter", class=chapter_nav_class(),
         page_link(chs, p, "← previous", false)
         page_link(chs, n, "next →", true)
-    ) ++ "\n"
+    ) + "\n"
 }
 
 page_link(chs: str[], at: int, label: str, right: bool) -> str {
     if at < 0 {
         span("")
     } else {
-        a(class=chapter_link_class(right), href=chs.get(at) ++ ".html", label)
+        a(class=chapter_link_class(right), href=chs.get(at) + ".html", label)
     }
 }
 
 chapter_nav_class() -> str =>
-    "grid grid-cols-2 gap-4 mt-12 pt-6 border-t border-zinc-200"
-        ++ " dark:border-zinc-800 text-[0.9rem]"
+    "grid grid-cols-2 gap-4 mt-12 pt-6 border-t border-zinc-200" +
+        " dark:border-zinc-800 text-[0.9rem]"
 
 chapter_link_class(right: bool) -> str =>
-    "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black"
-        ++ " dark:hover:text-white" ++ chapter_link_side(right)
+    "no-underline text-zinc-600 dark:text-zinc-400 hover:text-black" +
+        " dark:hover:text-white" + chapter_link_side(right)
 
 chapter_link_side(right: bool) -> str {
     if right {
@@ -572,52 +572,52 @@ chapter_link_side(right: bool) -> str {
 }
 
 link_class(current: bool) -> str =>
-    "block px-2 py-1 no-underline" ++ link_state_class(current)
+    "block px-2 py-1 no-underline" + link_state_class(current)
 
 link_state_class(current: bool) -> str {
     if current {
-        " bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white"
-            ++ " font-semibold"
+        " bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white" +
+            " font-semibold"
     } else {
-        " text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            ++ " hover:text-black dark:hover:text-white"
+        " text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" +
+            " hover:text-black dark:hover:text-white"
     }
 }
 
 sec_class() -> str =>
-    "mt-4 mb-1 px-2 text-[0.78rem] uppercase tracking-wide font-semibold"
-        ++ " first:mt-1"
+    "mt-4 mb-1 px-2 text-[0.78rem] uppercase tracking-wide font-semibold" +
+        " first:mt-1"
 
 book_class() -> str =>
-    "mt-8 mb-1 px-2 pb-1 text-[0.95rem] font-bold text-black dark:text-white"
-        ++ " border-b border-zinc-200 dark:border-zinc-700 first:mt-1"
+    "mt-8 mb-1 px-2 pb-1 text-[0.95rem] font-bold text-black dark:text-white" +
+        " border-b border-zinc-200 dark:border-zinc-700 first:mt-1"
 
 lang_summary_class() -> str =>
-    "cursor-pointer px-2 py-1 border border-zinc-200 dark:border-zinc-700"
-        ++ " text-zinc-500 whitespace-nowrap list-none"
-        ++ " details-marker:hidden"
+    "cursor-pointer px-2 py-1 border border-zinc-200 dark:border-zinc-700" +
+        " text-zinc-500 whitespace-nowrap list-none" +
+        " details-marker:hidden"
 
 lang_menu_class() -> str =>
-    "absolute right-0 z-10 mt-1 p-1 list-none bg-white dark:bg-zinc-900"
-        ++ " border border-zinc-200 dark:border-zinc-700"
+    "absolute right-0 z-10 mt-1 p-1 list-none bg-white dark:bg-zinc-900" +
+        " border border-zinc-200 dark:border-zinc-700"
 
 wrap_class() -> str =>
-    "grid grid-cols-[16rem_minmax(0,44rem)] gap-12 justify-center"
-        ++ " p-8 pb-20 max-md:block max-md:max-w-[44rem] max-md:mx-auto"
-        ++ " max-md:p-5"
+    "grid grid-cols-[16rem_minmax(0,44rem)] gap-12 justify-center" +
+        " p-8 pb-20 max-md:block max-md:max-w-[44rem] max-md:mx-auto" +
+        " max-md:p-5"
 
 solo_class() -> str =>
     "block max-w-[44rem] mx-auto p-8 pb-20"
 
 side_class() -> str =>
-    "font-sans text-[0.85rem] sticky top-8 self-start max-h-screen"
-        ++ " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none"
-        ++ " max-md:mb-6 max-md:border-b max-md:border-zinc-200"
+    "font-sans text-[0.85rem] sticky top-8 self-start max-h-screen" +
+        " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none" +
+        " max-md:mb-6 max-md:border-b max-md:border-zinc-200"
 
 sh_class() -> str =>
-    "flex items-baseline justify-between gap-3 pb-2 border-b"
-        ++ " border-zinc-200 dark:border-zinc-700 sticky top-0 bg-white"
-        ++ " dark:bg-zinc-900 z-10"
+    "flex items-baseline justify-between gap-3 pb-2 border-b" +
+        " border-zinc-200 dark:border-zinc-700 sticky top-0 bg-white" +
+        " dark:bg-zinc-900 z-10"
 
 is_section(entry: str) -> bool =>
     entry.starts_with("#")
@@ -650,7 +650,7 @@ volume_titles(chs: str[], titles: str[], i: int, cur: str) -> str[] {
         []
     } else {
         here = if is_book(chs.get(i)) { titles.get(i) } else { cur }
-        [here] ++ volume_titles(chs, titles, i + 1, here)
+        [here] + volume_titles(chs, titles, i + 1, here)
     }
 }
 
@@ -693,14 +693,14 @@ sidebar(d: Dev, key: str, title: str, langs: str, cur_lang: str, chs: str[],
             nav(data-tomo="i18n", class="relative shrink-0 text-[0.8rem]",
                 lang_links(langs.split(","), 0, cur_lang, "../", cur)))
         details(data-tomo="nav", open=true,
-                summary(class="hidden max-md:block cursor-pointer py-2"
-                              ++ " list-none details-marker:hidden"
-                              ++ " text-zinc-500",
-                        "☰ " ++ nav_label(cur_lang))
+                summary(class="hidden max-md:block cursor-pointer py-2" +
+                              " list-none details-marker:hidden" +
+                              " text-zinc-500",
+                        "☰ " + nav_label(cur_lang))
                 search_box()
                 nav_region(d, key, nav_html)
                 toc_html)
-        collapse_script()) ++ "\n"
+        collapse_script()) + "\n"
 
 nav_label(lang: str) -> str {
     if lang == "ko" {
@@ -719,14 +719,14 @@ collapse_script() -> str =>
   if(d&&window.matchMedia("(max-width:48rem)").matches)
     d.removeAttribute("open");
 })();
-""") ++ "\n"
+""") + "\n"
 
 side_items(chs: str[], titles: str[], cur: str, i: int) -> str {
     if i >= chs.length() {
         ""
     } else {
-        side_item(chs.get(i), titles.get(i), cur)
-            ++ side_items(chs, titles, cur, i + 1)
+        side_item(chs.get(i), titles.get(i), cur) +
+            side_items(chs, titles, cur, i + 1)
     }
 }
 
@@ -740,23 +740,23 @@ side_item(entry: str, title: str, cur: str) -> str {
         mark = if here { "current" } else { "chapter" }
         li(class="my-0",
            a(data-tomo=mark, class=link_class(here),
-             href=entry ++ ".html", escape_html(title)))
+             href=entry + ".html", escape_html(title)))
     }
 }
 
 search_box() -> str =>
     input(id="q", type="search", placeholder="search", autocomplete="off",
-          class="w-full my-2 px-2 py-1 border border-zinc-200"
-                ++ " dark:border-zinc-700 bg-white dark:bg-zinc-900"
-                ++ " text-[0.85rem]")
-    ++ ul(id="hits", class="list-none m-0 p-0")
-    ++ script(src="search-index.js")
-    ++ script(hit_styles())
-    ++ script(search_js())
+          class="w-full my-2 px-2 py-1 border border-zinc-200" +
+                " dark:border-zinc-700 bg-white dark:bg-zinc-900" +
+                " text-[0.85rem]") +
+    ul(id="hits", class="list-none m-0 p-0") +
+    script(src="search-index.js") +
+    script(hit_styles()) +
+    script(search_js())
 
 hit_styles() -> str =>
-    "window.TOMO_CLS=\{hit:\"" ++ hit_class() ++ "\",sec:\""
-        ++ hit_sec_class() ++ "\",none:\"" ++ hit_none_class() ++ "\"\};"
+    "window.TOMO_CLS=\{hit:\"" + hit_class() + "\",sec:\"" +
+        hit_sec_class() + "\",none:\"" + hit_none_class() + "\"\};"
 
 hit_class() -> str =>
     "block py-1 no-underline text-inherit text-[0.82rem]"
@@ -800,8 +800,8 @@ page(title: str, cur: str, langs: str, side: str, body: str) -> str =>
 
 shell(title: str, cur: str, langs: str, side: str, body: str, up: str,
       extra: str) -> str =>
-    "<!doctype html>\n"
-        ++ html(lang=cur,
+    "<!doctype html>\n" +
+        html(lang=cur,
             head(
                 meta(charset="utf-8")
                 meta(name="viewport",
@@ -813,10 +813,10 @@ shell(title: str, cur: str, langs: str, side: str, body: str, up: str,
             )
             body_tag(class=body_class(),
                 div(class=column_class(side),
-                    side ++ main_landmark(body)
+                    side + main_landmark(body)
                 )
             )
-        ) ++ "\n"
+        ) + "\n"
 
 column_class(side: str) -> str {
     if side.length() == 0 {
@@ -833,8 +833,8 @@ body_tag(class: str, inner: str) -> str =>
     body(class=class, inner)
 
 body_class() -> str =>
-    "font-serif text-base leading-relaxed break-keep bg-white dark:bg-zinc-900"
-        ++ " text-zinc-900 dark:text-zinc-100"
+    "font-serif text-base leading-relaxed break-keep bg-white dark:bg-zinc-900" +
+        " text-zinc-900 dark:text-zinc-100"
 
 pre_code_class() -> str =>
     "bg-transparent p-0 text-[0.88em]"
@@ -847,7 +847,7 @@ lang_links(codes: str[], i: int, cur: str, up: str, page: str) -> str {
         ""
     } else {
         details(data-tomo="lang",
-                summary(class=lang_summary_class(), lang_name(cur) ++ " ▾")
+                summary(class=lang_summary_class(), lang_name(cur) + " ▾")
                 ul(class=lang_menu_class(),
                    lang_options(codes, 0, cur, up, page)))
     }
@@ -860,10 +860,10 @@ lang_options(codes: str[], i: int, cur: str, up: str, page: str) -> str {
         code = codes.get(i)
         option = li(class="my-0",
                     a(class=link_class(code == cur),
-                      href=up ++ code ++ "/" ++ target_page(page),
+                      href=up + code + "/" + target_page(page),
                       lang=code,
                       lang_name(code)))
-        option ++ lang_options(codes, i + 1, cur, up, page)
+        option + lang_options(codes, i + 1, cur, up, page)
     }
 }
 
@@ -871,12 +871,12 @@ target_page(page: str) -> str {
     if page.length() == 0 {
         "index.html"
     } else {
-        page ++ ".html"
+        page + ".html"
     }
 }
 
 build_book(root: str, out: str) -> int {
-    toml = read_file(root ++ "/book.toml")
+    toml = read_file(root + "/book.toml")
     title = conf_value(toml, "title")
     langs = conf_value(toml, "languages").replace(" ", "")
     chs = conf_value(toml, "chapters").split(",").map(v => v.trim())
@@ -899,7 +899,7 @@ write_root(root: str, out: str, title: str, langs: str) -> int {
     codes = langs.split(",")
     default = codes.get(0)
 
-    write_file(out ++ "/index.html",
+    write_file(out + "/index.html",
                landing(root, title, langs, default, default, ""))
 
     1 + write_landings(root, out, title, langs, codes, 0)
@@ -911,9 +911,9 @@ write_landings(root: str, out: str, title: str, langs: str, codes: str[],
         0
     } else {
         lang = codes.get(i)
-        dir = out ++ "/" ++ lang
+        dir = out + "/" + lang
         make_dir(dir)
-        write_file(dir ++ "/home.html",
+        write_file(dir + "/home.html",
                    landing(root, title, langs, lang, codes.get(0), "../"))
         1 + write_landings(root, out, title, langs, codes, i + 1)
     }
@@ -922,9 +922,9 @@ write_landings(root: str, out: str, title: str, langs: str, codes: str[],
 landing(root: str, title: str, langs: str, lang: str, fallback: str,
         up: str) -> str {
     src = chapter_source(root, lang, fallback, "home")
-    body = landing_head(title, langs, lang, up)
-           ++ "\n" ++ article(landing_body(src, title, langs, lang, up))
-           ++ "\n"
+    body = landing_head(title, langs, lang, up) +
+           "\n" + article(landing_body(src, title, langs, lang, up)) +
+           "\n"
 
     shell(title, lang, langs, "", body, up, "")
 }
@@ -942,9 +942,9 @@ landing_body(src: str, title: str, langs: str, lang: str, up: str) -> str {
         ls = read_lines(src)
         cut = first_section(ls, 0)
 
-        render(ls.slice(0, cut).join("\n"))
-            ++ calls_to_action(langs, lang, up)
-            ++ render(ls.slice(cut, ls.length()).join("\n"))
+        render(ls.slice(0, cut).join("\n")) +
+            calls_to_action(langs, lang, up) +
+            render(ls.slice(cut, ls.length()).join("\n"))
     }
 }
 
@@ -959,9 +959,9 @@ first_section(lines: str[], i: int) -> int {
 }
 
 picker(title: str, langs: str, up: str) -> str =>
-    h1(class=md_class("h1"), escape_html(title))
-        ++ nav(ul(class="list-none p-0",
-                  "\n" ++ root_links(langs.split(","), 0, up))) ++ "\n"
+    h1(class=md_class("h1"), escape_html(title)) +
+        nav(ul(class="list-none p-0",
+                  "\n" + root_links(langs.split(","), 0, up))) + "\n"
 
 root_links(codes: str[], i: int, up: str) -> str {
     if i >= codes.length() {
@@ -969,30 +969,30 @@ root_links(codes: str[], i: int, up: str) -> str {
     } else {
         code = codes.get(i)
         entry = li(class="my-1",
-                   a(href=up ++ code ++ "/index.html", lang=code,
+                   a(href=up + code + "/index.html", lang=code,
                      lang_name(code)))
-        entry ++ root_links(codes, i + 1, up)
+        entry + root_links(codes, i + 1, up)
     }
 }
 
 calls_to_action(langs: str, lang: str, up: str) -> str =>
     nav(class="flex flex-wrap gap-3 my-8",
-        a(class=cta_class(true), href=up ++ lang ++ "/index.html",
+        a(class=cta_class(true), href=up + lang + "/index.html",
           cta_label(lang, "handbook"))
-        a(class=cta_class(false), href=up ++ "play/index.html",
+        a(class=cta_class(false), href=up + "play/index.html",
           cta_label(lang, "playground"))
-        a(class=cta_class(false), href=Repo, cta_label(lang, "source"))) ++ "\n"
+        a(class=cta_class(false), href=Repo, cta_label(lang, "source"))) + "\n"
 
 Repo = "https://github.com/pleahmacaka/macalang"
 
 cta_class(primary: bool) -> str {
-    base = "inline-block px-4 py-2 no-underline font-sans"
-        ++ " text-[0.9rem]"
+    base = "inline-block px-4 py-2 no-underline font-sans" +
+        " text-[0.9rem]"
 
     if primary {
-        base ++ " bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
+        base + " bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black"
     } else {
-        base ++ " border border-zinc-300 dark:border-zinc-600 text-inherit"
+        base + " border border-zinc-300 dark:border-zinc-600 text-inherit"
     }
 }
 
@@ -1019,8 +1019,8 @@ english_cta(which: str) -> str {
 }
 
 hero_class() -> str =>
-    "flex items-baseline justify-between gap-3 pb-3 mb-6 border-b"
-        ++ " border-zinc-200 dark:border-zinc-700"
+    "flex items-baseline justify-between gap-3 pb-3 mb-6 border-b" +
+        " border-zinc-200 dark:border-zinc-700"
 
 lang_name(code: str) -> str {
     if code == "en" {
@@ -1063,7 +1063,7 @@ chapter_titles(root: str, langs: str, lang: str, fallback: str, chs: str[],
         []
     } else {
         here = entry_title(root, langs, lang, fallback, chs.get(i))
-        [here] ++ chapter_titles(root, langs, lang, fallback, chs, i + 1)
+        [here] + chapter_titles(root, langs, lang, fallback, chs, i + 1)
     }
 }
 
@@ -1077,12 +1077,12 @@ entry_title(root: str, langs: str, lang: str, fallback: str, e: str) -> str {
 
 write_index(root: str, out: str, title: str, langs: str, lang: str,
             chs: str[], titles: str[]) -> int {
-    dir = out ++ "/" ++ lang
+    dir = out + "/" + lang
     make_dir(dir)
     side = sidebar(published(), "", title, langs, lang, chs, titles, "",
                    side_items(chs, titles, "", 0), "")
     body = opening(title, lang, chs, titles)
-    write_file(dir ++ "/index.html", page(title, lang, langs, side, body))
+    write_file(dir + "/index.html", page(title, lang, langs, side, body))
     1
 }
 
@@ -1090,19 +1090,19 @@ write_index(root: str, out: str, title: str, langs: str, lang: str,
  * because the contents are already beside it in the sidebar.
  */
 opening(title: str, lang: str, chs: str[], titles: str[]) -> str =>
-    h1(class=md_class("h1"), escape_html(title))
-        ++ p(class=md_class("p"), opening_blurb(lang))
-        ++ div(class="grid gap-4 mt-8 md:grid-cols-2",
-               volume_cards(chs, titles, 0, lang))
-        ++ "\n"
+    h1(class=md_class("h1"), escape_html(title)) +
+        p(class=md_class("p"), opening_blurb(lang)) +
+        div(class="grid gap-4 mt-8 md:grid-cols-2",
+               volume_cards(chs, titles, 0, lang)) +
+        "\n"
 
 opening_blurb(lang: str) -> str {
     if lang == "ko" {
-        "두 권입니다. 처음이라면 왼쪽 위부터 순서대로 읽고, 찾으러 왔다면"
-            ++ " 필요한 쪽을 바로 여세요."
+        "두 권입니다. 처음이라면 왼쪽 위부터 순서대로 읽고, 찾으러 왔다면" +
+            " 필요한 쪽을 바로 여세요."
     } else {
-        "Two volumes. If this is your first time, read the first one in order;"
-            ++ " if you came looking for something, open the page you need."
+        "Two volumes. If this is your first time, read the first one in order;" +
+            " if you came looking for something, open the page you need."
     }
 }
 
@@ -1111,37 +1111,37 @@ volume_cards(chs: str[], titles: str[], i: int, lang: str) -> str {
         ""
     } else if is_book(chs.get(i)) {
         volume_card(titles.get(i), first_chapter(chs, i + 1),
-                    first_chapter_title(chs, titles, i + 1), lang, i)
-            ++ volume_cards(chs, titles, i + 1, lang)
+                    first_chapter_title(chs, titles, i + 1), lang, i) +
+            volume_cards(chs, titles, i + 1, lang)
     } else {
         volume_cards(chs, titles, i + 1, lang)
     }
 }
 
 volume_card(name: str, href: str, first: str, lang: str, at: int) -> str =>
-    a(class="block no-underline text-inherit border p-5"
-            ++ " border-zinc-200 dark:border-zinc-800"
-            ++ "",
-      href=href == "" ? "index.html" : href ++ ".html",
+    a(class="block no-underline text-inherit border p-5" +
+            " border-zinc-200 dark:border-zinc-800" +
+            "",
+      href=href == "" ? "index.html" : href + ".html",
       div(class="font-semibold text-[1.1rem]", escape_html(name))
       p(class="mt-2 mb-3 text-[0.9rem] text-zinc-600 dark:text-zinc-400",
         volume_blurb(at, lang))
       span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
-           starts_with_label(lang) ++ escape_html(first)))
+           starts_with_label(lang) + escape_html(first)))
 
 volume_blurb(at: int, lang: str) -> str {
     if at == 0 && lang == "ko" {
-        "한 번 앞에서 뒤로 읽는 책입니다. 설치부터 시작해서 프로그램 하나를"
-            ++ " 끝까지 만듭니다."
+        "한 번 앞에서 뒤로 읽는 책입니다. 설치부터 시작해서 프로그램 하나를" +
+            " 끝까지 만듭니다."
     } else if at == 0 {
-        "Read front to back, once. It starts at installing and ends with a"
-            ++ " program you have finished."
+        "Read front to back, once. It starts at installing and ends with a" +
+            " program you have finished."
     } else if lang == "ko" {
-        "필요한 쪽을 펴서 한 화면 안에서 답을 얻는 책입니다. 문법, 타입,"
-            ++ " 타깃, 툴체인."
+        "필요한 쪽을 펴서 한 화면 안에서 답을 얻는 책입니다. 문법, 타입," +
+            " 타깃, 툴체인."
     } else {
-        "Opened at the page you need, and answers in one screen. Syntax,"
-            ++ " types, targets, the toolchain."
+        "Opened at the page you need, and answers in one screen. Syntax," +
+            " types, targets, the toolchain."
     }
 }
 
@@ -1170,11 +1170,11 @@ first_chapter_title(chs: str[], titles: str[], i: int) -> str {
 
 write_search_index(root: str, out: str, lang: str, fallback: str, chs: str[],
                    titles: str[], vols: str[]) -> int {
-    dir = out ++ "/" ++ lang
+    dir = out + "/" + lang
     make_dir(dir)
     body = index_chapters(root, lang, fallback, chs, titles, vols, 0)
-    write_file(dir ++ "/search-index.js",
-               "window.TOMO_INDEX=[" ++ body ++ "];\n")
+    write_file(dir + "/search-index.js",
+               "window.TOMO_INDEX=[" + body + "];\n")
     0
 }
 
@@ -1184,8 +1184,8 @@ index_chapters(root: str, lang: str, fallback: str, chs: str[], titles: str[],
         ""
     } else {
         index_chapter(root, lang, fallback, chs.get(i), titles.get(i),
-                      vols.get(i))
-            ++ index_chapters(root, lang, fallback, chs, titles, vols, i + 1)
+                      vols.get(i)) +
+            index_chapters(root, lang, fallback, chs, titles, vols, i + 1)
     }
 }
 
@@ -1196,7 +1196,7 @@ index_chapter(root: str, lang: str, fallback: str, ch: str, ctitle: str,
     if !file_exists(src) {
         ""
     } else {
-        sections(read_lines(src), 0, ch ++ ".html",
+        sections(read_lines(src), 0, ch + ".html",
                  caption(vol, ctitle), "", "", "")
     }
 }
@@ -1205,7 +1205,7 @@ caption(vol: str, ctitle: str) -> str {
     if vol == "" {
         ctitle
     } else {
-        vol ++ " / " ++ ctitle
+        vol + " / " + ctitle
     }
 }
 
@@ -1213,11 +1213,11 @@ chapter_source(root: str, lang: str, fallback: str, ch: str) -> str {
     if is_section(ch) {
         ""
     } else {
-        own = root ++ "/book/" ++ lang ++ "/" ++ ch ++ ".md"
+        own = root + "/book/" + lang + "/" + ch + ".md"
         if file_exists(own) {
             own
         } else {
-            root ++ "/book/" ++ fallback ++ "/" ++ ch ++ ".md"
+            root + "/book/" + fallback + "/" + ch + ".md"
         }
     }
 }
@@ -1225,13 +1225,13 @@ chapter_source(root: str, lang: str, fallback: str, ch: str) -> str {
 sections(lines: str[], i: int, url: str, ctitle: str, head: str, buf: str,
          acc: str) -> str {
     if i >= lines.length() {
-        acc ++ entry(url, ctitle, head, buf)
+        acc + entry(url, ctitle, head, buf)
     } else if head_text(lines.get(i)).length() > 0 {
         sections(lines, i + 1, url, ctitle, head_text(lines.get(i)), "",
-                 acc ++ entry(url, ctitle, head, buf))
+                 acc + entry(url, ctitle, head, buf))
     } else {
         sections(lines, i + 1, url, ctitle, head,
-                 buf ++ " " ++ lines.get(i), acc)
+                 buf + " " + lines.get(i), acc)
     }
 }
 
@@ -1250,8 +1250,8 @@ entry(url: str, ctitle: str, head: str, buf: str) -> str {
         ""
     } else {
         object_of(["u", "c", "s", "x"],
-                  [quote(url ++ "#" ++ slug(head)), quote(ctitle),
-                   quote(head), quote(buf.lower())]) ++ ","
+                  [quote(url + "#" + slug(head)), quote(ctitle),
+                   quote(head), quote(buf.lower())]) + ","
     }
 }
 
@@ -1303,9 +1303,9 @@ build_chapter(root: str, out: str, title: str, langs: str, lang: str,
 /** One chapter's page, written where the book wants it. */
 write_chapter(d: Dev, out: str, title: str, langs: str, lang: str, chs: str[],
               titles: str[], ci: int, p: Parts) -> int {
-    dir = out ++ "/" ++ lang
+    dir = out + "/" + lang
     make_dir(dir)
-    write_file(dir ++ "/" ++ chs.get(ci) ++ ".html",
+    write_file(dir + "/" + chs.get(ci) + ".html",
                chapter_page(d, title, langs, lang, chs, titles, ci, p))
     1
 }
@@ -1314,7 +1314,7 @@ write_chapter(d: Dev, out: str, title: str, langs: str, lang: str, chs: str[],
 chapter_page(d: Dev, title: str, langs: str, lang: str, chs: str[],
              titles: str[], ci: int, p: Parts) -> str {
     key = page_key(lang, chs.get(ci))
-    body = article_region(d, key, p.article) ++ "\n" ++ chapter_nav(chs, ci)
+    body = article_region(d, key, p.article) + "\n" + chapter_nav(chs, ci)
     side = sidebar(d, key, title, langs, lang, chs, titles, chs.get(ci), p.nav,
                    toc_region(d, key, p.toc))
 
@@ -1322,13 +1322,13 @@ chapter_page(d: Dev, title: str, langs: str, lang: str, chs: str[],
 }
 
 main() -> int {
-    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n"
-        ++ "An `int[]` is a list, and [two](a.md) [links](b.md) both work.\n\n"
-        ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
-        ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
-        ++ "> a quoted aside that\n> wraps across two source lines\n\n"
-        ++ "```maca\ngreet(n: int) -> str => \"hi \{n\}\"\n```\n"
-        ++ "```\nx = 1\n```\n"
+    sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n" +
+        "An `int[]` is a list, and [two](a.md) [links](b.md) both work.\n\n" +
+        "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n" +
+        "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n" +
+        "> a quoted aside that\n> wraps across two source lines\n\n" +
+        "```maca\ngreet(n: int) -> str => \"hi \{n\}\"\n```\n" +
+        "```\nx = 1\n```\n"
     html = render(sample)
     info("=== rendered ===")
     info(html)

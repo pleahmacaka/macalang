@@ -10,13 +10,13 @@ Root = "apps/tomo"
 
 Out = "{env_or("TMPDIR", "/tmp")}/maca-tomo-site"
 
-Sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n"
-    ++ "An `int[]` is a list, and [two](a.md) [links](b.md) both work.\n\n"
-    ++ "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n"
-    ++ "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n"
-    ++ "> a quoted aside that\n> wraps across two source lines\n\n"
-    ++ "```maca\ngreet(n: int) -> str => \"hi \{n\}\"\n```\n"
-    ++ "```\nx = 1\n```\n"
+Sample = "# Title\n\nA **bold** word and `code`, see [docs](guide.md).\n\n" +
+    "An `int[]` is a list, and [two](a.md) [links](b.md) both work.\n\n" +
+    "## Is it fast?\n\n- one\n  - nested\n- two\n\n1. first\n2. second\n\n" +
+    "| target | flag |\n|--------|------|\n| native | `--target c` |\n\n" +
+    "> a quoted aside that\n> wraps across two source lines\n\n" +
+    "```maca\ngreet(n: int) -> str => \"hi \{n\}\"\n```\n" +
+    "```\nx = 1\n```\n"
 
 built() -> int {
     remove_dir(Out)
@@ -302,7 +302,7 @@ broken_in(pages: str[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         broken_in(pages, i + 1,
-                  acc ++ dangling(pages.get(i), local_hrefs(pages.get(i)), 0,
+                  acc + dangling(pages.get(i), local_hrefs(pages.get(i)), 0,
                                   []))
     }
 }
@@ -315,7 +315,7 @@ dangling(page: str, links: str[], i: int, acc: str[]) -> str[] {
         gone = !file_exists(resolved(page, href))
             && !href.contains("play/")
         dangling(page, links, i + 1,
-                 gone ? acc ++ ["{page}: {href}"] : acc)
+                 gone ? acc + ["{page}: {href}"] : acc)
     }
 }
 
@@ -339,7 +339,7 @@ anchor_hrefs(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {
         acc
     } else {
-        anchor_hrefs(parts, i + 1, acc ++ href_in(tag_of(parts.get(i))))
+        anchor_hrefs(parts, i + 1, acc + href_in(tag_of(parts.get(i))))
     }
 }
 
@@ -371,8 +371,8 @@ strip_scripts(html: str) -> str {
         rest = html.slice(open, html.length())
         end = rest.index_of("</script>")
 
-        html.slice(0, open)
-            ++ (end < 0 ? "" : strip_scripts(rest.slice(end + 9,
+        html.slice(0, open) +
+            (end < 0 ? "" : strip_scripts(rest.slice(end + 9,
                                                         rest.length())))
     }
 }
@@ -384,8 +384,8 @@ test_an_untranslated_chapter_falls_back_to_the_default_language() {
     make_dir("{dir}/book/en")
     make_dir("{dir}/book/ko")
     write_file("{dir}/book.toml",
-               "[book]\ntitle = \"Fixture\"\nlanguages = [\"en\", \"ko\"]\n"
-                   ++ "chapters = [\n    \"a\",\n    \"b\",\n]\n")
+               "[book]\ntitle = \"Fixture\"\nlanguages = [\"en\", \"ko\"]\n" +
+                   "chapters = [\n    \"a\",\n    \"b\",\n]\n")
     write_file("{dir}/book/en/a.md", "# Alpha\n\nenglish alpha\n")
     write_file("{dir}/book/en/b.md", "# Beta\n\nenglish beta\n")
     write_file("{dir}/book/ko/a.md", "# 알파\n\n한국어 알파\n")

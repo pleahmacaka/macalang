@@ -5,22 +5,22 @@ import { print_source } from maca/print
 Header = "Content-Length: "
 
 capabilities() -> str =>
-    "\{\"capabilities\":\{\"textDocumentSync\":1,\"hoverProvider\":true,"
-        ++ "\"definitionProvider\":true,\"documentSymbolProvider\":true,"
-        ++ "\"documentFormattingProvider\":true\},\"serverInfo\":"
-        ++ "\{\"name\":\"maca-lsp\",\"version\":\"0.1.0\"\}\}"
+    "\{\"capabilities\":\{\"textDocumentSync\":1,\"hoverProvider\":true," +
+        "\"definitionProvider\":true,\"documentSymbolProvider\":true," +
+        "\"documentFormattingProvider\":true\},\"serverInfo\":" +
+        "\{\"name\":\"maca-lsp\",\"version\":\"0.1.0\"\}\}"
 
 reply_of(id: str, body: str) -> str =>
     "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{body}\}"
 
 unserved(id: str) -> str =>
-    "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\{\"code\":-32601,"
-        ++ "\"message\":\"method not found\"\}\}"
+    "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\{\"code\":-32601," +
+        "\"message\":\"method not found\"\}\}"
 
 /** A range the editor can draw, whose lines and characters count from zero. */
 range_of(sl: int, sc: int, el: int, ec: int) -> str =>
-    "\{\"start\":\{\"line\":{sl},\"character\":{sc}\},\"end\":"
-        ++ "\{\"line\":{el},\"character\":{ec}\}\}"
+    "\{\"start\":\{\"line\":{sl},\"character\":{sc}\},\"end\":" +
+        "\{\"line\":{el},\"character\":{ec}\}\}"
 
 /** The checker counts lines from one, and an editor counts them from zero. */
 diagnostic_of(d: str) -> str {
@@ -29,10 +29,10 @@ diagnostic_of(d: str) -> str {
                   get_int(d, "end_line", 1) - 1,
                   get_int(d, "end_column", 1) - 1)
 
-    "\{\"range\":" ++ at ++ ",\"severity\":"
-        ++ str(severity_of(get(d, "severity")))
-        ++ ",\"source\":\"maca\",\"message\":"
-        ++ quote(get(d, "message")) ++ "\}"
+    "\{\"range\":" + at + ",\"severity\":" +
+        str(severity_of(get(d, "severity"))) +
+        ",\"source\":\"maca\",\"message\":" +
+        quote(get(d, "message")) + "\}"
 }
 
 severity_of(said: str) -> int =>
@@ -47,9 +47,9 @@ each_diagnostic(said: str[], i: int, acc: str[]) -> str[] {
 }
 
 published(uri: str, said: str[]) -> str =>
-    "\{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\","
-        ++ "\"params\":\{\"uri\":{quote(uri)},\"diagnostics\":["
-        ++ each_diagnostic(said, 0, []).join(",") ++ "]\}\}"
+    "\{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\"," +
+        "\"params\":\{\"uri\":{quote(uri)},\"diagnostics\":[" +
+        each_diagnostic(said, 0, []).join(",") + "]\}\}"
 
 scratch_file() -> str {
     root = env_or("TMPDIR", "/tmp")
@@ -76,7 +76,7 @@ remembered(msg: str, docs: str[]) -> str[] {
     uri = get(msg, "uri")
 
     if carries_a_buffer(method) {
-        forgotten(docs, uri, 0, []) ++ [uri, get(msg, "text")]
+        forgotten(docs, uri, 0, []) + [uri, get(msg, "text")]
     } else if method == "textDocument/didClose" {
         forgotten(docs, uri, 0, [])
     } else {
@@ -192,8 +192,8 @@ symbol_json(line: str, at: int) -> str {
     name = name_on(line)
     span = range_of(at, 0, at, name.length())
 
-    "\{\"name\":" ++ quote(name) ++ ",\"kind\":" ++ str(kind_on(line))
-        ++ ",\"range\":" ++ span ++ ",\"selectionRange\":" ++ span ++ "\}"
+    "\{\"name\":" + quote(name) + ",\"kind\":" + str(kind_on(line)) +
+        ",\"range\":" + span + ",\"selectionRange\":" + span + "\}"
 }
 
 each_symbol(ls: str[], i: int, acc: str[]) -> str[] {
@@ -207,7 +207,7 @@ each_symbol(ls: str[], i: int, acc: str[]) -> str[] {
 }
 
 symbols_json(text: str) -> str =>
-    "[" ++ each_symbol(text.split("\n"), 0, []).join(",") ++ "]"
+    "[" + each_symbol(text.split("\n"), 0, []).join(",") + "]"
 
 definition_json(text: str, uri: str, msg: str) -> str {
     ls = text.split("\n")
@@ -218,7 +218,7 @@ definition_json(text: str, uri: str, msg: str) -> str {
     } else {
         span = range_of(at, 0, at, name_on(ls.get(at)).length())
 
-        "\{\"uri\":" ++ quote(uri) ++ ",\"range\":" ++ span ++ "\}"
+        "\{\"uri\":" + quote(uri) + ",\"range\":" + span + "\}"
     }
 }
 
@@ -253,8 +253,8 @@ hover_json(text: str, msg: str) -> str {
     if word == "" {
         "null"
     } else {
-        "\{\"contents\":\{\"kind\":\"plaintext\",\"value\":"
-            ++ quote(described(text.split("\n"), word)) ++ "\}\}"
+        "\{\"contents\":\{\"kind\":\"plaintext\",\"value\":" +
+            quote(described(text.split("\n"), word)) + "\}\}"
     }
 }
 
@@ -269,7 +269,7 @@ formatting_json(text: str) -> str {
         whole = range_of(0, 0, line_of(text, text.length()),
                          char_of(text, text.length()))
 
-        "[\{\"range\":" ++ whole ++ ",\"newText\":" ++ quote(tidy) ++ "\}]"
+        "[\{\"range\":" + whole + ",\"newText\":" + quote(tidy) + "\}]"
     }
 }
 

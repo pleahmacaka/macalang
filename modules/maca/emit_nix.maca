@@ -4,10 +4,10 @@ NixUser = "alice"
 
 /** The NixOS module a config-mode file describes, as Nix source. */
 nemit_module(m: Module) -> str =>
-    "{{ config, pkgs, lib, ... }}:\n{{\n"
-        ++ nix_block(nix_binds(m.items, 0, false, []), 1, 0, "")
-        ++ nix_home(nix_binds(m.items, 0, true, []), NixUser)
-        ++ "}}\n"
+    "{{ config, pkgs, lib, ... }}:\n{{\n" +
+        nix_block(nix_binds(m.items, 0, false, []), 1, 0, "") +
+        nix_home(nix_binds(m.items, 0, true, []), NixUser) +
+        "}}\n"
 
 /** What a user owns rides under home-manager, keyed by the name the manifest
  * gives.
@@ -16,8 +16,8 @@ nix_home(ls: str[], user: str) -> str {
     if ls.length() == 0 {
         ""
     } else {
-        "  home-manager.users.{user} = {{\n" ++ nix_block(ls, 2, 0, "")
-            ++ "  }};\n"
+        "  home-manager.users.{user} = {{\n" + nix_block(ls, 2, 0, "") +
+            "  }};\n"
     }
 }
 
@@ -27,7 +27,7 @@ nix_binds(items: Stmt[], i: int, home: bool, acc: str[]) -> str[] {
     } else if items.get(i).kind != SBind {
         nix_binds(items, i + 1, home, acc)
     } else if nix_at_home(items.get(i)) == home {
-        nix_binds(items, i + 1, home, acc ++ [nemit_bind(items.get(i))])
+        nix_binds(items, i + 1, home, acc + [nemit_bind(items.get(i))])
     } else {
         nix_binds(items, i + 1, home, acc)
     }
@@ -37,7 +37,7 @@ nix_block(ls: str[], n: int, i: int, acc: str) -> str {
     if i >= ls.length() {
         acc
     } else {
-        nix_block(ls, n, i + 1, acc ++ nix_indent(ls.get(i), n))
+        nix_block(ls, n, i + 1, acc + nix_indent(ls.get(i), n))
     }
 }
 
@@ -48,7 +48,7 @@ nix_pad(n: int, acc: str) -> str {
     if n <= 0 {
         acc
     } else {
-        nix_pad(n - 1, acc ++ "  ")
+        nix_pad(n - 1, acc + "  ")
     }
 }
 
@@ -56,7 +56,7 @@ nix_padded(ls: str[], pad: str, i: int, acc: str) -> str {
     if i >= ls.length() {
         acc
     } else {
-        nix_padded(ls, pad, i + 1, acc ++ pad ++ ls.get(i) ++ "\n")
+        nix_padded(ls, pad, i + 1, acc + pad + ls.get(i) + "\n")
     }
 }
 
@@ -105,8 +105,8 @@ nix_enabled(v: Expr) -> str {
     if v.kind != ERecord {
         nvalue(v)
     } else {
-        "{{\n  enable = true;\n"
-            ++ nix_body(nix_fields(v.children, 0, []), 0, "") ++ "}}"
+        "{{\n  enable = true;\n" +
+            nix_body(nix_fields(v.children, 0, []), 0, "") + "}}"
     }
 }
 
@@ -114,7 +114,7 @@ nix_body(ls: str[], i: int, acc: str) -> str {
     if i >= ls.length() {
         acc
     } else {
-        nix_body(ls, i + 1, acc ++ "  " ++ ls.get(i) ++ "\n")
+        nix_body(ls, i + 1, acc + "  " + ls.get(i) + "\n")
     }
 }
 
@@ -161,7 +161,7 @@ nix_attrs(fs: Expr[]) -> str {
     if ls.length() == 0 {
         "{{ }}"
     } else {
-        "{{\n  " ++ ls.join("\n  ") ++ "\n}}"
+        "{{\n  " + ls.join("\n  ") + "\n}}"
     }
 }
 
@@ -169,7 +169,7 @@ nix_fields(fs: Expr[], i: int, acc: str[]) -> str[] {
     if i >= fs.length() {
         acc
     } else {
-        nix_fields(fs, i + 1, acc ++ [nix_field(fs.get(i))])
+        nix_fields(fs, i + 1, acc + [nix_field(fs.get(i))])
     }
 }
 
@@ -193,8 +193,8 @@ nix_unary(e: Expr) -> str {
 }
 
 nix_cond(e: Expr) -> str =>
-    "(if {nvalue(e.children.get(0))} then {nvalue(e.children.get(1))}"
-        ++ " else {nvalue(e.children.get(2))})"
+    "(if {nvalue(e.children.get(0))} then {nvalue(e.children.get(1))}" +
+        " else {nvalue(e.children.get(2))})"
 
 /** Nix has no integer division and no remainder, so both are built from
  * `builtins.div`.
@@ -225,8 +225,8 @@ nix_infix(op: str) -> bool =>
  * nothing.
  */
 nix_xdg_dirs(v: Expr) -> str =>
-    "xdg.userDirs = {{\n  enable = true;\n  createDirectories = true;\n"
-        ++ nix_dir_lines(nix_elems(v), 0, "") ++ "};"
+    "xdg.userDirs = {{\n  enable = true;\n  createDirectories = true;\n" +
+        nix_dir_lines(nix_elems(v), 0, "") + "};"
 
 nix_dir_lines(xs: Expr[], i: int, acc: str) -> str {
     if i >= xs.length() {
@@ -234,7 +234,7 @@ nix_dir_lines(xs: Expr[], i: int, acc: str) -> str {
     } else if xs.get(i).kind != EStr {
         nix_dir_lines(xs, i + 1, acc)
     } else {
-        nix_dir_lines(xs, i + 1, acc ++ nix_dir_line(xs.get(i).text))
+        nix_dir_lines(xs, i + 1, acc + nix_dir_line(xs.get(i).text))
     }
 }
 
@@ -260,7 +260,7 @@ nix_escaped(cs: str[], i: int, acc: str) -> str {
     if i >= cs.length() {
         acc
     } else {
-        nix_escaped(cs, i + 1, acc ++ nix_escape(cs.get(i)))
+        nix_escaped(cs, i + 1, acc + nix_escape(cs.get(i)))
     }
 }
 

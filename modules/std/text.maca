@@ -140,7 +140,7 @@ capitalize(w: str) -> str {
     if w.length() == 0 {
         w
     } else {
-        w.at(0).upper() ++ w.slice(1, w.length()).lower()
+        w.at(0).upper() + w.slice(1, w.length()).lower()
     }
 }
 
@@ -150,7 +150,7 @@ join_words(ws: str[], i: int, acc: str) -> str {
     } else if acc == "" {
         join_words(ws, i + 1, ws.get(i))
     } else {
-        join_words(ws, i + 1, acc ++ " " ++ ws.get(i))
+        join_words(ws, i + 1, acc + " " + ws.get(i))
     }
 }
 
@@ -162,7 +162,7 @@ pad_unless_empty(line: str, pad: str) -> str {
     if line == "" {
         line
     } else {
-        pad ++ line
+        pad + line
     }
 }
 
@@ -229,7 +229,7 @@ fill(ws: str[], i: int, width: int, cur: str, out: str) -> str {
 
 next_word(ws: str[], i: int, width: int, cur: str, out: str) -> str {
     w = ws.get(i)
-    joined = if cur == "" { w } else { cur ++ " " ++ w }
+    joined = if cur == "" { w } else { cur + " " + w }
 
     if joined.length() <= width || cur == "" {
         fill(ws, i + 1, width, joined, out)
@@ -244,6 +244,6 @@ flush(out: str, cur: str) -> str {
     } else if out == "" {
         cur
     } else {
-        out ++ "\n" ++ cur
+        out + "\n" + cur
     }
 }

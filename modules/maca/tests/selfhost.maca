@@ -39,7 +39,7 @@ selected(l: str) -> str[] {
 }
 
 names_brought_in(src: str) -> str[] =>
-    lines(src).map(l => selected(l)).reduce([], (a, b) => a ++ b)
+    lines(src).map(l => selected(l)).reduce([], (a, b) => a + b)
 
 is_declared_elsewhere(e: str, brought: str[]) -> bool =>
     brought.filter(n => e == "call to undefined function `{n}`").length() > 0
@@ -69,14 +69,14 @@ test_the_compiler_and_its_driver_typecheck_as_one_program() {
 
     es = unresolved(src)
     assert_eq(str(es.length()), "0",
-              "nothing is resolved across files here, so a call to a helper "
-                  ++ "no import names is undefined: {first_of(es)}")
+              "nothing is resolved across files here, so a call to a helper " +
+                  "no import names is undefined: {first_of(es)}")
 }
 
 test_a_name_no_import_brings_in_is_not_excused() {
-    src = "import {{ trim }} from std/text\n"
-              ++ "main() -> int {{\n    info(trim(\" x \"))\n"
-              ++ "    info(json_str(\"x\"))\n    0\n}}\n"
+    src = "import {{ trim }} from std/text\n" +
+              "main() -> int {{\n    info(trim(\" x \"))\n" +
+              "    info(json_str(\"x\"))\n    0\n}}\n"
 
     assert_eq(str(unresolved(src).length()), "1",
               "the imported name is fine and the other one is not")

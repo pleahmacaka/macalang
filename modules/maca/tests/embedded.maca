@@ -89,12 +89,12 @@ test_a_counted_loop_counts() {
 }
 
 test_what_needs_a_heap_is_refused_rather_than_guessed() {
-    joined = emb_refusals_of([s_fn("f", "int", [e_param("a", "int"),
-                                                e_param("b", "int")],
-                                   [s_expr(e_binary("++", e_ident("a"),
+    joined = emb_refusals_of([s_fn("f", "str", [e_param("a", "str"),
+                                                e_param("b", "str")],
+                                   [s_expr(e_binary("+", e_str("x"),
                                                     e_ident("b")))])])
 
-    assert(joined.index_of("++") >= 0, "the refusal names the operator")
+    assert(joined.index_of("joining") >= 0, "the refusal names the join")
     assert(joined.index_of("heap") >= 0, "and says why this target cannot")
 }
 

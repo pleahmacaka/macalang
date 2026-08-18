@@ -3,8 +3,8 @@ import std/json
 
 test_a_notification_carrying_no_id_is_answered_with_nothing() {
     assert_eq(answer("\{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"\}"), "",
-              "a notification wants no reply, and writing one is a protocol"
-                  ++ " error")
+              "a notification wants no reply, and writing one is a protocol" +
+                  " error")
 }
 
 test_initialize_names_the_protocol_and_the_server() {

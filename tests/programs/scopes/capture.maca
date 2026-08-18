@@ -2,4 +2,4 @@
 indent_lines(s: str, column: str) -> str =>
     s.split("\n").map(l => prefixed(l, column)).join("|")
 
-prefixed(line: str, column: str) -> str => column ++ line
+prefixed(line: str, column: str) -> str => column + line

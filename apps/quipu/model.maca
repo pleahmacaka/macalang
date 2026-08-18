@@ -35,7 +35,7 @@ Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read"
 maca_bin() -> str {
     named = env_or("MACA", "maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 /** Every `.maca` file under the tree, which is what the file list shows. */
@@ -107,7 +107,7 @@ toggled(ide: Ide, line: int) -> Ide {
     if ide.breaks.index_of(line) >= 0 {
         ide with { breaks = without_line(ide.breaks, line, 0, []) }
     } else {
-        ide with { breaks = ide.breaks ++ [line] }
+        ide with { breaks = ide.breaks + [line] }
     }
 }
 
@@ -117,7 +117,7 @@ without_line(xs: int[], line: int, i: int, acc: int[]) -> int[] {
     } else if xs.get(i) == line {
         without_line(xs, line, i + 1, acc)
     } else {
-        without_line(xs, line, i + 1, acc ++ [xs.get(i)])
+        without_line(xs, line, i + 1, acc + [xs.get(i)])
     }
 }
 
@@ -209,8 +209,8 @@ transpiled(path: str, panel: str) -> str {
 
     said = panel == "c"
         ? output("sh", ["-c", "'{maca_bin()}' '{path}' '{out}' 2>&1"])
-        : output("sh", ["-c", "'{maca_bin()}' build '{path}' --target {panel}"
-                                  ++ " -o '{out}' 2>&1"])
+        : output("sh", ["-c", "'{maca_bin()}' build '{path}' --target {panel}" +
+                                  " -o '{out}' 2>&1"])
     got = read_file(out)
 
     got != "" ? got : said
@@ -235,14 +235,14 @@ flame_frames(svg: str) -> int =>
     svg.split("<rect").length() - 1
 
 checked(path: str, target: str) -> str {
-    said = output("sh", ["-c", "'{maca_bin()}' check '{path}' --target {target}"
-                                   ++ " 2>&1"])
+    said = output("sh", ["-c", "'{maca_bin()}' check '{path}' --target {target}" +
+                                   " 2>&1"])
 
     said.trim() == "" ? "no diagnostics" : said
 }
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-ide"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-ide"
 
     make_dir(dir)
 
@@ -284,7 +284,7 @@ tab_row(ps: str[], i: int, on: str, acc: str) -> str {
     } else {
         here = ps.get(i) == on ? "[{ps.get(i)}]" : " {ps.get(i)} "
 
-        tab_row(ps, i + 1, on, acc ++ here)
+        tab_row(ps, i + 1, on, acc + here)
     }
 }
 
@@ -333,9 +333,9 @@ footprint(path: str) -> str {
         return "no {Timer} on this host, so nothing measured the run"
     }
 
-    said = output("sh", ["-c", "{Timer} -f '%M KB peak, %e s'"
-                                   ++ " '{maca_bin()}' run '{path}'"
-                                   ++ " 2>&1 >/dev/null"])
+    said = output("sh", ["-c", "{Timer} -f '%M KB peak, %e s'" +
+                                   " '{maca_bin()}' run '{path}'" +
+                                   " 2>&1 >/dev/null"])
 
     said.trim() == "" ? "the run said nothing" : said.trim()
 }
@@ -344,10 +344,10 @@ footprint(path: str) -> str {
  * language and not another.
  */
 house_rules(root: str) -> str {
-    said = read_file(root ++ "/AGENT.md")
+    said = read_file(root + "/AGENT.md")
 
-    said != "" ? said : "You are helping with Maca, a typed language whose"
-        ++ " syntax has no `fn`, no `let` and no `return` keyword for types."
+    said != "" ? said : "You are helping with Maca, a typed language whose" +
+        " syntax has no `fn`, no `let` and no `return` keyword for types."
 }
 
 /** Where the assistant asks, named by the environment so no key is ever written
@@ -435,9 +435,9 @@ Commands = ["open", "run", "check", "profile", "keymap", "about"]
 
 /** Everything Ctrl+P reaches: the files, the panels, the commands. */
 picks(ide: Ide) -> Pick[] =>
-    named_picks(ide.files, 0, "file", [])
-        ++ named_picks(Panels, 0, "panel", [])
-        ++ named_picks(Commands, 0, "command", [])
+    named_picks(ide.files, 0, "file", []) +
+        named_picks(Panels, 0, "panel", []) +
+        named_picks(Commands, 0, "command", [])
 
 named_picks(xs: str[], i: int, kind: str, acc: Pick[]) -> Pick[] {
     if i >= xs.length() {
@@ -458,7 +458,7 @@ matching(ps: Pick[], query: str) -> Pick[] {
         return ps
     }
 
-    leading(ps, 0, said, []) ++ holding(ps, 0, said, [])
+    leading(ps, 0, said, []) + holding(ps, 0, said, [])
 }
 
 leading(ps: Pick[], i: int, said: str, acc: Pick[]) -> Pick[] {
@@ -548,8 +548,8 @@ Name = "Quipu"
  * toolchain rather than typed twice.
  */
 about() -> str =>
-    "{Name}, an editor for Maca\n{version_said()}\nthe editor is Maca too:"
-        ++ " apps/quipu"
+    "{Name}, an editor for Maca\n{version_said()}\nthe editor is Maca too:" +
+        " apps/quipu"
 
 version_said() -> str {
     said = output(maca_bin(), ["--version"]).trim()
@@ -602,7 +602,7 @@ digits_of(s: str) -> str {
     i = 0
 
     while i < cs.length() && cs.get(i).is_ascii_digit() {
-        out = out ++ cs.get(i)
+        out = out + cs.get(i)
         i = i + 1
     }
 

@@ -28,7 +28,7 @@ safe_name(name: str) -> str {
     cs = name.trim().chars()
     out = ""
     for c in cs {
-        out = keeps(c) ? out ++ c : out ++ "-"
+        out = keeps(c) ? out + c : out + "-"
     }
     trimmed = trim_dashes(out)
     trimmed == "" ? "download" : trimmed

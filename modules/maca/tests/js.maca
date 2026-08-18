@@ -22,9 +22,15 @@ test_a_name_javascript_has_taken_is_renamed() {
 }
 
 test_a_join_is_one_method_for_strings_and_lists() {
-    assert_eq(js_of("f(a: str, b: str) -> str => a ++ b"),
-              "function f(a, b) {{ return (a).concat(b); }}",
-              "the one method that joins both, where `+` joins only one")
+    assert_eq(js_of("f(a: str, b: str) -> str => a + b"),
+              "function f(a, b) {{ return (a + b); }}",
+              "two strings join by JavaScript's own `+`")
+    listy = annotated(parse_module(
+        lex("g(a: int[], b: int[]) -> int[] => a + b"), 0, []))
+
+    assert_eq(jemit_fn(listy.items.get(0)),
+              "function g(a, b) {{ return (a).concat(b); }}",
+              "while lists need the method, because their `+` is not a join")
     assert_eq(js_of("f(a: int) -> bool => a == 1"),
               "function f(a) {{ return (a === 1); }}",
               "loose equality is never what the source meant")
@@ -80,10 +86,10 @@ test_a_lambda_is_an_arrow() {
 
 test_a_match_asks_each_arm_in_turn() {
     assert_eq(js_of("f(n: int) -> str => match n {{ 1 => \"one\" _ => \"more\" }}"),
-              "function f(n) {{ return (() => {{ const _s = n;"
-                  ++ " if (_s === 1) {{ return \"one\"; }}"
-                  ++ " if (true) {{ return \"more\"; }}"
-                  ++ " throw new Error(\"no match\"); }})(); }}",
+              "function f(n) {{ return (() => {{ const _s = n;" +
+                  " if (_s === 1) {{ return \"one\"; }}" +
+                  " if (true) {{ return \"more\"; }}" +
+                  " throw new Error(\"no match\"); }})(); }}",
               "a test and an answer per arm, and the underscore always holds")
 }
 
@@ -143,8 +149,8 @@ test_a_rest_pattern_takes_the_tail() {
 
 test_a_loop_is_the_loop_javascript_writes() {
     assert_eq(js_of("f(xs: int[]) -> int {{ n = 0 for x in xs {{ seen(x) }} n }}"),
-              "function f(xs) {{ let n = 0; for (let x of xs)"
-                  ++ " {{ seen(x); }} return n; }}",
+              "function f(xs) {{ let n = 0; for (let x of xs)" +
+                  " {{ seen(x); }} return n; }}",
               "a for over a list needs no index, and no semicolon behind it")
 }
 
@@ -209,8 +215,8 @@ test_a_branch_that_is_a_statement_stays_a_statement() {
 }
 
 test_a_jump_out_of_a_loop_is_a_statement_too() {
-    assert(js_of("f(n: int) -> int {{ while n > 0 {{ n = n - 1"
-                     ++ " if n > 2 {{ continue }} g() }} n }}")
+    assert(js_of("f(n: int) -> int {{ while n > 0 {{ n = n - 1" +
+                     " if n > 2 {{ continue }} g() }} n }}")
                .index_of("if ((n > 2)) {{ continue; }}") >= 0,
            "`continue` in a ternary is a syntax error rather than a loop")
 }
@@ -255,8 +261,8 @@ test_a_builtin_is_out_of_a_programs_reach() {
 }
 
 test_a_method_on_a_type_of_the_program_is_a_call() {
-    out = js_module("P = {{ n: int }}\nbig(p: P) -> bool => p.n > 1\n"
-                        ++ "use(p: P) -> bool => p.big()")
+    out = js_module("P = {{ n: int }}\nbig(p: P) -> bool => p.n > 1\n" +
+                        "use(p: P) -> bool => p.big()")
 
     assert(out.index_of("function use(p) {{ return big(p); }}") >= 0,
            "no object carries the program's own methods, so the receiver leads")
@@ -266,9 +272,9 @@ test_a_method_on_a_type_of_the_program_is_a_call() {
 }
 
 test_a_map_is_the_map_javascript_carries() {
-    out = js_module("f(m: Map str int) -> int => m.get(\"a\")\n"
-                        ++ "g(m: Map str int) -> Map str int => m.set(\"a\", 1)\n"
-                        ++ "h(m: Map str int) -> int => m.length()")
+    out = js_module("f(m: Map str int) -> int => m.get(\"a\")\n" +
+                        "g(m: Map str int) -> Map str int => m.set(\"a\", 1)\n" +
+                        "h(m: Map str int) -> int => m.length()")
 
     assert(out.index_of("return _mor(m, \"a\", 0);") >= 0,
            "a missing key answers with the zero of the type it was declared over")
@@ -314,9 +320,9 @@ test_a_main_still_runs_itself() {
 }
 
 test_a_jump_from_a_match_arm_reaches_the_loop() {
-    out = js_module("scan(n: int) -> int {{ i = 0"
-                    ++ " while i < n {{ i = i + 1"
-                    ++ " match i {{ 1 => {{ continue }} _ => {{ i = i }} }} }} i }}")
+    out = js_module("scan(n: int) -> int {{ i = 0" +
+                    " while i < n {{ i = i + 1" +
+                    " match i {{ 1 => {{ continue }} _ => {{ i = i }} }} }} i }}")
 
     assert(out.index_of("if (_s === 1) {{ continue; }}") >= 0,
            "the arm is a branch of the loop it is written in")
@@ -325,13 +331,13 @@ test_a_jump_from_a_match_arm_reaches_the_loop() {
 }
 
 test_an_if_without_an_else_in_tail_position_is_not_a_ternary() {
-    arm = js_module("scan(n: int) -> int {{ i = 0"
-                    ++ " while i < n {{ i = i + 1"
-                    ++ " match i {{ 1 => {{ if i < 2 {{ continue }} }}"
-                    ++ " _ => {{ i = i }} }} }} i }}")
-    block = js_module("scan(n: int) -> int {{ i = 0"
-                      ++ " while i < n {{ if i > 0 {{ i = i + 1"
-                      ++ " if i < 2 {{ continue }} }} }} i }}")
+    arm = js_module("scan(n: int) -> int {{ i = 0" +
+                    " while i < n {{ i = i + 1" +
+                    " match i {{ 1 => {{ if i < 2 {{ continue }} }}" +
+                    " _ => {{ i = i }} }} }} i }}")
+    block = js_module("scan(n: int) -> int {{ i = 0" +
+                      " while i < n {{ if i > 0 {{ i = i + 1" +
+                      " if i < 2 {{ continue }} }} }} i }}")
 
     assert(arm.index_of("if ((i < 2)) {{ continue; }}") >= 0,
            "the guard that ends an arm stays a branch")
@@ -342,8 +348,8 @@ test_an_if_without_an_else_in_tail_position_is_not_a_ternary() {
 }
 
 test_the_binder_of_a_for_loop_is_writable() {
-    out = js_module("bump(xs: int[]) -> int {{ total = 0"
-                    ++ " for v in xs {{ v = v + 1 total = total + v }} total }}")
+    out = js_module("bump(xs: int[]) -> int {{ total = 0" +
+                    " for v in xs {{ v = v + 1 total = total + v }} total }}")
 
     assert(out.index_of("for (let v of xs)") >= 0,
            "the body writes the binder, and a const refuses the write at run time")
@@ -359,8 +365,8 @@ test_a_shift_lowers_to_the_javascript_shift() {
 }
 
 test_an_arm_may_write_the_name_its_pattern_bound() {
-    out = js_module("grown(x: int) -> int {{ out = 0"
-                        ++ " match x {{ v => {{ v = v + 1 out = v }} }} out }}")
+    out = js_module("grown(x: int) -> int {{ out = 0" +
+                        " match x {{ v => {{ v = v + 1 out = v }} }} out }}")
 
     assert(out.index_of("var v = _s; {{ v = (v + 1);") >= 0,
            "the arm named the whole value, so writing it is a write")

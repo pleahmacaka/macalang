@@ -1,7 +1,7 @@
 import lint/rules
 
 test_a_line_past_the_width_is_an_issue() {
-    assert(too_wide("x" ++ "y".repeat(120)), "a long line is caught")
+    assert(too_wide("x" + "y".repeat(120)), "a long line is caught")
     assert(!too_wide("short()"), "and a short one is not")
 }
 

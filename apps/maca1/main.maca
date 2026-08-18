@@ -82,40 +82,40 @@ help_asked(a: str) -> bool =>
 
 /** The commands this binary serves, which is the first thing anyone reads. */
 usage() -> int {
-    info("maca {Version}\n"
-         ++ "\nusage: maca <command> [args]\n"
-         ++ "\ncommands:\n"
-         ++ "  init  [dir]                  scaffold a new project (maca.toml, main.maca)\n"
-         ++ "  build [file.maca] [-o out]   compile (native | --target nix|js|rust|wasm)\n"
-         ++ "  run   [file.maca] [args..]   compile and run\n"
-         ++ "  -m <module>[.<fn>] [args..]  run one function out of a module\n"
-         ++ "  watch <file.maca> [args..]   rebuild and rerun it on every change\n"
-         ++ "  fmt   <file.maca>... [--check]  format in place\n"
-         ++ "  lint  [path...]              Maca style rules, over a file or a tree\n"
-         ++ "  doc   <dir> <file.maca>...   an API reference, rendered from /// lines\n"
-         ++ "  test  [file.maca]            every `test_...` in the file, or every suite\n"
-         ++ "  profile <file.maca> [-o s]   where the run spent its instructions\n"
-         ++ "  dev   [dev.maca] [-o out]    the flake `nix develop` enters\n"
-         ++ "  add   <spec>...              add a dependency, and fetch it\n"
-         ++ "  install                      fetch what maca.toml names, at the locked version\n"
-         ++ "  update                       re-resolve every dependency to its newest match\n"
-         ++ "  upgrade                      replace this toolchain with the latest release\n"
-         ++ "  bindgen <header.h> <out>     a C header, as Maca FFI declarations\n"
-         ++ "  check [file.maca]            diagnostics, one line each\n"
-         ++ "  fix   <file.maca>...         delete the keywords Maca has "
-         ++ "no word for\n"
-         ++ "  spec  [--package <name>]     the language, as one document\n"
-         ++ "  --version                    print the toolchain version\n"
-         ++ "  --help                       this\n"
-         ++ "\nwith no file, build/run/test/check are about the package the directory holds:\n"
-         ++ "  its [[bin]], chosen with --bin <name> or [build] bin\n"
-         ++ "\nbuild targets: native (default), --target nix | js | rust "
-         ++ "| jvm | tauri | wasm | embedded\n"
-         ++ "\n[build] in maca.toml declares target, out, mcu, classpath, cflags and\n"
-         ++ "  bin, so a project builds by\n"
-         ++ "  saying `maca build`; a flag on the line still wins\n"
-         ++ "\na [scripts] name in maca.toml is a command of its own, so `maca <name>`\n"
-         ++ "  runs the line that table gives it")
+    info("maca {Version}\n" +
+         "\nusage: maca <command> [args]\n" +
+         "\ncommands:\n" +
+         "  init  [dir]                  scaffold a new project (maca.toml, main.maca)\n" +
+         "  build [file.maca] [-o out]   compile (native | --target nix|js|rust|wasm)\n" +
+         "  run   [file.maca] [args..]   compile and run\n" +
+         "  -m <module>[.<fn>] [args..]  run one function out of a module\n" +
+         "  watch <file.maca> [args..]   rebuild and rerun it on every change\n" +
+         "  fmt   <file.maca>... [--check]  format in place\n" +
+         "  lint  [path...]              Maca style rules, over a file or a tree\n" +
+         "  doc   <dir> <file.maca>...   an API reference, rendered from /// lines\n" +
+         "  test  [file.maca]            every `test_...` in the file, or every suite\n" +
+         "  profile <file.maca> [-o s]   where the run spent its instructions\n" +
+         "  dev   [dev.maca] [-o out]    the flake `nix develop` enters\n" +
+         "  add   <spec>...              add a dependency, and fetch it\n" +
+         "  install                      fetch what maca.toml names, at the locked version\n" +
+         "  update                       re-resolve every dependency to its newest match\n" +
+         "  upgrade                      replace this toolchain with the latest release\n" +
+         "  bindgen <header.h> <out>     a C header, as Maca FFI declarations\n" +
+         "  check [file.maca]            diagnostics, one line each\n" +
+         "  fix   <file.maca>...         delete the keywords Maca has " +
+         "no word for\n" +
+         "  spec  [--package <name>]     the language, as one document\n" +
+         "  --version                    print the toolchain version\n" +
+         "  --help                       this\n" +
+         "\nwith no file, build/run/test/check are about the package the directory holds:\n" +
+         "  its [[bin]], chosen with --bin <name> or [build] bin\n" +
+         "\nbuild targets: native (default), --target nix | js | rust " +
+         "| jvm | tauri | wasm | embedded\n" +
+         "\n[build] in maca.toml declares target, out, mcu, classpath, cflags and\n" +
+         "  bin, so a project builds by\n" +
+         "  saying `maca build`; a flag on the line still wins\n" +
+         "\na [scripts] name in maca.toml is a command of its own, so `maca <name>`\n" +
+         "  runs the line that table gives it")
 
     0
 }
@@ -165,8 +165,8 @@ init_project(root: str) -> int {
 
     make_dir(root)
     write_absent("{root}/maca.toml",
-                 "[package]\nname = \"{name}\"\n\n[[bin]]\n"
-                     ++ "path = \"main.maca\"\n")
+                 "[package]\nname = \"{name}\"\n\n[[bin]]\n" +
+                     "path = \"main.maca\"\n")
     write_absent("{root}/main.maca",
                  "main() -> int \{\n    info(\"hello\")\n    0\n\}\n")
     info("initialized Maca project `{name}` in {root}")
@@ -204,7 +204,7 @@ indent_unit(chain: str[]) -> str {
 }
 
 space_run(n: int) -> str =>
-    n <= 0 ? "" : " " ++ space_run(n - 1)
+    n <= 0 ? "" : " " + space_run(n - 1)
 
 /** The file states its own step by the narrowest indent it uses, and the
  * declared unit replaces it.
@@ -269,7 +269,7 @@ reindent_line(line: str, unit: str, step: int) -> str {
     } else if lead % step != 0 {
         line
     } else {
-        unit_times(unit, lead / step) ++ line.slice(lead, line.length())
+        unit_times(unit, lead / step) + line.slice(lead, line.length())
     }
 }
 
@@ -291,7 +291,7 @@ fence_count(line: str) -> int {
 }
 
 unit_times(unit: str, n: int) -> str =>
-    n <= 0 ? "" : unit ++ unit_times(unit, n - 1)
+    n <= 0 ? "" : unit + unit_times(unit, n - 1)
 
 indent_width(line: str, i: int) -> int =>
     i < line.length() && line.at(i) == " " ? indent_width(line, i + 1) : i
@@ -359,7 +359,7 @@ fix_files(args: str[], i: int, acc: str[]) -> str[] {
     } else if args.get(i).starts_with("--") {
         fix_files(args, i + 1, acc)
     } else {
-        fix_files(args, i + 1, acc ++ [args.get(i)])
+        fix_files(args, i + 1, acc + [args.get(i)])
     }
 }
 
@@ -435,8 +435,8 @@ cut_all(cs: str[], ts: Token[], i: int) -> str[] {
 }
 
 cut_one(cs: str[], t: Token) -> str[] =>
-    cs.slice(0, t.pos)
-        ++ cs.slice(space_end(cs, t.pos + t.text.length()), cs.length())
+    cs.slice(0, t.pos) +
+        cs.slice(space_end(cs, t.pos + t.text.length()), cs.length())
 
 space_end(cs: str[], i: int) -> int {
     if i < cs.length() && cs.get(i) == " " {
@@ -576,8 +576,8 @@ module_path(name: str) -> str =>
 
 module_found(at: Entry, rest: str[]) -> int {
     if at.path == "" {
-        err("-m: no module `{at.module}`; looked for {at.module}.maca under "
-            ++ "the package roots this directory reaches")
+        err("-m: no module `{at.module}`; looked for {at.module}.maca under " +
+            "the package roots this directory reaches")
 
         2
     } else {
@@ -592,8 +592,8 @@ module_entered(at: Entry, rest: str[]) -> int {
     def = fn_at(items, want, 0)
 
     if want == "" {
-        err("-m: `{at.module}` defines no `main` and no `{own}`; name the "
-            ++ "function, as in `maca -m {at.module}.something`")
+        err("-m: `{at.module}` defines no `main` and no `{own}`; name the " +
+            "function, as in `maca -m {at.module}.something`")
 
         2
     } else if def < 0 {
@@ -632,14 +632,14 @@ module_calling(at: Entry, def: Stmt, want: str, rest: str[]) -> int {
     shape = call_shape(def)
 
     if shape == "" {
-        err("-m: `{want}` takes ({param_list(def.params, 0, "")}); an entry "
-            ++ "point takes either nothing or one `str[]`")
+        err("-m: `{want}` takes ({param_list(def.params, 0, "")}); an entry " +
+            "point takes either nothing or one `str[]`")
 
         2
     } else if want == "main" {
         run_file(at.path, rest)
     } else {
-        module_shimmed(at, want ++ shape, def.ret, rest)
+        module_shimmed(at, want + shape, def.ret, rest)
     }
 }
 
@@ -661,7 +661,7 @@ param_list(ps: Expr[], i: int, acc: str) -> str {
     } else if acc == "" {
         param_list(ps, i + 1, "{ps.get(i).text}: {ps.get(i).ty}")
     } else {
-        param_list(ps, i + 1, acc ++ ", {ps.get(i).text}: {ps.get(i).ty}")
+        param_list(ps, i + 1, acc + ", {ps.get(i).text}: {ps.get(i).ty}")
     }
 }
 
@@ -681,8 +681,8 @@ module_shimmed(at: Entry, call: str, ret: str, rest: str[]) -> int {
 }
 
 entry_source(module: str, call: str, ret: str) -> str =>
-    "import {module}\n\nmain(args: str[]) -> int \{\n"
-        ++ entry_body(call, ret) ++ "\}\n"
+    "import {module}\n\nmain(args: str[]) -> int \{\n" +
+        entry_body(call, ret) + "\}\n"
 
 /** A declared `int` is the exit status itself, a `bool` is the shell's 0 and 1.
  */
@@ -724,7 +724,7 @@ build_classes(src: str, out: str, cp: str) -> int {
 
         2
     } else {
-        write_file(java, java_imports(src) ++ read_file(java))
+        write_file(java, java_imports(src) + read_file(java))
 
         exec("javac", javac_line(java, out, cp))
     }
@@ -736,7 +736,7 @@ build_classes(src: str, out: str, cp: str) -> int {
 jvm_class(src: str) -> str {
     stem = stem_of(src)
 
-    stem == "" ? "Main" : stem.at(0).upper() ++ stem.slice(1, stem.length())
+    stem == "" ? "Main" : stem.at(0).upper() + stem.slice(1, stem.length())
 }
 
 /** Java resolves no name by itself, so every class a Java import named is
@@ -747,11 +747,11 @@ java_imports(src: str) -> str =>
 
 java_named(files: str[], i: int, acc: str) -> str {
     if i >= files.length() {
-        acc == "" ? "" : acc ++ "\n"
+        acc == "" ? "" : acc + "\n"
     } else {
         got = lex_all(read_file(files.get(i))).tokens
 
-        java_named(files, i + 1, acc ++ java_in(got, 0, ""))
+        java_named(files, i + 1, acc + java_in(got, 0, ""))
     }
 }
 
@@ -761,7 +761,7 @@ java_in(ts: Token[], i: int, acc: str) -> str {
 
     while ts.get(at).kind != Eof {
         if foreign_at(ts, at, "java") {
-            out = out ++ "import {ts.get(at + 1).text};\n"
+            out = out + "import {ts.get(at + 1).text};\n"
             at = at + 2
         } else {
             at = at + 1
@@ -783,7 +783,7 @@ on_path(cmd: str) -> bool {
         return capture("where", [cmd]).trim() != ""
     }
 
-    capture("sh", ["-c", "command -v " ++ cmd]).trim() != ""
+    capture("sh", ["-c", "command -v " + cmd]).trim() != ""
 }
 
 CargoName = "maca_app"
@@ -792,7 +792,7 @@ CargoName = "maca_app"
  * source lands beside it.
  */
 build_rust(src: str, out: str) -> int {
-    rs = out ++ ".rs"
+    rs = out + ".rs"
     errs = compile_file([src, rs, "rust"])
     deps = manifest_keys(chain_of(src), "[rust-dependencies]", 0)
 
@@ -814,17 +814,17 @@ build_rust(src: str, out: str) -> int {
  */
 cargo_built(src: str, rs: str, out: str, deps: str[]) -> int {
     chain = chain_of(src)
-    proj = out ++ "-cargo"
+    proj = out + "-cargo"
 
-    make_dir(proj ++ "/src")
+    make_dir(proj + "/src")
     write_file("{proj}/Cargo.toml",
                cargo_toml(chain, deps, manifest_keys(chain, "[rust-patch]",
                                                      0)))
     write_file("{proj}/src/main.rs", read_file(rs))
 
     if !on_path("cargo") {
-        err("maca: no cargo on PATH, so {rs} was written but its "
-            ++ "[rust-dependencies] could not be built.")
+        err("maca: no cargo on PATH, so {rs} was written but its " +
+            "[rust-dependencies] could not be built.")
 
         2
     } else {
@@ -844,7 +844,7 @@ cargo_built_at(proj: str, out: str) -> int {
  */
 placed(proj: str, out: str) -> bool {
     if env("OS") == "Windows_NT" {
-        to = out.ends_with(".exe") ? out : out ++ ".exe"
+        to = out.ends_with(".exe") ? out : out + ".exe"
 
         return copy_bytes("{proj}/target/release/{CargoName}.exe", to)
     }
@@ -853,17 +853,17 @@ placed(proj: str, out: str) -> bool {
 }
 
 cargo_toml(chain: str[], deps: str[], patch: str[]) -> str =>
-    "[package]\nname = \"{CargoName}\"\nversion = \"0.0.0\"\n"
-        ++ "edition = \"2021\"\n\n[[bin]]\nname = \"{CargoName}\"\n"
-        ++ "path = \"src/main.rs\"\n\n[dependencies]\n"
-        ++ cargo_entries(chain, "[rust-dependencies]", deps, 0, "")
-        ++ cargo_patch(chain, patch)
+    "[package]\nname = \"{CargoName}\"\nversion = \"0.0.0\"\n" +
+        "edition = \"2021\"\n\n[[bin]]\nname = \"{CargoName}\"\n" +
+        "path = \"src/main.rs\"\n\n[dependencies]\n" +
+        cargo_entries(chain, "[rust-dependencies]", deps, 0, "") +
+        cargo_patch(chain, patch)
 
 cargo_patch(chain: str[], patch: str[]) -> str =>
     patch.length() == 0
         ? ""
-        : "\n[patch.crates-io]\n"
-              ++ cargo_entries(chain, "[rust-patch]", patch, 0, "")
+        : "\n[patch.crates-io]\n" +
+              cargo_entries(chain, "[rust-patch]", patch, 0, "")
 
 cargo_entries(chain: str[], table: str, ks: str[], i: int, acc: str) -> str {
     if i >= ks.length() {
@@ -871,7 +871,7 @@ cargo_entries(chain: str[], table: str, ks: str[], i: int, acc: str) -> str {
     } else {
         rhs = cargo_value(chain_value(chain, 0, table, ks.get(i)))
 
-        cargo_entries(chain, table, ks, i + 1, acc ++ "{ks.get(i)} = {rhs}\n")
+        cargo_entries(chain, table, ks, i + 1, acc + "{ks.get(i)} = {rhs}\n")
     }
 }
 
@@ -888,7 +888,7 @@ manifest_keys(chain: str[], table: str, i: int) -> str[] {
     if i >= chain.length() {
         []
     } else {
-        here = table_keys(read_file(chain.get(i) ++ Manifest), table)
+        here = table_keys(read_file(chain.get(i) + Manifest), table)
 
         here.length() > 0 ? here : manifest_keys(chain, table, i + 1)
     }
@@ -930,8 +930,8 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
     } else if target == "jvm" {
         build_classes(src, out, cp)
     } else {
-        err("maca: no target `{target}`. Try native, rust, js, nix, elixir, "
-            ++ "tauri, wasm, embedded or jvm.")
+        err("maca: no target `{target}`. Try native, rust, js, nix, elixir, " +
+            "tauri, wasm, embedded or jvm.")
 
         2
     }
@@ -941,11 +941,11 @@ build_out(src: str, out: str, target: str, mcu: str, cp: str) -> int {
  */
 default_out(src: str, target: str) -> str {
     if target == "js" {
-        stem_of(src) ++ "-web"
+        stem_of(src) + "-web"
     } else if target == "tauri" {
-        stem_of(src) ++ "-tauri"
+        stem_of(src) + "-tauri"
     } else if target == "elixir" {
-        stem_of(src) ++ ".exs"
+        stem_of(src) + ".exs"
     } else {
         stem_of(src)
     }
@@ -978,7 +978,7 @@ stray_page_key(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
     } else {
-        here = stray_of(table_keys(read_file(chain.get(i) ++ Manifest),
+        here = stray_of(table_keys(read_file(chain.get(i) + Manifest),
                                    "[page]"), page_keys(), 0)
 
         here != "" ? here : stray_page_key(chain, i + 1)
@@ -1000,8 +1000,8 @@ build_page(src: str, dir: str) -> int {
     stray = stray_page_key(chain, 0)
 
     if stray != "" {
-        err("maca.toml [page]: unknown key `{stray}` (known: "
-            ++ page_keys().join(", ") ++ ")")
+        err("maca.toml [page]: unknown key `{stray}` (known: " +
+            page_keys().join(", ") + ")")
 
         2
     } else {
@@ -1040,7 +1040,7 @@ page_assets(files: str[], i: int, acc: PageAsset[]) -> PageAsset[] {
         text = read_file(files.get(i))
 
         page_assets(files, i + 1,
-                    acc ++ assets_in(text, lex_all(text).tokens, 0, []))
+                    acc + assets_in(text, lex_all(text).tokens, 0, []))
     }
 }
 
@@ -1050,7 +1050,7 @@ assets_in(src: str, ts: Token[], i: int, acc: PageAsset[]) -> PageAsset[] {
 
     while ts.get(at).kind != Eof {
         if ts.get(at).kind == KwImport {
-            out = out ++ asset_at(src, ts, at + 1)
+            out = out + asset_at(src, ts, at + 1)
             at = import_end(ts, at + 1)
         } else {
             at = at + 1
@@ -1100,7 +1100,7 @@ asked_names(ts: Token[], i: int, acc: str[]) -> str[] {
     if ts.get(i).kind == RBrace || ts.get(i).kind == Eof {
         acc
     } else if ts.get(i).kind == TIdent {
-        asked_names(ts, i + 1, acc ++ [ts.get(i).text])
+        asked_names(ts, i + 1, acc + [ts.get(i).text])
     } else {
         asked_names(ts, i + 1, acc)
     }
@@ -1129,7 +1129,7 @@ resolved_assets(src: str, xs: PageAsset[], i: int, acc: Found[]) -> Found[] {
         acc
     } else {
         resolved_assets(src, xs, i + 1,
-                        acc ++ [resolved_asset(src, xs.get(i))])
+                        acc + [resolved_asset(src, xs.get(i))])
     }
 }
 
@@ -1139,7 +1139,7 @@ asset_errors(xs: Found[], i: int, acc: str[]) -> str[] {
     } else if xs.get(i).why == "" {
         asset_errors(xs, i + 1, acc)
     } else {
-        asset_errors(xs, i + 1, acc ++ [xs.get(i).why])
+        asset_errors(xs, i + 1, acc + [xs.get(i).why])
     }
 }
 
@@ -1147,7 +1147,7 @@ asset_errors(xs: Found[], i: int, acc: str[]) -> str[] {
  * and otherwise a path beside the program.
  */
 resolved_asset(src: str, a: PageAsset) -> Found {
-    file = dir_of(src) ++ a.spec
+    file = dir_of(src) + a.spec
 
     if a.text != "" {
         Found { kind = a.kind, file = "", why = "" }
@@ -1171,18 +1171,18 @@ package_found(src: str, spec: str, kind: str) -> Found {
     said = "import \"{NpmPrefix}{spec}\": "
 
     if name == "" {
-        Found { kind = kind, file = "", why = said ++ "no package named" }
+        Found { kind = kind, file = "", why = said + "no package named" }
     } else if dir == "" {
         Found { kind = kind, file = "",
-                why = said ++ "`{name}` is not installed; run "
-                    ++ "`maca add {NpmPrefix}{name}`" }
+                why = said + "`{name}` is not installed; run " +
+                    "`maca add {NpmPrefix}{name}`" }
     } else if sub == "" {
         package_entry(dir, name, said)
     } else if file_exists("{dir}/{sub}") {
         Found { kind = kind, file = "{dir}/{sub}", why = "" }
     } else {
         Found { kind = kind, file = "",
-                why = said ++ "`{name}` has no `{sub}`" }
+                why = said + "`{name}` has no `{sub}`" }
     }
 }
 
@@ -1191,19 +1191,19 @@ package_found(src: str, spec: str, kind: str) -> Found {
  */
 package_entry(dir: str, name: str, said: str) -> Found {
     entry = first_entry(read_file("{dir}/{PackageJson}"), entry_keys(), 0)
-    file = "{dir}/" ++ (entry.starts_with("./")
+    file = "{dir}/" + (entry.starts_with("./")
                             ? entry.slice(2, entry.length()) : entry)
 
     if entry == "" {
         Found { kind = "", file = "",
-                why = said ++ "`{name}` states no entry point ("
-                    ++ entry_keys().join("/") ++ " names no file of a kind a "
-                    ++ "page can carry); name the file, as in `import "
-                    ++ "\"{NpmPrefix}{name}/dist/…\"`" }
+                why = said + "`{name}` states no entry point (" +
+                    entry_keys().join("/") + " names no file of a kind a " +
+                    "page can carry); name the file, as in `import " +
+                    "\"{NpmPrefix}{name}/dist/…\"`" }
     } else if !file_exists(file) {
         Found { kind = "", file = "",
-                why = said ++ "`{name}` states \"{entry}\", which is not "
-                    ++ "there" }
+                why = said + "`{name}` states \"{entry}\", which is not " +
+                    "there" }
     } else {
         Found { kind = asset_kind(entry), file = file, why = "" }
     }
@@ -1248,7 +1248,7 @@ quoted_upto(cs: str[], i: int, acc: str[]) -> str {
     if i >= cs.length() || cs.get(i) == "\"" {
         acc.join("")
     } else {
-        quoted_upto(cs, i + 1, acc ++ [cs.get(i)])
+        quoted_upto(cs, i + 1, acc + [cs.get(i)])
     }
 }
 
@@ -1301,23 +1301,23 @@ page_html(src: str, chain: str[], assets: PageAsset[], found: Found[],
     meta = desc == "" ? ""
         : "<meta name=\"description\" content=\"{html_text(desc)}\">\n"
 
-    "<!doctype html>\n{opened}\n<head>\n<meta charset=\"utf-8\">\n"
-        ++ "<meta name=\"viewport\" content=\"width=device-width,"
-        ++ "initial-scale=1\">\n{meta}<title>{title}</title>\n"
-        ++ inlined(assets, found, 0, [], true)
-        ++ "<style>\n\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n"
-        ++ MacaBridge
-        ++ inlined(assets, found, 0, [], false)
-        ++ "<script>\n{js}\n</script>\n</body>\n</html>\n"
+    "<!doctype html>\n{opened}\n<head>\n<meta charset=\"utf-8\">\n" +
+        "<meta name=\"viewport\" content=\"width=device-width," +
+        "initial-scale=1\">\n{meta}<title>{title}</title>\n" +
+        inlined(assets, found, 0, [], true) +
+        "<style>\n\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n" +
+        MacaBridge +
+        inlined(assets, found, 0, [], false) +
+        "<script>\n{js}\n</script>\n</body>\n</html>\n"
 }
 
 /** A block a module supplies runs before the program, so the registry it writes
  * to has to exist first.
  */
-MacaBridge = "<script>\nglobalThis.maca = globalThis.maca || {{\n"
-    ++ "  _hosts: Object.create(null),\n"
-    ++ "  provide(fns) {{ for (const k of Object.keys(fns))"
-    ++ " this._hosts[k] = fns[k]; }},\n}};\n</script>\n"
+MacaBridge = "<script>\nglobalThis.maca = globalThis.maca || {{\n" +
+    "  _hosts: Object.create(null),\n" +
+    "  provide(fns) {{ for (const k of Object.keys(fns))" +
+    " this._hosts[k] = fns[k]; }},\n}};\n</script>\n"
 
 /** A stylesheet belongs in the head, and a script after the element it mounts
  * into.
@@ -1328,7 +1328,7 @@ inlined(assets: PageAsset[], found: Found[], i: int, acc: str[],
         acc.join("")
     } else if head == (found.get(i).kind == "stylesheet") {
         inlined(assets, found, i + 1,
-                acc ++ [one_inlined(assets.get(i), found.get(i))], head)
+                acc + [one_inlined(assets.get(i), found.get(i))], head)
     } else {
         inlined(assets, found, i + 1, acc, head)
     }
@@ -1338,15 +1338,15 @@ one_inlined(a: PageAsset, f: Found) -> str {
     body = close_safe(a.text != "" ? a.text : read_file(f.file))
 
     if f.kind == "stylesheet" {
-        "<style>\n" ++ body ++ "\n</style>\n"
+        "<style>\n" + body + "\n</style>\n"
     } else if f.kind == "wasm" {
-        "<script id=\"wasm-b64\" type=\"application/octet-stream\">"
-            ++ base64_of(f.file) ++ "</script>\n"
+        "<script id=\"wasm-b64\" type=\"application/octet-stream\">" +
+            base64_of(f.file) + "</script>\n"
     } else if f.kind == "script" && a.names != "" {
-        script_open(a, f) ++ body ++ "\n</script>\n<script>\n"
-            ++ named_bindings(a.names.split(" "), 0, []) ++ "</script>\n"
+        script_open(a, f) + body + "\n</script>\n<script>\n" +
+            named_bindings(a.names.split(" "), 0, []) + "</script>\n"
     } else if f.kind == "script" {
-        script_open(a, f) ++ body ++ "\n</script>\n"
+        script_open(a, f) + body + "\n</script>\n"
     } else {
         ""
     }
@@ -1401,7 +1401,7 @@ rejoined(parts: str[], i: int, acc: str[]) -> str {
         mark = lead.starts_with("style") || lead.starts_with("script")
             ? "<\\/" : "</"
 
-        rejoined(parts, i + 1, acc ++ [mark, parts.get(i)])
+        rejoined(parts, i + 1, acc + [mark, parts.get(i)])
     }
 }
 
@@ -1417,10 +1417,10 @@ named_bindings(names: str[], i: int, acc: str[]) -> str {
     if i >= names.length() {
         acc.join("")
     } else {
-        bound = "const {names.get(i)} = "
-            ++ first_there(spellings(names.get(i)), 0, []) ++ ";\n"
+        bound = "const {names.get(i)} = " +
+            first_there(spellings(names.get(i)), 0, []) + ";\n"
 
-        named_bindings(names, i + 1, acc ++ [bound])
+        named_bindings(names, i + 1, acc + [bound])
     }
 }
 
@@ -1428,7 +1428,7 @@ first_there(ss: str[], i: int, acc: str[]) -> str {
     if i >= ss.length() {
         acc.join(" ?? ")
     } else {
-        first_there(ss, i + 1, acc ++ ["globalThis[\"{ss.get(i)}\"]"])
+        first_there(ss, i + 1, acc + ["globalThis[\"{ss.get(i)}\"]"])
     }
 }
 
@@ -1440,7 +1440,7 @@ spellings(name: str) -> str[] {
     kebab = name.replace("_", "-")
     held = camel == name ? [name] : [name, camel]
 
-    kebab == name ? held : held ++ [kebab]
+    kebab == name ? held : held + [kebab]
 }
 
 camel_of(cs: str[], i: int, acc: str[], up: bool) -> str {
@@ -1449,9 +1449,9 @@ camel_of(cs: str[], i: int, acc: str[], up: bool) -> str {
     } else if cs.get(i) == "_" {
         camel_of(cs, i + 1, acc, true)
     } else if up {
-        camel_of(cs, i + 1, acc ++ [cs.get(i).upper()], false)
+        camel_of(cs, i + 1, acc + [cs.get(i).upper()], false)
     } else {
-        camel_of(cs, i + 1, acc ++ [cs.get(i)], false)
+        camel_of(cs, i + 1, acc + [cs.get(i)], false)
     }
 }
 
@@ -1463,15 +1463,15 @@ base64_of(file: str) -> str =>
 
 /** The wasm target is the C back end linked by `zig cc` against wasi-libc. */
 build_wasm(src: str, out: str) -> int {
-    wasm = out.ends_with(".wasm") ? out : out ++ ".wasm"
-    cfile = wasm ++ ".c"
+    wasm = out.ends_with(".wasm") ? out : out + ".wasm"
+    cfile = wasm + ".c"
     errs = compile_file([src, cfile])
 
     if errs > 0 {
         errs
     } else if read_file(cfile).index_of("\n#include <setjmp.h>\n") >= 0 {
-        err("maca: the wasm target cannot carry `try` yet, because "
-            ++ "wasi-libc has no setjmp; {cfile} is written")
+        err("maca: the wasm target cannot carry `try` yet, because " +
+            "wasi-libc has no setjmp; {cfile} is written")
 
         1
     } else {
@@ -1497,8 +1497,8 @@ build_firmware(src: str, dir: str, mcu: str) -> int {
     m = emb_mcu(mcu)
 
     if m.name == "" {
-        err("maca: no --mcu `{mcu}`. Try cortex-m0, cortex-m3, cortex-m4 "
-            ++ "or riscv32.")
+        err("maca: no --mcu `{mcu}`. Try cortex-m0, cortex-m3, cortex-m4 " +
+            "or riscv32.")
 
         2
     } else {
@@ -1525,8 +1525,8 @@ cross_compile(m: Mcu, dir: str) -> int {
                            "{dir}/firmware.c"])
 
     if built != 0 {
-        err("maca: clang did not link the firmware; {dir}/firmware.c and "
-            ++ "{dir}/link.ld are written")
+        err("maca: clang did not link the firmware; {dir}/firmware.c and " +
+            "{dir}/link.ld are written")
 
         built
     } else {
@@ -1578,7 +1578,7 @@ tauri_shell(src: str, dir: str) -> int {
  * so a desktop app's back end is Maca too.
  */
 tauri_backend(src: str, st: str) -> int {
-    backend = dir_of(src) ++ "backend.maca"
+    backend = dir_of(src) + "backend.maca"
 
     if file_exists(backend) {
         make_dir("{st}/bin")
@@ -1594,62 +1594,62 @@ tauri_backend(src: str, st: str) -> int {
  * webview.
  */
 tauri_scaffolded(src: str, dir: str, st: str) -> int {
-    note = file_exists(dir_of(src) ++ "backend.maca") ? ""
+    note = file_exists(dir_of(src) + "backend.maca") ? ""
         : " (no backend.maca beside it, so `maca_run` has nothing to run)"
 
-    info("scaffolded {dir}{note}\n  cd {st} && cargo tauri build   "
-         ++ "# needs the Tauri CLI and a system webview")
+    info("scaffolded {dir}{note}\n  cd {st} && cargo tauri build   " +
+         "# needs the Tauri CLI and a system webview")
 
     0
 }
 
 tauri_bridge() -> str =>
-    "globalThis.macaInvoke = async (arg) => {{\n"
-        ++ "  const t = globalThis.__TAURI__;\n"
-        ++ "  if (t && t.core && t.core.invoke) {{\n"
-        ++ "    return t.core.invoke('maca_run', {{ arg: String(arg) }});\n"
-        ++ "  }}\n"
-        ++ "  if (t && t.invoke) {{\n"
-        ++ "    return t.invoke('maca_run', {{ arg: String(arg) }});\n"
-        ++ "  }}\n"
-        ++ "  return '(no tauri runtime)';\n"
-        ++ "}};\n"
+    "globalThis.macaInvoke = async (arg) => {{\n" +
+        "  const t = globalThis.__TAURI__;\n" +
+        "  if (t && t.core && t.core.invoke) {{\n" +
+        "    return t.core.invoke('maca_run', {{ arg: String(arg) }});\n" +
+        "  }}\n" +
+        "  if (t && t.invoke) {{\n" +
+        "    return t.invoke('maca_run', {{ arg: String(arg) }});\n" +
+        "  }}\n" +
+        "  return '(no tauri runtime)';\n" +
+        "}};\n"
 
 tauri_cargo(name: str) -> str =>
-    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"
-        ++ "edition = \"2021\"\n\n[build-dependencies]\n"
-        ++ "tauri-build = {{ version = \"2\", features = [] }}\n\n"
-        ++ "[dependencies]\ntauri = {{ version = \"2\", features = [] }}\n\n"
-        ++ "[[bin]]\nname = \"{name}\"\npath = \"src/main.rs\"\n"
+    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n" +
+        "edition = \"2021\"\n\n[build-dependencies]\n" +
+        "tauri-build = {{ version = \"2\", features = [] }}\n\n" +
+        "[dependencies]\ntauri = {{ version = \"2\", features = [] }}\n\n" +
+        "[[bin]]\nname = \"{name}\"\npath = \"src/main.rs\"\n"
 
 tauri_conf(name: str, title: str) -> str =>
-    "{{\n  \"productName\": \"{title}\",\n  \"version\": \"0.1.0\",\n"
-        ++ "  \"identifier\": \"dev.maca.{name}\",\n"
-        ++ "  \"build\": {{ \"frontendDist\": \"../dist\" }},\n"
-        ++ "  \"app\": {{\n    \"windows\": [{{ \"title\": \"{title}\", "
-        ++ "\"width\": 900, \"height\": 640, \"resizable\": true }}],\n"
-        ++ "    \"security\": {{ \"csp\": null }}\n  }},\n"
-        ++ "  \"bundle\": {{ \"active\": true, \"targets\": \"all\" }}\n}}\n"
+    "{{\n  \"productName\": \"{title}\",\n  \"version\": \"0.1.0\",\n" +
+        "  \"identifier\": \"dev.maca.{name}\",\n" +
+        "  \"build\": {{ \"frontendDist\": \"../dist\" }},\n" +
+        "  \"app\": {{\n    \"windows\": [{{ \"title\": \"{title}\", " +
+        "\"width\": 900, \"height\": 640, \"resizable\": true }}],\n" +
+        "    \"security\": {{ \"csp\": null }}\n  }},\n" +
+        "  \"bundle\": {{ \"active\": true, \"targets\": \"all\" }}\n}}\n"
 
 tauri_main_rs() -> str =>
-    "#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\n"
-        ++ "use std::process::Command;\n\n#[tauri::command]\n"
-        ++ "fn maca_run(arg: String) -> String {{\n"
-        ++ "    let exe = std::env::current_exe()\n"
-        ++ "        .ok()\n"
-        ++ "        .and_then(|p| p.parent()"
-        ++ ".map(|d| d.join(\"bin\").join(\"backend\")))\n"
-        ++ "        .unwrap_or_else(|| "
-        ++ "std::path::PathBuf::from(\"backend\"));\n"
-        ++ "    match Command::new(&exe).arg(&arg).output() {{\n"
-        ++ "        Ok(o) => "
-        ++ "String::from_utf8_lossy(&o.stdout).trim().to_string(),\n"
-        ++ "        Err(e) => format!(\"error: {{e}}\"),\n"
-        ++ "    }}\n}}\n\nfn main() {{\n"
-        ++ "    tauri::Builder::default()\n"
-        ++ "        .invoke_handler(tauri::generate_handler![maca_run])\n"
-        ++ "        .run(tauri::generate_context!())\n"
-        ++ "        .expect(\"error while running tauri application\");\n}}\n"
+    "#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\n" +
+        "use std::process::Command;\n\n#[tauri::command]\n" +
+        "fn maca_run(arg: String) -> String {{\n" +
+        "    let exe = std::env::current_exe()\n" +
+        "        .ok()\n" +
+        "        .and_then(|p| p.parent()" +
+        ".map(|d| d.join(\"bin\").join(\"backend\")))\n" +
+        "        .unwrap_or_else(|| " +
+        "std::path::PathBuf::from(\"backend\"));\n" +
+        "    match Command::new(&exe).arg(&arg).output() {{\n" +
+        "        Ok(o) => " +
+        "String::from_utf8_lossy(&o.stdout).trim().to_string(),\n" +
+        "        Err(e) => format!(\"error: {{e}}\"),\n" +
+        "    }}\n}}\n\nfn main() {{\n" +
+        "    tauri::Builder::default()\n" +
+        "        .invoke_handler(tauri::generate_handler![maca_run])\n" +
+        "        .run(tauri::generate_context!())\n" +
+        "        .expect(\"error while running tauri application\");\n}}\n"
 
 /** A crate name is the file stem with every character but a letter or a digit
  * turned into `_`.
@@ -1660,7 +1660,7 @@ crate_ident(stem: str) -> str {
     if id == "" {
         "app"
     } else if id.at(0).is_ascii_digit() {
-        "_" ++ id
+        "_" + id
     } else {
         id
     }
@@ -1670,9 +1670,9 @@ ident_chars(cs: str[], i: int, acc: str[]) -> str {
     if i >= cs.length() {
         acc.join("")
     } else if cs.get(i).is_alpha() || cs.get(i).is_ascii_digit() {
-        ident_chars(cs, i + 1, acc ++ [cs.get(i).lower()])
+        ident_chars(cs, i + 1, acc + [cs.get(i).lower()])
     } else {
-        ident_chars(cs, i + 1, acc ++ ["_"])
+        ident_chars(cs, i + 1, acc + ["_"])
     }
 }
 
@@ -1743,8 +1743,8 @@ cache_key(src: str) -> str {
         unit = unit_of(src)
 
         capture("sh", ["-c", cache_probe(), "maca",
-                       "native " ++ cc_flags().join(" ")]
-                    ++ unit.seen ++ embedded_files(src, unit.toks)).trim()
+                       "native " + cc_flags().join(" ")] +
+                    unit.seen + embedded_files(src, unit.toks)).trim()
     }
 }
 
@@ -1774,8 +1774,8 @@ embedded_files(src: str, ts: Token[]) -> str[] {
         spec = data_spec(ts, i, at)
 
         if spec != "" {
-            out = out.push(at.base ++ spec)
-            out = out.push(at.base ++ local_spec(spec))
+            out = out.push(at.base + spec)
+            out = out.push(at.base + local_spec(spec))
         }
 
         i = i + 1
@@ -1810,11 +1810,11 @@ spec_token(t: Token, at: Assets) -> str {
  * because a key that answers for neither would serve a stale binary.
  */
 cache_probe() -> str =>
-    "command -v sha512sum >/dev/null || exit 0; "
-        ++ "exe=$(stat -Lc %Y /proc/$PPID/exe 2>/dev/null); "
-        ++ "[ -n \"$exe\" ] || exit 0; ( printf %s \"$exe $1\"; shift; "
-        ++ "sha512sum \"$@\" 2>/dev/null | cut -d\" \" -f1 ) "
-        ++ "| sha512sum | cut -d\" \" -f1"
+    "command -v sha512sum >/dev/null || exit 0; " +
+        "exe=$(stat -Lc %Y /proc/$PPID/exe 2>/dev/null); " +
+        "[ -n \"$exe\" ] || exit 0; ( printf %s \"$exe $1\"; shift; " +
+        "sha512sum \"$@\" 2>/dev/null | cut -d\" \" -f1 ) " +
+        "| sha512sum | cut -d\" \" -f1"
 
 /** A cached binary is copied out with the executable bit a fresh build would
  * have left on it.
@@ -1845,11 +1845,11 @@ link_flags(code: str) -> str[] {
     py = includes_line(code, "#include <Python.h>")
 
     if sq && py {
-        cc_flags() ++ sqlite_flags() ++ python_flags()
+        cc_flags() + sqlite_flags() + python_flags()
     } else if sq {
-        cc_flags() ++ sqlite_flags()
+        cc_flags() + sqlite_flags()
     } else if py {
-        cc_flags() ++ python_flags()
+        cc_flags() + python_flags()
     } else {
         cc_flags()
     }
@@ -1864,7 +1864,7 @@ sqlite_flags() -> str[] {
     lib = dev == "" ? "" : nix_path("nixpkgs#sqlite.out")
 
     if pkg != "" {
-        nonempty(pkg.split(" "), 0, []) ++ ["-lpthread"]
+        nonempty(pkg.split(" "), 0, []) + ["-lpthread"]
     } else if lib != "" {
         ["-I{dev}/include", "-L{lib}/lib", "-lsqlite3",
          "-Wl,-rpath,{lib}/lib", "-lpthread"]
@@ -1884,17 +1884,17 @@ python_flags() -> str[] {
     embed = capture("python3-config", ["--ldflags", "--embed"]).trim()
     ld = embed != "" ? embed : capture("python3-config", ["--ldflags"]).trim()
 
-    nonempty(inc.split(" ") ++ ld.split(" "), 0, [])
+    nonempty(inc.split(" ") + ld.split(" "), 0, [])
 }
 
 build_fresh(src: str, out: str) -> int {
-    cfile = out ++ ".c"
+    cfile = out + ".c"
     errs = compile_file([src, cfile])
 
     if errs > 0 {
         errs
     } else {
-        cc_run([cfile] ++ link_flags(read_file(cfile)) ++ ["-o", out])
+        cc_run([cfile] + link_flags(read_file(cfile)) + ["-o", out])
     }
 }
 
@@ -1908,13 +1908,13 @@ cc_run(args: str[]) -> int {
     named = env("MACA_CC")
     argv = named == "" ? ["cc"] : nonempty(named.split(" "), 0, [])
 
-    exec(argv.get(0), argv.slice(1, argv.length()) ++ args)
+    exec(argv.get(0), argv.slice(1, argv.length()) + args)
 }
 
 /** `[build] cflags` in the manifest here, the flags a program needs to link. */
 cc_flags() -> str[] =>
-    windows_stack()
-        ++ nonempty(chain_value(here_chain(), 0, "[build]", "cflags")
+    windows_stack() +
+        nonempty(chain_value(here_chain(), 0, "[build]", "cflags")
                         .split(" "), 0, [])
 
 /** The compiler asks for a 64 MB stack at run time through `setrlimit`, which
@@ -1932,8 +1932,8 @@ build_cmd(args: str[]) -> int {
     if src == "" {
         2
     } else if stray != "" {
-        err("maca.toml [build]: unknown key `{stray}` (known: "
-            ++ build_keys().join(", ") ++ ")")
+        err("maca.toml [build]: unknown key `{stray}` (known: " +
+            build_keys().join(", ") + ")")
 
         2
     } else if named != "" && !workspace_ok(chain) {
@@ -1979,9 +1979,9 @@ declared_out(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
     } else {
-        got = toml_value(read_file(chain.get(i) ++ Manifest), "[build]", "out")
+        got = toml_value(read_file(chain.get(i) + Manifest), "[build]", "out")
 
-        got != "" ? chain.get(i) ++ got : declared_out(chain, i + 1)
+        got != "" ? chain.get(i) + got : declared_out(chain, i + 1)
     }
 }
 
@@ -1993,7 +1993,7 @@ stray_build_key(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
     } else {
-        here = stray_of(table_keys(read_file(chain.get(i) ++ Manifest),
+        here = stray_of(table_keys(read_file(chain.get(i) + Manifest),
                                    "[build]"), build_keys(), 0)
 
         here != "" ? here : stray_build_key(chain, i + 1)
@@ -2034,8 +2034,8 @@ sniffed(src: str, asked: str) -> str {
     found = asked != "" ? "" : detected_target(src)
 
     if found != "" {
-        err("note: {why_target(found)}; building --target {found} "
-            ++ "(pass --target to override)")
+        err("note: {why_target(found)}; building --target {found} " +
+            "(pass --target to override)")
     }
 
     found != "" ? found : asked
@@ -2108,18 +2108,18 @@ test_cmd(args: str[]) -> int {
  */
 test_package(chain: str[]) -> int {
     if chain.length() == 0 {
-        err("test: no maca.toml here, so there is no package to test; "
-            ++ "name a .maca file")
+        err("test: no maca.toml here, so there is no package to test; " +
+            "name a .maca file")
 
         2
     } else {
-        dir = chain.get(0) ++ tests_dir(chain)
+        dir = chain.get(0) + tests_dir(chain)
         suites = suite_files(dir, list_dir(dir), 0, [])
 
         if suites.length() == 0 {
             no_suites(dir)
         } else {
-            info(package_heading(chain) ++ ": {suites.length()} suites")
+            info(package_heading(chain) + ": {suites.length()} suites")
 
             ran_suites(suites, 0, 0)
         }
@@ -2130,7 +2130,7 @@ test_package(chain: str[]) -> int {
 package_heading(chain: str[]) -> str {
     got = chain_value(chain, 0, "[package]", "version")
 
-    got == "" ? package_of(chain) : package_of(chain) ++ " " ++ got
+    got == "" ? package_of(chain) : package_of(chain) + " " + got
 }
 
 /** `[package] tests` renames the directory the suites live in. */
@@ -2144,15 +2144,15 @@ suite_files(dir: str, names: str[], i: int, acc: str[]) -> str[] {
     if i >= names.length() {
         acc
     } else if names.get(i).ends_with(".maca") {
-        suite_files(dir, names, i + 1, acc ++ [dir ++ "/" ++ names.get(i)])
+        suite_files(dir, names, i + 1, acc + [dir + "/" + names.get(i)])
     } else {
         suite_files(dir, names, i + 1, acc)
     }
 }
 
 no_suites(dir: str) -> int {
-    err("test: {dir} holds no .maca suite; name a file, or set "
-        ++ "[package] tests")
+    err("test: {dir} holds no .maca suite; name a file, or set " +
+        "[package] tests")
 
     2
 }
@@ -2195,9 +2195,9 @@ check_cmd(args: str[]) -> int {
     if src == "" {
         2
     } else if !is_known_target(held) {
-        err("maca check: no target `{held}`; built targets are"
-                ++ " native, c, js, jvm, rust, tauri, embedded, nix, or"
-                ++ " `all` for what every program target shares")
+        err("maca check: no target `{held}`; built targets are" +
+                " native, c, js, jvm, rust, tauri, embedded, nix, or" +
+                " `all` for what every program target shares")
         2
     } else if args.index_of("--json") >= 0 {
         check_json(src, held)
@@ -2214,13 +2214,13 @@ check_json(path: str, target: str) -> int {
     scanned = end_run(lexed(unit.toks, unit.errs), 0, 0)
     parsed = parse_module(scanned.tokens, 0, [])
     raw = desugared(parsed, path)
-    broke = unit.unknown ++ scanned.errors ++ parsed.errors
+    broke = unit.unknown + scanned.errors + parsed.errors
     said = broke.length() > 0
         ? unparsed(broke, 0, [])
-        : unread(raw.errors, 0, []) ++ check_diagnostics_on(raw, target)
+        : unread(raw.errors, 0, []) + check_diagnostics_on(raw, target)
     body = diag_list(path, read_file(path), said, 0, [])
 
-    info("\{\"format\":1,\"diagnostics\":[" ++ body.join(",") ++ "]\}")
+    info("\{\"format\":1,\"diagnostics\":[" + body.join(",") + "]\}")
 
     said.length() == 0 ? 0 : 1
 }
@@ -2232,8 +2232,8 @@ unread(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
         acc
     } else {
         said = Diagnostic { code = "M0008", message = xs.get(i), pos = 0,
-                            note = "the file is read from beside the program"
-                                ++ " while it is being built" }
+                            note = "the file is read from beside the program" +
+                                " while it is being built" }
 
         unread(xs, i + 1, acc.push(said))
     }
@@ -2245,8 +2245,8 @@ unparsed(xs: str[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
         acc
     } else {
         said = Diagnostic { code = "M0001", message = xs.get(i), pos = 0,
-                            note = "the file did not parse, so nothing"
-                                ++ " after this was checked" }
+                            note = "the file did not parse, so nothing" +
+                                " after this was checked" }
 
         unparsed(xs, i + 1, acc.push(said))
     }
@@ -2269,14 +2269,14 @@ diag_json(path: str, text: str, d: Diagnostic) -> str {
     lo = at < 0 ? at_or_zero(text, d.pos) : at
     hi = at < 0 ? lo : lo + name.length()
 
-    "\{\"code\":" ++ json_text(d.code)
-        ++ ",\"severity\":\"error\",\"message\":" ++ json_text(d.message)
-        ++ ",\"explain\":" ++ json_text(diag_explain(d.code))
-        ++ ",\"note\":" ++ note_json(d.note)
-        ++ ",\"file\":" ++ json_text(path)
-        ++ ",\"span\":" ++ spot_json(text, lo, hi)
-        ++ ",\"suggestions\":" ++ fix_suggestions(text, d, lo, hi)
-        ++ "\}"
+    "\{\"code\":" + json_text(d.code) +
+        ",\"severity\":\"error\",\"message\":" + json_text(d.message) +
+        ",\"explain\":" + json_text(diag_explain(d.code)) +
+        ",\"note\":" + note_json(d.note) +
+        ",\"file\":" + json_text(path) +
+        ",\"span\":" + spot_json(text, lo, hi) +
+        ",\"suggestions\":" + fix_suggestions(text, d, lo, hi) +
+        "\}"
 }
 
 note_json(note: str) -> str =>
@@ -2291,26 +2291,26 @@ fix_suggestions(text: str, d: Diagnostic, lo: int, hi: int) -> str {
            || !phantom_spelling(name) {
         "[]"
     } else {
-        "[\{\"message\":" ++ json_text("delete `" ++ name ++ "`")
-            ++ ",\"span\":" ++ spot_json(text, lo, hi)
-            ++ ",\"replacement\":\"\",\"applicability\":"
-            ++ "\"machine-applicable\"\}]"
+        "[\{\"message\":" + json_text("delete `" + name + "`") +
+            ",\"span\":" + spot_json(text, lo, hi) +
+            ",\"replacement\":\"\",\"applicability\":" +
+            "\"machine-applicable\"\}]"
     }
 }
 
 spot_json(text: str, lo: int, hi: int) -> str =>
-    "\{\"start\":" ++ str(lo) ++ ",\"end\":" ++ str(hi)
-        ++ ",\"start_line\":" ++ str(line_at(text, lo))
-        ++ ",\"start_column\":" ++ str(col_at(text, lo))
-        ++ ",\"end_line\":" ++ str(line_at(text, hi))
-        ++ ",\"end_column\":" ++ str(col_at(text, hi)) ++ "\}"
+    "\{\"start\":" + str(lo) + ",\"end\":" + str(hi) +
+        ",\"start_line\":" + str(line_at(text, lo)) +
+        ",\"start_column\":" + str(col_at(text, lo)) +
+        ",\"end_line\":" + str(line_at(text, hi)) +
+        ",\"end_column\":" + str(col_at(text, hi)) + "\}"
 
 json_text(s: str) -> str =>
-    "\"" ++ s.replace("\\", "\\\\")
+    "\"" + s.replace("\\", "\\\\")
              .replace("\"", "\\\"")
              .replace("\n", "\\n")
              .replace("\r", "\\r")
-             .replace("\t", "\\t") ++ "\""
+             .replace("\t", "\\t") + "\""
 
 line_at(text: str, at: int) -> int =>
     text.slice(0, at).split("\n").length()
@@ -2415,14 +2415,14 @@ manifest_chain(from: str) -> str[] {
 rooted(from: str) -> str {
     at = real_path(from == "" ? "." : from)
 
-    at == "" ? "" : at ++ "/"
+    at == "" ? "" : at + "/"
 }
 
 manifest_dirs(dir: str, acc: str[]) -> str[] {
     if dir == "" {
         acc
-    } else if file_exists(dir ++ Manifest) {
-        manifest_dirs(parent_of(dir), acc ++ [dir])
+    } else if file_exists(dir + Manifest) {
+        manifest_dirs(parent_of(dir), acc + [dir])
     } else {
         manifest_dirs(parent_of(dir), acc)
     }
@@ -2434,7 +2434,7 @@ manifest_dirs(dir: str, acc: str[]) -> str[] {
 workspace_at(dirs: str[], i: int) -> int {
     if i < 0 {
         dirs.length() == 0 ? -1 : 0
-    } else if declares_workspace(read_file(dirs.get(i) ++ Manifest)) {
+    } else if declares_workspace(read_file(dirs.get(i) + Manifest)) {
         i
     } else {
         workspace_at(dirs, i - 1)
@@ -2458,7 +2458,7 @@ upto(dirs: str[], stop: int, i: int, acc: str[]) -> str[] {
     if stop < 0 || i > stop {
         acc
     } else {
-        upto(dirs, stop, i + 1, acc ++ [dirs.get(i)])
+        upto(dirs, stop, i + 1, acc + [dirs.get(i)])
     }
 }
 
@@ -2473,7 +2473,7 @@ chain_value(chain: str[], i: int, table: str, key: str) -> str {
     if i >= chain.length() {
         ""
     } else {
-        got = toml_value(read_file(chain.get(i) ++ Manifest), table, key)
+        got = toml_value(read_file(chain.get(i) + Manifest), table, key)
 
         got != "" ? got : chain_value(chain, i + 1, table, key)
     }
@@ -2503,11 +2503,11 @@ workspace_problem(chain: str[]) -> str =>
 each_workspace(chain: str[], i: int) -> str {
     if i >= chain.length() {
         ""
-    } else if !declares_workspace(read_file(chain.get(i) ++ Manifest)) {
+    } else if !declares_workspace(read_file(chain.get(i) + Manifest)) {
         each_workspace(chain, i + 1)
     } else {
         at = chain.get(i)
-        found = members_problem(at, members_of(read_file(at ++ Manifest)))
+        found = members_problem(at, members_of(read_file(at + Manifest)))
 
         found != "" ? found : each_workspace(chain, i + 1)
     }
@@ -2528,8 +2528,8 @@ member_refusal(root: str, ms: str[], i: int) -> str {
     } else if named_package("{root}{ms.get(i)}/{Manifest}") {
         member_refusal(root, ms, i + 1)
     } else {
-        "{root}{ms.get(i)}/{Manifest}: a workspace member states its own "
-            ++ "[package] name"
+        "{root}{ms.get(i)}/{Manifest}: a workspace member states its own " +
+            "[package] name"
     }
 }
 
@@ -2545,7 +2545,7 @@ parents_of(ms: str[], i: int, acc: str[]) -> str[] {
     } else {
         up = dir_of(ms.get(i))
 
-        parents_of(ms, i + 1, acc.index_of(up) >= 0 ? acc : acc ++ [up])
+        parents_of(ms, i + 1, acc.index_of(up) >= 0 ? acc : acc + [up])
     }
 }
 
@@ -2554,7 +2554,7 @@ stray_in(root: str, ms: str[], parents: str[], i: int) -> str {
         ""
     } else {
         found = stray_at(root, ms, parents.get(i),
-                         list_dir(root ++ parents.get(i)), 0)
+                         list_dir(root + parents.get(i)), 0)
 
         found != "" ? found : stray_in(root, ms, parents, i + 1)
     }
@@ -2564,9 +2564,9 @@ stray_at(root: str, ms: str[], parent: str, names: str[], i: int) -> str {
     if i >= names.length() {
         ""
     } else if file_exists("{root}{parent}{names.get(i)}/{Manifest}")
-            && ms.index_of(parent ++ names.get(i)) < 0 {
-        "{root}{Manifest}: `{parent}{names.get(i)}` holds a {Manifest} but is "
-            ++ "not a [workspace] member; list it or delete it"
+            && ms.index_of(parent + names.get(i)) < 0 {
+        "{root}{Manifest}: `{parent}{names.get(i)}` holds a {Manifest} but is " +
+            "not a [workspace] member; list it or delete it"
     } else {
         stray_at(root, ms, parent, names, i + 1)
     }
@@ -2597,7 +2597,7 @@ list_body(lines: str[], i: int, acc: str) -> str {
     if i >= lines.length() || acc.index_of("]") >= 0 {
         acc
     } else {
-        list_body(lines, i + 1, acc ++ lines.get(i).trim())
+        list_body(lines, i + 1, acc + lines.get(i).trim())
     }
 }
 
@@ -2614,7 +2614,7 @@ cleaned(xs: str[], i: int, acc: str[]) -> str[] {
     } else {
         one = unquoted(xs.get(i).trim())
 
-        cleaned(xs, i + 1, one == "" ? acc : acc ++ [one])
+        cleaned(xs, i + 1, one == "" ? acc : acc + [one])
     }
 }
 
@@ -2643,7 +2643,7 @@ declared_bin(cmd: str, want: str) -> str {
 chosen_bin(cmd: str, chain: str[], want: str) -> str {
     own = chain.get(0)
     pkg = package_of(chain)
-    bins = bins_of(read_file(own ++ Manifest).split("\n"), 0, [])
+    bins = bins_of(read_file(own + Manifest).split("\n"), 0, [])
     asked = want == "" ? chain_value(chain, 0, "[build]", "bin") : want
     at = bin_pick(bins, asked)
     n = bins.length()
@@ -2654,8 +2654,8 @@ chosen_bin(cmd: str, chain: str[], want: str) -> str {
 
         ""
     } else if at < 0 {
-        err("{cmd}: package `{pkg}` declares {n} binaries; pass --bin <name>, "
-            ++ "or declare [build] bin (one of {names})")
+        err("{cmd}: package `{pkg}` declares {n} binaries; pass --bin <name>, " +
+            "or declare [build] bin (one of {names})")
 
         ""
     } else {
@@ -2664,7 +2664,7 @@ chosen_bin(cmd: str, chain: str[], want: str) -> str {
 }
 
 bin_file(cmd: str, dir: str, b: Bin) -> str {
-    at = dir ++ b.path
+    at = dir + b.path
 
     if file_exists(at) {
         at
@@ -2701,7 +2701,7 @@ bin_names(bins: Bin[], i: int, acc: str) -> str {
     } else if acc == "" {
         bin_names(bins, i + 1, bins.get(i).name)
     } else {
-        bin_names(bins, i + 1, acc ++ ", " ++ bins.get(i).name)
+        bin_names(bins, i + 1, acc + ", " + bins.get(i).name)
     }
 }
 
@@ -2725,7 +2725,7 @@ bins_of(lines: str[], i: int, acc: Bin[]) -> Bin[] {
  * not one.
  */
 with_bin(acc: Bin[], b: Bin) -> Bin[] =>
-    b.path == "" ? acc : acc ++ [b]
+    b.path == "" ? acc : acc + [b]
 
 one_bin(lines: str[], i: int) -> Bin {
     path = block_value(lines, i, "path")
@@ -2753,7 +2753,7 @@ keys_in(lines: str[], i: int, at: str, table: str, acc: str[]) -> str[] {
     } else if toml_head(lines.get(i)) != "" {
         keys_in(lines, i + 1, toml_head(lines.get(i)), table, acc)
     } else if at == table && toml_key(lines.get(i)) != "" {
-        keys_in(lines, i + 1, at, table, acc ++ [toml_key(lines.get(i))])
+        keys_in(lines, i + 1, at, table, acc + [toml_key(lines.get(i))])
     } else {
         keys_in(lines, i + 1, at, table, acc)
     }
@@ -2813,7 +2813,7 @@ nonempty(xs: str[], i: int, acc: str[]) -> str[] {
     } else if xs.get(i) == "" {
         nonempty(xs, i + 1, acc)
     } else {
-        nonempty(xs, i + 1, acc ++ [xs.get(i)])
+        nonempty(xs, i + 1, acc + [xs.get(i)])
     }
 }
 
@@ -2863,7 +2863,7 @@ test_names(items: Stmt[], i: int, acc: str[]) -> str[] {
         acc
     } else if items.get(i).kind == SFn
             && items.get(i).name.starts_with("test_") {
-        test_names(items, i + 1, acc ++ [items.get(i).name])
+        test_names(items, i + 1, acc + [items.get(i).name])
     } else {
         test_names(items, i + 1, acc)
     }
@@ -2873,7 +2873,7 @@ run_tests(src: str, names: str[]) -> int {
     driver = "{dir_of(src)}maca1-test-{str(now_ms())}.maca"
 
     write_file(driver,
-               without_main(read_file(src)) ++ test_main(names, 0, ""))
+               without_main(read_file(src)) + test_main(names, 0, ""))
 
     code = run_file(driver, [])
 
@@ -2909,17 +2909,17 @@ cut_out(src: str, from: int, upto: int) -> str {
     cs = src.chars()
     tail: str[] = upto < 0 ? [] : cs.slice(upto, cs.length())
 
-    cs.slice(0, from).join("") ++ tail.join("")
+    cs.slice(0, from).join("") + tail.join("")
 }
 
 test_main(names: str[], i: int, acc: str) -> str {
     if i >= names.length() {
-        "\nmain() -> int \{\n" ++ acc ++ "    failures()\n\}\n"
+        "\nmain() -> int \{\n" + acc + "    failures()\n\}\n"
     } else {
-        call = "    info(\"  " ++ names.get(i) ++ "\")\n    "
-            ++ names.get(i) ++ "()\n"
+        call = "    info(\"  " + names.get(i) + "\")\n    " +
+            names.get(i) + "()\n"
 
-        test_main(names, i + 1, acc ++ call)
+        test_main(names, i + 1, acc + call)
     }
 }
 
@@ -2932,7 +2932,7 @@ compile_file(args: str[]) -> int {
         report_all("scan", scanned.errors, 0) +
         report_all("parse", parsed.errors, 0) +
         report_all("embed", raw.errors, 0)
-    stubbed = raw with { items = raw.items ++ tag_stubs(unit.toks, 0, []) }
+    stubbed = raw with { items = raw.items + tag_stubs(unit.toks, 0, []) }
     asked = args.length() >= 3 ? args.get(2) : ""
     errs = bad +
         report_all("check", checked_with_foreign(stubbed, unit.toks), 0) +
@@ -2943,9 +2943,9 @@ compile_file(args: str[]) -> int {
                                asked),
                   unit.toks)
     emitted = if asked == "rust" {
-        rust_prelude(unit.toks, 0, "") ++ remit_module(rust_borrows(m))
+        rust_prelude(unit.toks, 0, "") + remit_module(rust_borrows(m))
     } else if asked == "" || asked == "native" || asked == "c" {
-        emit_module(m) ++ c_prelude_blocks(read_file(args.get(0)), unit.toks,
+        emit_module(m) + c_prelude_blocks(read_file(args.get(0)), unit.toks,
                                            0, "")
     } else if asked == "js" {
         jemit_module(m)
@@ -3021,11 +3021,11 @@ foreign_bodies(items: Stmt[], i: int, acc: str[]) -> str[] {
     } else if items.get(i).kind == SFn && items.get(i).body.length() == 0
             && reaches(items, items.get(i).name) {
         foreign_bodies(items, i + 1,
-                       acc ++ ["`{items.get(i).name}` is declared with no "
-                                   ++ "body, which is an FFI declaration; "
-                                   ++ "--target elixir reaches C through a "
-                                   ++ "NIF, which this compiler does not "
-                                   ++ "write, so give it a body in Maca"])
+                       acc + ["`{items.get(i).name}` is declared with no " +
+                                   "body, which is an FFI declaration; " +
+                                   "--target elixir reaches C through a " +
+                                   "NIF, which this compiler does not " +
+                                   "write, so give it a body in Maca"])
     } else {
         foreign_bodies(items, i + 1, acc)
     }
@@ -3039,7 +3039,7 @@ ported_errors(items: Stmt[], i: int, target: str, acc: str[]) -> str[] {
         acc
     } else {
         ported_errors(items, i + 1, target,
-                      acc ++ ported_error(items.get(i), target, items))
+                      acc + ported_error(items.get(i), target, items))
     }
 }
 
@@ -3087,9 +3087,9 @@ kids_reach(cs: Expr[], i: int, name: str) -> bool {
 
 ported_error(s: Stmt, target: str, items: Stmt[]) -> str[] {
     if s.kind == SFn && s.body.length() == 0 && reaches(items, s.name) {
-        ["`{s.name}` is declared with no body, which is an FFI declaration, "
-             ++ "and --target {target} has no C ABI bridge to reach it; supply "
-             ++ "a body, or write the function in a raw block"]
+        ["`{s.name}` is declared with no body, which is an FFI declaration, " +
+             "and --target {target} has no C ABI bridge to reach it; supply " +
+             "a body, or write the function in a raw block"]
     } else if s.kind == SRecord {
         fn_fields(s.name, s.params, 0, target, [])
     } else {
@@ -3102,9 +3102,9 @@ fn_fields(rec: str, fs: Expr[], i: int, target: str, acc: str[]) -> str[] {
         acc
     } else if is_fn_type(fs.get(i).ty) {
         fn_fields(rec, fs, i + 1, target,
-                  acc ++ ["`{rec}.{fs.get(i).text}` holds a function, which "
-                              ++ "--target {target} cannot carry; the native "
-                              ++ "and js targets can"])
+                  acc + ["`{rec}.{fs.get(i).text}` holds a function, which " +
+                              "--target {target} cannot carry; the native " +
+                              "and js targets can"])
     } else {
         fn_fields(rec, fs, i + 1, target, acc)
     }
@@ -3117,7 +3117,7 @@ foreign_errors(asked: str, src: str, u: Unit) -> str[] {
     if asked != "rust" {
         js
     } else {
-        js ++ rust_import_errors(u.toks, 0,
+        js + rust_import_errors(u.toks, 0,
                                  manifest_keys(chain_of(src),
                                                "[rust-dependencies]", 0),
                                  [])
@@ -3136,9 +3136,9 @@ browser_errors(asked: str, u: Unit) -> str[] {
 }
 
 browser_error(asked: str, name: str) -> str =>
-    "`{name}` runs in a browser: what implements it is a JavaScript block, "
-        ++ "and the {target_named(asked)} target has no JavaScript to run it "
-        ++ "in; build the page with `maca build --target js`"
+    "`{name}` runs in a browser: what implements it is a JavaScript block, " +
+        "and the {target_named(asked)} target has no JavaScript to run it " +
+        "in; build the page with `maca build --target js`"
 
 target_named(asked: str) -> str =>
     asked == "" ? "native" : asked
@@ -3293,7 +3293,7 @@ borrow_marks(items: Stmt[], own: str[], i: int, acc: str[]) -> str[] {
         acc
     } else if is_impl_block(items.get(i)) {
         borrow_marks(items, own, i + 1,
-                     acc ++ method_marks(items.get(i).value.children, own, 0,
+                     acc + method_marks(items.get(i).value.children, own, 0,
                                          []))
     } else {
         borrow_marks(items, own, i + 1, acc)
@@ -3304,7 +3304,7 @@ method_marks(fs: Expr[], own: str[], i: int, acc: str[]) -> str[] {
     if i >= fs.length() {
         acc
     } else {
-        method_marks(fs, own, i + 1, acc ++ param_marks(fs.get(i), own))
+        method_marks(fs, own, i + 1, acc + param_marks(fs.get(i), own))
     }
 }
 
@@ -3319,7 +3319,7 @@ mark_at(name: str, ps: Expr[], own: str[], i: int, acc: str[]) -> str[] {
     if i >= ps.length() {
         acc
     } else if foreign_type(ps.get(i).ty, own) {
-        mark_at(name, ps, own, i + 1, acc ++ ["{name}#{str(i)}"])
+        mark_at(name, ps, own, i + 1, acc + ["{name}#{str(i)}"])
     } else {
         mark_at(name, ps, own, i + 1, acc)
     }
@@ -3329,7 +3329,7 @@ borrow_stmts(xs: Stmt[], marks: str[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= xs.length() {
         acc
     } else {
-        borrow_stmts(xs, marks, i + 1, acc ++ [borrow_stmt(xs.get(i), marks)])
+        borrow_stmts(xs, marks, i + 1, acc + [borrow_stmt(xs.get(i), marks)])
     }
 }
 
@@ -3350,7 +3350,7 @@ borrow_kids(cs: Expr[], marks: str[], i: int, acc: Expr[]) -> Expr[] {
     if i >= cs.length() {
         acc
     } else {
-        borrow_kids(cs, marks, i + 1, acc ++ [borrow_expr(cs.get(i), marks)])
+        borrow_kids(cs, marks, i + 1, acc + [borrow_expr(cs.get(i), marks)])
     }
 }
 
@@ -3360,9 +3360,9 @@ borrowed_args(name: str, cs: Expr[], marks: str[], i: int,
         acc
     } else if marks.index_of("{name}#{str(i)}") >= 0 {
         borrowed_args(name, cs, marks, i + 1,
-                      acc ++ [e_call("maca_borrow", [cs.get(i)])])
+                      acc + [e_call("maca_borrow", [cs.get(i)])])
     } else {
-        borrowed_args(name, cs, marks, i + 1, acc ++ [cs.get(i)])
+        borrowed_args(name, cs, marks, i + 1, acc + [cs.get(i)])
     }
 }
 
@@ -3375,7 +3375,7 @@ tag_stubs(ts: Token[], i: int, acc: Stmt[]) -> Stmt[] {
 
     while at + 2 < ts.length() {
         if foreign_at(ts, at, "rust") && foreign_body_at(ts, at) {
-            out = out ++ block_stubs(rust_source(ts.get(at + 2).text))
+            out = out + block_stubs(rust_source(ts.get(at + 2).text))
             at = at + 3
         } else {
             at = at + 1
@@ -3395,7 +3395,7 @@ kept_items(xs: Stmt[], stubs: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
             && stub_named(stubs, xs.get(i).name, 0) {
         kept_items(xs, stubs, i + 1, acc)
     } else {
-        kept_items(xs, stubs, i + 1, acc ++ [xs.get(i)])
+        kept_items(xs, stubs, i + 1, acc + [xs.get(i)])
     }
 }
 
@@ -3416,7 +3416,7 @@ stub_parts(ps: str[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= ps.length() {
         acc
     } else {
-        stub_parts(ps, i + 1, acc ++ stub_of(ps.get(i)))
+        stub_parts(ps, i + 1, acc + stub_of(ps.get(i)))
     }
 }
 
@@ -3448,7 +3448,7 @@ stub_params(n: int, i: int, acc: Expr[]) -> Expr[] {
     if i >= n {
         acc
     } else {
-        stub_params(n, i + 1, acc ++ [e_param("a{str(i)}", "")])
+        stub_params(n, i + 1, acc + [e_param("a{str(i)}", "")])
     }
 }
 
@@ -3484,7 +3484,7 @@ written_names(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
     } else if ds.get(i).code == "M0006" {
         written_names(ds, i + 1, acc)
     } else {
-        written_names(ds, i + 1, acc ++ [diag_message(ds.get(i))])
+        written_names(ds, i + 1, acc + [diag_message(ds.get(i))])
     }
 }
 
@@ -3496,11 +3496,11 @@ rust_import_in(ts: Token[], i: int) -> bool =>
  */
 rust_prelude(ts: Token[], i: int, acc: str) -> str {
     if i + 1 >= ts.length() {
-        acc == "" ? "" : acc ++ "\n"
+        acc == "" ? "" : acc + "\n"
     } else if foreign_at(ts, i, "rust") {
         said = foreign_body_at(ts, i) ? ts.get(i + 2).text : ts.get(i + 1).text
 
-        rust_prelude(ts, i + foreign_step(ts, i), acc ++ rust_item(said))
+        rust_prelude(ts, i + foreign_step(ts, i), acc + rust_item(said))
     } else {
         rust_prelude(ts, i + 1, acc)
     }
@@ -3515,7 +3515,7 @@ c_prelude_blocks(src: str, ts: Token[], i: int, acc: str) -> str {
 
     while at + 2 < ts.length() {
         if foreign_at(ts, at, "c") && raw_block_at(src, ts, at + 2) {
-            out = out ++ rust_source(ts.get(at + 2).text) ++ "\n"
+            out = out + rust_source(ts.get(at + 2).text) + "\n"
             at = at + 3
         } else {
             at = at + 1
@@ -3531,7 +3531,7 @@ c_prelude_blocks(src: str, ts: Token[], i: int, acc: str) -> str {
 rust_item(spec: str) -> str {
     text = rust_source(spec)
 
-    path_like(text.chars(), 0) ? "use {text};\n" : text ++ "\n"
+    path_like(text.chars(), 0) ? "use {text};\n" : text + "\n"
 }
 
 /** A raw block is held as a Maca literal, so what it stood for is written back.
@@ -3557,7 +3557,7 @@ rust_import_errors(ts: Token[], i: int, deps: str[], acc: str[]) -> str[] {
         said = ts.get(i + 1).text
 
         rust_import_errors(ts, i + foreign_step(ts, i), deps,
-                           acc ++ rust_import_error(foreign_lang(said), said,
+                           acc + rust_import_error(foreign_lang(said), said,
                                                     deps))
     } else {
         rust_import_errors(ts, i + 1, deps, acc)
@@ -3568,17 +3568,17 @@ rust_import_error(lang: str, spec: str, deps: str[]) -> str[] {
     krate = crate_of(spec)
 
     if lang != "rust" {
-        ["`import \"{spec}\"` names {lang}, which --target rust cannot reach "
-             ++ "(there is no C ABI bridge on the Rust path); name a Rust "
-             ++ "path like \"krate::item\" and declare the crate under "
-             ++ "[rust-dependencies] instead"]
+        ["`import \"{spec}\"` names {lang}, which --target rust cannot reach " +
+             "(there is no C ABI bridge on the Rust path); name a Rust " +
+             "path like \"krate::item\" and declare the crate under " +
+             "[rust-dependencies] instead"]
     } else if krate == "" || rust_builtin(krate)
             || deps.index_of(krate) >= 0 {
         []
     } else {
-        ["import \"{spec}\" refers to crate `{krate}`, which isn't "
-             ++ "declared; add `{krate} = \"…\"` under [rust-dependencies] "
-             ++ "in maca.toml"]
+        ["import \"{spec}\" refers to crate `{krate}`, which isn't " +
+             "declared; add `{krate} = \"…\"` under [rust-dependencies] " +
+             "in maca.toml"]
     }
 }
 
@@ -3633,7 +3633,7 @@ walk_asks(path: str, a: Asked) -> Asked {
     } else {
         got = lex_all(read_file(path))
 
-        asks_in(path, got.tokens, 0, a with { walked = a.walked ++ [path] })
+        asks_in(path, got.tokens, 0, a with { walked = a.walked + [path] })
     }
 }
 
@@ -3660,7 +3660,7 @@ asks_at(by: str, ts: Token[], i: int, a: Asked) -> Asked {
     if at == "" {
         a
     } else if ts.get(i).kind == LBrace {
-        walk_asks(at, a with { pairs = a.pairs ++ selected(ts, i + 1, at, []) })
+        walk_asks(at, a with { pairs = a.pairs + selected(ts, i + 1, at, []) })
     } else {
         walk_asks(at, a)
     }
@@ -3670,7 +3670,7 @@ selected(ts: Token[], i: int, at: str, acc: str[]) -> str[] {
     if ts.get(i).kind == RBrace || ts.get(i).kind == Eof {
         acc
     } else if ts.get(i).kind == TIdent {
-        selected(ts, i + 1, at, acc ++ ["{at} {ts.get(i).text}"])
+        selected(ts, i + 1, at, acc + ["{at} {ts.get(i).text}"])
     } else {
         selected(ts, i + 1, at, acc)
     }
@@ -3682,26 +3682,26 @@ selected(ts: Token[], i: int, at: str, acc: str[]) -> str[] {
 nix_valued(path: str, src: str) -> str =>
     src.index_of(".nix\"") < 0
         ? src
-        : nix_bound(dir_of(path), lex_all(src).tokens, 0, "") ++ src
+        : nix_bound(dir_of(path), lex_all(src).tokens, 0, "") + src
 
 nix_bound(dir: str, ts: Token[], i: int, acc: str) -> str {
     if ts.get(i).kind == Eof {
         acc
     } else if foreign_at(ts, i, "nix") {
-        nix_bound(dir, ts, i + 2, acc ++ nix_binding(dir, ts.get(i + 1).text))
+        nix_bound(dir, ts, i + 2, acc + nix_binding(dir, ts.get(i + 1).text))
     } else {
         nix_bound(dir, ts, i + 1, acc)
     }
 }
 
 nix_binding(dir: str, spec: str) -> str {
-    got = capture("nix-instantiate", ["--eval", dir ++ spec]).trim()
+    got = capture("nix-instantiate", ["--eval", dir + spec]).trim()
 
     if got != "" {
         "{nix_name(spec)} = {got}\n"
     } else {
-        err("maca: no Nix value in {spec}; is nix-instantiate"
-            ++ " on PATH?")
+        err("maca: no Nix value in {spec}; is nix-instantiate" +
+            " on PATH?")
 
         ""
     }
@@ -3719,7 +3719,7 @@ load_unit(path: str, u: Unit) -> Unit {
         u
     } else {
         got = lex_all(nix_valued(path, read_file(path)))
-        marked = u with { seen = u.seen ++ [path] }
+        marked = u with { seen = u.seen + [path] }
         deps = load_deps(path, imports_in(got.tokens, 0, []), 0, marked)
 
         spliced(deps, path, got.tokens, got.errors)
@@ -3739,17 +3739,17 @@ spliced(deps: Unit, path: str, whole: Token[], errs: str[]) -> Unit {
     kept = taken.length() == 0 ? toks : renamed(toks, taken, tag, 0)
     base = held.length() == 0 ? deps.toks : renamed(deps.toks, held, tag, 0)
 
-    deps with { toks = base ++ kept,
-                names = deps.names ++ mine,
-                owners = deps.owners ++ owned_by(mine, path, 0, []),
-                errs = deps.errs ++ errs }
+    deps with { toks = base + kept,
+                names = deps.names + mine,
+                owners = deps.owners + owned_by(mine, path, 0, []),
+                errs = deps.errs + errs }
 }
 
 holding(u: Unit, path: str, clash: str[], i: int, acc: str[]) -> str[] {
     if i >= clash.length() {
         acc
     } else if keeps(u, path, clash.get(i)) {
-        holding(u, path, clash, i + 1, acc ++ [clash.get(i)])
+        holding(u, path, clash, i + 1, acc + [clash.get(i)])
     } else {
         holding(u, path, clash, i + 1, acc)
     }
@@ -3782,7 +3782,7 @@ without_names(xs: str[], drop: str[], i: int, acc: str[]) -> str[] {
     } else if drop.index_of(xs.get(i)) >= 0 {
         without_names(xs, drop, i + 1, acc)
     } else {
-        without_names(xs, drop, i + 1, acc ++ [xs.get(i)])
+        without_names(xs, drop, i + 1, acc + [xs.get(i)])
     }
 }
 
@@ -3790,7 +3790,7 @@ owned_by(mine: str[], path: str, i: int, acc: str[]) -> str[] {
     if i >= mine.length() {
         acc
     } else {
-        owned_by(mine, path, i + 1, acc ++ [path])
+        owned_by(mine, path, i + 1, acc + [path])
     }
 }
 
@@ -3798,7 +3798,7 @@ fn_names(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
     } else if items.get(i).name != "" {
-        fn_names(items, i + 1, acc ++ [items.get(i).name])
+        fn_names(items, i + 1, acc + [items.get(i).name])
     } else {
         fn_names(items, i + 1, acc)
     }
@@ -3808,7 +3808,7 @@ clashing(mine: str[], taken: str[], i: int, acc: str[]) -> str[] {
     if i >= mine.length() {
         acc
     } else if taken.index_of(mine.get(i)) >= 0 {
-        clashing(mine, taken, i + 1, acc ++ [mine.get(i)])
+        clashing(mine, taken, i + 1, acc + [mine.get(i)])
     } else {
         clashing(mine, taken, i + 1, acc)
     }
@@ -3921,30 +3921,30 @@ renamed_interp(raw: str, taken: str[], tag: str) -> str {
         c = cs.get(j)
 
         if c == "\\" && j + 1 < cs.length() {
-            out = out ++ c ++ cs.get(j + 1)
+            out = out + c + cs.get(j + 1)
             j = j + 2
         } else if depth == 0 && (doubled(cs, j, "{{") || doubled(cs, j, "}}")) {
-            out = out ++ c ++ c
+            out = out + c + c
             j = j + 2
         } else if c == "{{" {
             depth = depth + 1
-            out = out ++ c
+            out = out + c
             j = j + 1
         } else if c == "}}" && depth > 0 {
             depth = depth - 1
-            out = out ++ c
+            out = out + c
             j = j + 1
         } else if depth > 0 && c == "\"" {
             shut = quoted_end(cs, j + 1)
-            out = out ++ span(cs, j, shut + 1)
+            out = out + span(cs, j, shut + 1)
             j = shut + 1
         } else if depth > 0 && name_starts(cs, j) {
             shut = name_end(cs, j)
             word = span(cs, j, shut)
-            out = out ++ moved_name(cs, j, word, taken, tag)
+            out = out + moved_name(cs, j, word, taken, tag)
             j = shut
         } else {
-            out = out ++ c
+            out = out + c
             j = j + 1
         }
     }
@@ -4006,7 +4006,7 @@ one_dep(by: str, want: str, u: Unit) -> Unit {
     } else if want.index_of("/") < 0 {
         u
     } else {
-        u with { unknown = u.unknown ++ ["{want}, imported by {by}"] }
+        u with { unknown = u.unknown + ["{want}, imported by {by}"] }
     }
 }
 
@@ -4016,7 +4016,7 @@ imports_in(ts: Token[], i: int, acc: str[]) -> str[] {
 
     while ts.get(at).kind != Eof {
         if ts.get(at).kind == KwImport {
-            out = out ++ import_names(ts, at + 1)
+            out = out + import_names(ts, at + 1)
             at = import_end(ts, at + 1)
         } else {
             at = at + 1
@@ -4038,9 +4038,9 @@ import_names(ts: Token[], i: int) -> str[] {
 
 import_path(ts: Token[], i: int, acc: str) -> str {
     if ts.get(i + 1).kind == Slash {
-        import_path(ts, i + 2, acc ++ ts.get(i).text ++ "/")
+        import_path(ts, i + 2, acc + ts.get(i).text + "/")
     } else {
-        acc ++ ts.get(i).text
+        acc + ts.get(i).text
     }
 }
 
@@ -4049,9 +4049,9 @@ import_path(ts: Token[], i: int, acc: str) -> str {
  */
 resolved(by: str, want: str) -> str {
     from = dir_of(by)
-    here = search_up(from == "" ? rooted("") : from, want ++ ".maca")
+    here = search_up(from == "" ? rooted("") : from, want + ".maca")
 
-    here != "" ? here : carried(want ++ ".maca")
+    here != "" ? here : carried(want + ".maca")
 }
 
 /** The last place asked is what `MACA_STDLIB` names, else the library the
@@ -4061,10 +4061,10 @@ carried(want: str) -> str {
     root = env("MACA_STDLIB")
 
     if root != "" {
-        return found(root ++ "/" ++ want)
+        return found(root + "/" + want)
     }
 
-    found(carried_root() ++ "/" ++ want)
+    found(carried_root() + "/" + want)
 }
 
 CarriedPackages = ["std", "cli", "web", "http", "signal", "profile"]
@@ -4075,9 +4075,9 @@ CarriedPackages = ["std", "cli", "web", "http", "signal", "profile"]
 carried_root() -> str {
     root = "{cache_home()}/stdlib/{Version}"
 
-    if read_file(root ++ "/.stamp") == "" {
+    if read_file(root + "/.stamp") == "" {
         write_carried(root)
-        write_file(root ++ "/.stamp", Version)
+        write_file(root + "/.stamp", Version)
     }
 
     root
@@ -4192,9 +4192,9 @@ search_up(dir: str, want: str) -> str {
 }
 
 in_base(dir: str, want: str) -> str {
-    own = found(dir ++ want)
-    mods = found(dir ++ "modules/" ++ want)
-    src = found(dir ++ "src/" ++ want)
+    own = found(dir + want)
+    mods = found(dir + "modules/" + want)
+    src = found(dir + "src/" + want)
 
     if own != "" {
         own
@@ -4203,7 +4203,7 @@ in_base(dir: str, want: str) -> str {
     } else if src != "" {
         src
     } else {
-        found(dir ++ DepsDir ++ "/" ++ want)
+        found(dir + DepsDir + "/" + want)
     }
 }
 
@@ -4249,9 +4249,9 @@ Carried = "a package this tree carries"
 /** `spec` prints the language as one document, sized for a model's context. */
 spec_cmd(args: str[]) -> int {
     if args.index_of("--help") >= 0 || args.index_of("-h") >= 0 {
-        info("usage: maca spec --llm [--package <name>]\n"
-             ++ "\n  --llm       the whole specification, as one document"
-             ++ "\n  --package   that one package's index, in the same form")
+        info("usage: maca spec --llm [--package <name>]\n" +
+             "\n  --llm       the whole specification, as one document" +
+             "\n  --package   that one package's index, in the same form")
 
         0
     } else if args.index_of("--package") >= 0
@@ -4279,10 +4279,10 @@ spec_asked(root: str, pkg: str) -> int {
 /** The tree the document is read out of, found by walking up as an import does.
  */
 spec_root() -> str =>
-    root_above(cwd() ++ "/")
+    root_above(cwd() + "/")
 
 root_above(dir: str) -> str {
-    if found(dir ++ SpecDoc) != "" {
+    if found(dir + SpecDoc) != "" {
         dir
     } else if dir == "" {
         ""
@@ -4308,7 +4308,7 @@ printed_spec(text: str) -> int {
 }
 
 package_index(root: str, name: str) -> int {
-    body = indexed(root ++ "modules/" ++ name, name, true)
+    body = indexed(root + "modules/" + name, name, true)
 
     if body == "" {
         err("spec: no package `{name}` under {root}modules")
@@ -4322,23 +4322,23 @@ package_index(root: str, name: str) -> int {
 }
 
 llm_spec(root: str) -> str =>
-    "# Maca {Version}\n"
-        ++ "\nOne typed language for programs and infrastructure config. "
-        ++ "Everything you write is `.maca` or `maca.toml`.\n"
-        ++ "\nThe language section is `{SpecDoc}` verbatim and the indexes are "
-        ++ "read out of the packages beside it, so neither can drift from the "
-        ++ "tree this was run in.\n"
-        ++ "\n## The language\n\n{cheatsheet(read_file(root ++ SpecDoc))}\n"
-        ++ "\n## Whole programs\n\nEach compiles and runs as written.\n"
-        ++ examples(root)
-        ++ "\n## Mistakes to avoid\n" ++ mistakes()
-        ++ "\n## Targets\n" ++ targets_table()
-        ++ "\n## The standard library\n\nCarried beside the compiler, so "
-        ++ "`import std/json` resolves anywhere. Every item below is one "
-        ++ "`import` away.\n"
-        ++ builtin_methods()
-        ++ indexed(root ++ "modules/std", "std", false)
-        ++ other_packages(root)
+    "# Maca {Version}\n" +
+        "\nOne typed language for programs and infrastructure config. " +
+        "Everything you write is `.maca` or `maca.toml`.\n" +
+        "\nThe language section is `{SpecDoc}` verbatim and the indexes are " +
+        "read out of the packages beside it, so neither can drift from the " +
+        "tree this was run in.\n" +
+        "\n## The language\n\n{cheatsheet(read_file(root + SpecDoc))}\n" +
+        "\n## Whole programs\n\nEach compiles and runs as written.\n" +
+        examples(root) +
+        "\n## Mistakes to avoid\n" + mistakes() +
+        "\n## Targets\n" + targets_table() +
+        "\n## The standard library\n\nCarried beside the compiler, so " +
+        "`import std/json` resolves anywhere. Every item below is one " +
+        "`import` away.\n" +
+        builtin_methods() +
+        indexed(root + "modules/std", "std", false) +
+        other_packages(root)
 
 /** The one normative section, up to the next heading of its own depth. */
 cheatsheet(spec: str) -> str {
@@ -4351,16 +4351,16 @@ cheatsheet(spec: str) -> str {
 }
 
 examples(root: str) -> str =>
-    example(root, "a whole program", "tour")
-        ++ example(root, "sum types and match", "payload_sum")
-        ++ example(root, "errors, without exceptions", "catch")
-        ++ example(root, "concurrency, with no `async` keyword", "async")
-        ++ example(root, "a generic function", "generic")
-        ++ example(root, "config mode, which compiles to Nix", "ffi_nix")
+    example(root, "a whole program", "tour") +
+        example(root, "sum types and match", "payload_sum") +
+        example(root, "errors, without exceptions", "catch") +
+        example(root, "concurrency, with no `async` keyword", "async") +
+        example(root, "a generic function", "generic") +
+        example(root, "config mode, which compiles to Nix", "ffi_nix")
 
 example(root: str, what: str, name: str) -> str =>
-    "\n### {what}\n\n```maca\n"
-        ++ read_file("{root}apps/examples/{name}.maca") ++ "```\n"
+    "\n### {what}\n\n```maca\n" +
+        read_file("{root}apps/examples/{name}.maca") + "```\n"
 
 /** Every `///` item of a package, by file, summary only when asked. */
 indexed(dir: str, pkg: str, full: bool) -> str =>
@@ -4374,7 +4374,7 @@ index_files(dir: str, pkg: str, names: str[], i: int, full: bool,
         index_files(dir, pkg, names, i + 1, full, acc)
     } else {
         index_files(dir, pkg, names, i + 1, full,
-                    acc ++ index_file(dir, pkg, names.get(i), full))
+                    acc + index_file(dir, pkg, names.get(i), full))
     }
 }
 
@@ -4403,7 +4403,7 @@ documented(lines: str[], i: int, doc: str, full: bool, acc: str) -> str {
         documented(lines, i + 1, "", full, acc)
     } else {
         documented(lines, i + 1, "", full,
-                   acc ++ item_line(signature_of(lines.get(i)), doc, full))
+                   acc + item_line(signature_of(lines.get(i)), doc, full))
     }
 }
 
@@ -4442,9 +4442,9 @@ item_line(sig: str, doc: str, full: bool) -> str {
 }
 
 other_packages(root: str) -> str =>
-    "\nBeside `std`, the packages under `modules` ride in the same tree. Run "
-        ++ "`maca spec --package <name>` for one of their indexes.\n\n"
-        ++ package_lines(root, list_dir(root ++ "modules"), 0, "")
+    "\nBeside `std`, the packages under `modules` ride in the same tree. Run " +
+        "`maca spec --package <name>` for one of their indexes.\n\n" +
+        package_lines(root, list_dir(root + "modules"), 0, "")
 
 package_lines(root: str, names: str[], i: int, acc: str) -> str {
     if i >= names.length() {
@@ -4454,8 +4454,8 @@ package_lines(root: str, names: str[], i: int, acc: str) -> str {
         package_lines(root, names, i + 1, acc)
     } else {
         package_lines(root, names, i + 1,
-                      acc ++ "- `{names.get(i)}`: "
-                          ++ blurb_of(root, names.get(i)) ++ "\n")
+                      acc + "- `{names.get(i)}`: " +
+                          blurb_of(root, names.get(i)) + "\n")
     }
 }
 
@@ -4491,59 +4491,59 @@ blurb(src: str) -> str {
 
 /** The forms a reader reaches for that Maca does not have. */
 mistakes() -> str =>
-    "\nThese are the five the checker sees most, and it rejects each by "
-        ++ "name.\n\n"
-        ++ "- **No `let`.** write `x = e` for a variable, `const x = e` for a "
-        ++ "constant; no `let`/`var` keyword.\n"
-        ++ "- **No `fn`.** write the signature straight out: "
-        ++ "`name(arg: T) -> R \{ … \}` or `name(arg: T) -> R => e`; no `fn` "
-        ++ "keyword.\n"
-        ++ "- **No `type`.** declare a type by binding it: "
-        ++ "`Name = \{ field: T \}` for a record, `Name = A | B` for a sum; no "
-        ++ "`type` keyword.\n"
-        ++ "- **No `async`.** async is an inferred effect, so any function can "
-        ++ "`spawn` and `await`; no `async` keyword to write.\n"
-        ++ "- **No `null`.** a sum type with an empty variant says what the "
-        ++ "absence means, and `match` makes you handle it; Maca has no null.\n"
-        ++ "\nTwo more that parse but mean something else:\n\n"
-        ++ "- **`lo..hi` excludes `hi`.** `0..xs.length()` is every index of "
-        ++ "`xs`. Writing `0..xs.length() - 1` misses the last element.\n"
-        ++ "- **A block after `=>` is a record literal.** `f() => \{ a = 1 \}` "
-        ++ "builds a record. Use `f() \{ … \}` when you meant a body.\n"
+    "\nThese are the five the checker sees most, and it rejects each by " +
+        "name.\n\n" +
+        "- **No `let`.** write `x = e` for a variable, `const x = e` for a " +
+        "constant; no `let`/`var` keyword.\n" +
+        "- **No `fn`.** write the signature straight out: " +
+        "`name(arg: T) -> R \{ … \}` or `name(arg: T) -> R => e`; no `fn` " +
+        "keyword.\n" +
+        "- **No `type`.** declare a type by binding it: " +
+        "`Name = \{ field: T \}` for a record, `Name = A | B` for a sum; no " +
+        "`type` keyword.\n" +
+        "- **No `async`.** async is an inferred effect, so any function can " +
+        "`spawn` and `await`; no `async` keyword to write.\n" +
+        "- **No `null`.** a sum type with an empty variant says what the " +
+        "absence means, and `match` makes you handle it; Maca has no null.\n" +
+        "\nTwo more that parse but mean something else:\n\n" +
+        "- **`lo..hi` excludes `hi`.** `0..xs.length()` is every index of " +
+        "`xs`. Writing `0..xs.length() - 1` misses the last element.\n" +
+        "- **A block after `=>` is a record literal.** `f() => \{ a = 1 \}` " +
+        "builds a record. Use `f() \{ … \}` when you meant a body.\n"
 
 /** What each target carries, which is what `--target` is checked against. */
 targets_table() -> str =>
-    "\n`maca check --target <t>` refuses a program that performs an effect "
-        ++ "its target cannot carry. With no `--target` a program is held to "
-        ++ "`native`, which is what `maca build` produces.\n\n"
-        ++ "| target | flag | carries |\n|---|---|---|\n"
-        ++ "| native | (default) | io, net, os, async, exn |\n"
-        ++ "| js | `--target js` | io, net, async, exn |\n"
-        ++ "| jvm | `--target jvm` | io, net, os, async, exn |\n"
-        ++ "| rust | `--target rust` | io, net, os, async, exn |\n"
-        ++ "| elixir | `--target elixir` | io, net, os, async, exn |\n"
-        ++ "| embedded | `--target embedded` | exn |\n"
-        ++ "| nix | `--target nix` | nothing: config mode is data |\n"
-        ++ "\nThe BEAM is reached by naming Elixir, never the machine "
-        ++ "under it.\n\n"
-        ++ "Two differences are not effects, and are the back end's own error: "
-        ++ "`int / int` truncates natively and does not on `js`, and a "
-        ++ "function-typed record field is refused on `rust` and `jvm`.\n"
+    "\n`maca check --target <t>` refuses a program that performs an effect " +
+        "its target cannot carry. With no `--target` a program is held to " +
+        "`native`, which is what `maca build` produces.\n\n" +
+        "| target | flag | carries |\n|---|---|---|\n" +
+        "| native | (default) | io, net, os, async, exn |\n" +
+        "| js | `--target js` | io, net, async, exn |\n" +
+        "| jvm | `--target jvm` | io, net, os, async, exn |\n" +
+        "| rust | `--target rust` | io, net, os, async, exn |\n" +
+        "| elixir | `--target elixir` | io, net, os, async, exn |\n" +
+        "| embedded | `--target embedded` | exn |\n" +
+        "| nix | `--target nix` | nothing: config mode is data |\n" +
+        "\nThe BEAM is reached by naming Elixir, never the machine " +
+        "under it.\n\n" +
+        "Two differences are not effects, and are the back end's own error: " +
+        "`int / int` truncates natively and does not on `js`, and a " +
+        "function-typed record field is refused on `rust` and `jvm`.\n"
 
 /** The methods a receiver accepts, which are builtins rather than exports. */
 builtin_methods() -> str =>
-    "\nThese are builtins on the receiver, not module exports: write "
-        ++ "`s.trim()`, never `import \{ trim \} from std/text`.\n\n"
-        ++ "- **`str`**: `length`, `split`, `trim`, `upper`, `lower`, "
-        ++ "`contains`, `starts_with`, `ends_with`, `replace`, `substr`, "
-        ++ "`slice`, `index_of`, `repeat`, `pad_start`, `pad_end`, "
-        ++ "`pad_center`, `chars`, `at`, `is_whitespace`, `is_ascii_digit`, "
-        ++ "`is_alpha`\n"
-        ++ "- **`T[]`**: `map`, `filter`, `reduce`, `fold`, `sort`, `sort_by`, "
-        ++ "`reverse`, `push`, `pop`, `set`, `insert`, `remove`, `slice`, "
-        ++ "`contains`, `index_of`, `index_of_by`, `enumerate`, `sum`, `min`, "
-        ++ "`max`, `first`, `last`, `get`, `length`, `parallel`, `join`\n"
-        ++ "- **`Map k v`**: `set`, `get`, `has`, `remove`, `keys`, `length`\n"
+    "\nThese are builtins on the receiver, not module exports: write " +
+        "`s.trim()`, never `import \{ trim \} from std/text`.\n\n" +
+        "- **`str`**: `length`, `split`, `trim`, `upper`, `lower`, " +
+        "`contains`, `starts_with`, `ends_with`, `replace`, `substr`, " +
+        "`slice`, `index_of`, `repeat`, `pad_start`, `pad_end`, " +
+        "`pad_center`, `chars`, `at`, `is_whitespace`, `is_ascii_digit`, " +
+        "`is_alpha`\n" +
+        "- **`T[]`**: `map`, `filter`, `reduce`, `fold`, `sort`, `sort_by`, " +
+        "`reverse`, `push`, `pop`, `set`, `insert`, `remove`, `slice`, " +
+        "`contains`, `index_of`, `index_of_by`, `enumerate`, `sum`, `min`, " +
+        "`max`, `first`, `last`, `get`, `length`, `parallel`, `join`\n" +
+        "- **`Map k v`**: `set`, `get`, `has`, `remove`, `keys`, `length`\n"
 
 ProfileWidth = 1080
 
@@ -4759,22 +4759,22 @@ table_name(table: str[], id: str, i: int) -> str {
 /** The heaviest functions by self cost, which is what a profile is read for. */
 cost_table(d: Dump) -> str =>
     cost_rows(d, own_order(d, 0, []), 0,
-              ["  self%  " ++ "Ir".pad_start(9) ++ "  function"]).join("\n")
+              ["  self%  " + "Ir".pad_start(9) + "  function"]).join("\n")
 
 cost_rows(d: Dump, order: int[], i: int, acc: str[]) -> str[] {
     if i >= order.length() || i >= ProfileRows
             || d.own.get(order.get(i)) == 0 {
         acc
     } else {
-        cost_rows(d, order, i + 1, acc ++ [cost_row(d, order.get(i))])
+        cost_rows(d, order, i + 1, acc + [cost_row(d, order.get(i))])
     }
 }
 
 cost_row(d: Dump, at: int) -> str {
     share = percent(d.own.get(at), d.total)
 
-    "  {share:.1}".pad_end(9) ++ str(d.own.get(at)).pad_start(9) ++ "  "
-        ++ d.fns.get(at)
+    "  {share:.1}".pad_end(9) + str(d.own.get(at)).pad_start(9) + "  " +
+        d.fns.get(at)
 }
 
 own_order(d: Dump, i: int, acc: int[]) -> int[] {
@@ -4788,7 +4788,7 @@ own_order(d: Dump, i: int, acc: int[]) -> int[] {
 ranked(d: Dump, acc: int[], at: int) -> int[] {
     cut = rank_in(d, acc, d.own.get(at), 0)
 
-    acc.slice(0, cut).push(at) ++ acc.slice(cut, acc.length())
+    acc.slice(0, cut).push(at) + acc.slice(cut, acc.length())
 }
 
 rank_in(d: Dump, acc: int[], own: int, i: int) -> int {
@@ -4834,7 +4834,7 @@ frames_at(d: Dump, f: Call, at: Frame, path: str[], acc: Span[]) -> Span[] {
 
     laid_out(d, kids, 0, at.x + f.ir,
              Frame { depth = at.depth + 1, x = at.x, parent = mine },
-             path ++ [f.to], acc.push(box))
+             path + [f.to], acc.push(box))
 }
 
 /** Each call gets the width its cost asks for, or whatever is left of its
@@ -4926,7 +4926,7 @@ heavy_first(cs: Call[], i: int, acc: Call[]) -> Call[] {
 call_ranked(acc: Call[], c: Call) -> Call[] {
     cut = call_rank(acc, c.ir, 0)
 
-    acc.slice(0, cut).push(c) ++ acc.slice(cut, acc.length())
+    acc.slice(0, cut).push(c) + acc.slice(cut, acc.length())
 }
 
 call_rank(acc: Call[], ir: int, i: int) -> int {
@@ -4941,9 +4941,9 @@ call_rank(acc: Call[], ir: int, i: int) -> int {
 
 DevFile = "dev.maca"
 
-StarterDev = "    import nixpkgs\n\n    dev.name     = \"myapp\"\n"
-    ++ "    dev.packages = rustc, cargo\n"
-    ++ "    dev.env      = \{ RUST_BACKTRACE = \"1\" \}\n"
+StarterDev = "    import nixpkgs\n\n    dev.name     = \"myapp\"\n" +
+    "    dev.packages = rustc, cargo\n" +
+    "    dev.env      = \{ RUST_BACKTRACE = \"1\" \}\n"
 
 /** `dev` turns the `dev.*` bindings of a config file into the flake `nix
  * develop` enters.
@@ -4954,9 +4954,9 @@ dev_cmd(args: str[]) -> int {
     out = flag_after(args, "-o")
 
     if !file_exists(src) {
-        err("dev: no {src} here. It describes the dev shell, in Maca:\n\n"
-            ++ StarterDev
-            ++ "\nThen `maca dev` writes it and `nix develop` enters it.")
+        err("dev: no {src} here. It describes the dev shell, in Maca:\n\n" +
+            StarterDev +
+            "\nThen `maca dev` writes it and `nix develop` enters it.")
 
         2
     } else {
@@ -4980,7 +4980,7 @@ dev_flake_out(m: Module, out: str) -> int {
 
 dev_flake(m: Module) -> str =>
     flake_text(dev_name(m.items),
-               dev_packages(m.items) ++ dev_env(m.items) ++ dev_hook(m.items))
+               dev_packages(m.items) + dev_env(m.items) + dev_hook(m.items))
 
 dev_at(items: Stmt[], name: str, i: int) -> int {
     if i >= items.length() {
@@ -5021,7 +5021,7 @@ dev_lines(ls: str[], i: int, acc: str) -> str {
     if i >= ls.length() {
         acc
     } else {
-        dev_lines(ls, i + 1, acc ++ "          " ++ ls.get(i) ++ "\n")
+        dev_lines(ls, i + 1, acc + "          " + ls.get(i) + "\n")
     }
 }
 
@@ -5037,16 +5037,16 @@ dev_hook(items: Stmt[]) -> str {
 }
 
 flake_text(name: str, shell: str) -> str =>
-    "\{\n  description = \"{name} dev environment, written by `maca dev`\";\n\n"
-        ++ "  inputs.nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n\n"
-        ++ "  outputs = \{ self, nixpkgs \}:\n    let\n"
-        ++ "      systems = [ \"x86_64-linux\" \"aarch64-linux\" "
-        ++ "\"x86_64-darwin\" \"aarch64-darwin\" ];\n"
-        ++ "      forAllSystems = f: nixpkgs.lib.genAttrs systems "
-        ++ "(system: f nixpkgs.legacyPackages.$\{system\});\n"
-        ++ "    in \{\n      devShells = forAllSystems (pkgs: \{\n"
-        ++ "        default = pkgs.mkShell \{\n" ++ shell
-        ++ "        \};\n      \});\n    \};\n\}\n"
+    "\{\n  description = \"{name} dev environment, written by `maca dev`\";\n\n" +
+        "  inputs.nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n\n" +
+        "  outputs = \{ self, nixpkgs \}:\n    let\n" +
+        "      systems = [ \"x86_64-linux\" \"aarch64-linux\" " +
+        "\"x86_64-darwin\" \"aarch64-darwin\" ];\n" +
+        "      forAllSystems = f: nixpkgs.lib.genAttrs systems " +
+        "(system: f nixpkgs.legacyPackages.$\{system\});\n" +
+        "    in \{\n      devShells = forAllSystems (pkgs: \{\n" +
+        "        default = pkgs.mkShell \{\n" + shell +
+        "        \};\n      \});\n    \};\n\}\n"
 
 DepsDir = "maca_modules"
 LockFile = "maca.lock"
@@ -5094,9 +5094,9 @@ add_cmd(args: str[]) -> int {
     specs = nonflags(args, 1, [])
 
     if specs.length() == 0 {
-        err("usage: maca add <spec>...\n  e.g. maca add npm:axios\n"
-            ++ "       maca add git+https://github.com/u/lib#main\n"
-            ++ "       maca add utils@^1.2.0")
+        err("usage: maca add <spec>...\n  e.g. maca add npm:axios\n" +
+            "       maca add git+https://github.com/u/lib#main\n" +
+            "       maca add utils@^1.2.0")
 
         2
     } else {
@@ -5243,13 +5243,13 @@ upgrade_cmd() -> int {
     want = tag.starts_with("v") ? tag.slice(1, tag.length()) : tag
 
     if doc == "" {
-        err("maca upgrade: cannot reach GitHub releases\n  install by hand: "
-            ++ ReleasePage)
+        err("maca upgrade: cannot reach GitHub releases\n  install by hand: " +
+            ReleasePage)
 
         1
     } else if want == "" {
-        err("maca upgrade: no published release yet\n  build from a checkout: "
-            ++ "maca build apps/maca1/main.maca -o maca")
+        err("maca upgrade: no published release yet\n  build from a checkout: " +
+            "maca build apps/maca1/main.maca -o maca")
 
         1
     } else if want == Version {
@@ -5281,8 +5281,8 @@ replaced(want: str, url: str) -> int {
     exe = capture("sh", ["-c", "command -v maca"]).trim()
 
     if url == "" {
-        err("maca upgrade: release v{want} has no asset for {host_triple()}\n"
-            ++ "  build from a checkout: maca build apps/maca1/main.maca -o maca")
+        err("maca upgrade: release v{want} has no asset for {host_triple()}\n" +
+            "  build from a checkout: maca build apps/maca1/main.maca -o maca")
 
         1
     } else if exe == "" {
@@ -5355,7 +5355,7 @@ upto_quote(cs: str[], i: int, acc: str) -> str {
     if i >= cs.length() || cs.get(i) == "\"" {
         acc
     } else {
-        upto_quote(cs, i + 1, acc ++ cs.get(i))
+        upto_quote(cs, i + 1, acc + cs.get(i))
     }
 }
 
@@ -5365,7 +5365,7 @@ nonflags(args: str[], i: int, acc: str[]) -> str[] {
     } else if args.get(i).starts_with("-") {
         nonflags(args, i + 1, acc)
     } else {
-        nonflags(args, i + 1, acc ++ [args.get(i)])
+        nonflags(args, i + 1, acc + [args.get(i)])
     }
 }
 
@@ -5651,8 +5651,8 @@ registry_pin(base: str, pkg: str, req: str) -> Pin {
     } else if !ranged || satisfies(p.version, req) {
         p
     } else {
-        failed("the newest `{pkg}` is {p.version}, which does not satisfy "
-               ++ "`{req}`; name a version this registry publishes")
+        failed("the newest `{pkg}` is {p.version}, which does not satisfy " +
+               "`{req}`; name a version this registry publishes")
     }
 }
 
@@ -5732,8 +5732,8 @@ unpacked(tgz: str, integrity: str, dir: str) -> str {
  */
 mismatch(file: str, want: str) -> str {
     if !want.starts_with("sha512-") {
-        "integrity `{want}` is not a sha512 digest; delete {LockFile} to "
-            ++ "re-resolve"
+        "integrity `{want}` is not a sha512 digest; delete {LockFile} to " +
+            "re-resolve"
     } else {
         digested(file, want.slice(7, want.length()))
     }
@@ -5750,24 +5750,24 @@ digested(file: str, want: str) -> str {
     } else if got == hex {
         ""
     } else {
-        "the download does not match what {LockFile} pinned\n"
-            ++ "  expected sha512 {hex}\n  got      sha512 {got}"
+        "the download does not match what {LockFile} pinned\n" +
+            "  expected sha512 {hex}\n  got      sha512 {got}"
     }
 }
 
 /** A sha512 in hex, out of whichever of the three tools this machine has. */
 digest_of(file: str) -> str {
-    tools = "if command -v sha512sum >/dev/null; then sha512sum -b \"$0\";"
-        ++ " elif command -v shasum >/dev/null; then shasum -a 512 -b \"$0\";"
-        ++ " else openssl dgst -sha512 -r \"$0\"; fi"
+    tools = "if command -v sha512sum >/dev/null; then sha512sum -b \"$0\";" +
+        " elif command -v shasum >/dev/null; then shasum -a 512 -b \"$0\";" +
+        " else openssl dgst -sha512 -r \"$0\"; fi"
 
     capture("sh", ["-c", "{tools} | cut -d\" \" -f1", file]).trim()
 }
 
 /** The base64 digest the lock wrote, in the hex those tools print. */
 hex_of(b64: str) -> str =>
-    capture("sh", ["-c", "printf %s \"$0\" | base64 -d 2>/dev/null"
-                             ++ " | od -An -tx1 | tr -d \"[:space:]\"",
+    capture("sh", ["-c", "printf %s \"$0\" | base64 -d 2>/dev/null" +
+                             " | od -An -tx1 | tr -d \"[:space:]\"",
                    b64]).trim()
 
 /** Every `name = "spec"` under `[dependencies]`, which is what `install` and
@@ -5787,7 +5787,7 @@ deps_in(lines: str[], i: int, end: int, acc: Dep[]) -> Dep[] {
         deps_in(lines, i + 1, end, acc)
     } else {
         deps_in(lines, i + 1, end,
-                acc ++ [Dep { name = toml_key(lines.get(i)),
+                acc + [Dep { name = toml_key(lines.get(i)),
                               spec = toml_val(lines.get(i)) }])
     }
 }
@@ -5806,7 +5806,7 @@ put_line(lines: str[], name: str, line: str) -> str[] {
     at = table_at(lines, 0, "[dependencies]")
 
     if at < 0 {
-        started(lines) ++ ["[dependencies]", line, ""]
+        started(lines) + ["[dependencies]", line, ""]
     } else {
         replaced_line(lines, at + 1, name, line)
     }
@@ -5824,7 +5824,7 @@ replaced_line(lines: str[], from: int, name: str, line: str) -> str[] {
     cut = hit < 0 ? end : hit
     past = hit < 0 ? end : hit + 1
 
-    lines.slice(0, cut) ++ [line] ++ lines.slice(past, lines.length())
+    lines.slice(0, cut) + [line] + lines.slice(past, lines.length())
 }
 
 table_at(lines: str[], i: int, table: str) -> int {
@@ -5880,12 +5880,12 @@ lock_lines(lines: str[], i: int, name: str, block: str, acc: Pkg[]) -> Pkg[] {
         lock_lines(lines, i + 1, name, block, acc)
     } else {
         lock_lines(lines, i + 1, lock_name(lines.get(i), name),
-                   block ++ lines.get(i).trim() ++ "\n", acc)
+                   block + lines.get(i).trim() + "\n", acc)
     }
 }
 
 flushed(acc: Pkg[], name: str, block: str) -> Pkg[] =>
-    name == "" ? acc : acc ++ [Pkg { name = name, block = block }]
+    name == "" ? acc : acc + [Pkg { name = name, block = block }]
 
 noise(line: str) -> bool {
     t = line.trim()
@@ -5928,16 +5928,16 @@ lock_put(s: Spec, spec: str, p: Pin) -> bool {
 
     write_file(LockFile,
                lock_text(inserted(lock_read(), entry, 0, []), 0,
-                         "# {LockFile}: generated by `maca add`/`maca update`;"
-                             ++ " do not edit.\n"))
+                         "# {LockFile}: generated by `maca add`/`maca update`;" +
+                             " do not edit.\n"))
 }
 
 lock_block(s: Spec, spec: str, p: Pin) -> str =>
-    "name = \"{s.name}\"\nversion = \"{p.version}\"\nrequest = \"{spec}\"\n"
-        ++ "source = \"{lock_source(s)}\"\n"
-        ++ lock_line("resolved", p.tarball)
-        ++ lock_line("integrity", p.integrity)
-        ++ lock_line("commit", p.commit)
+    "name = \"{s.name}\"\nversion = \"{p.version}\"\nrequest = \"{spec}\"\n" +
+        "source = \"{lock_source(s)}\"\n" +
+        lock_line("resolved", p.tarball) +
+        lock_line("integrity", p.integrity) +
+        lock_line("commit", p.commit)
 
 lock_source(s: Spec) -> str {
     if s.kind == "npm" {
@@ -5957,7 +5957,7 @@ lock_text(entries: Pkg[], i: int, acc: str) -> str {
         acc
     } else {
         lock_text(entries, i + 1,
-                  acc ++ "\n[[package]]\n" ++ entries.get(i).block)
+                  acc + "\n[[package]]\n" + entries.get(i).block)
     }
 }
 
@@ -5966,13 +5966,13 @@ lock_text(entries: Pkg[], i: int, acc: str) -> str {
  */
 inserted(xs: Pkg[], p: Pkg, i: int, acc: Pkg[]) -> Pkg[] {
     if i >= xs.length() {
-        acc ++ [p]
+        acc + [p]
     } else if xs.get(i).name == p.name {
         inserted(xs, p, i + 1, acc)
     } else if xs.get(i).name > p.name {
-        acc ++ [p] ++ xs.slice(i, xs.length())
+        acc + [p] + xs.slice(i, xs.length())
     } else {
-        inserted(xs, p, i + 1, acc ++ [xs.get(i)])
+        inserted(xs, p, i + 1, acc + [xs.get(i)])
     }
 }
 
@@ -6070,11 +6070,11 @@ demo() -> int {
     info("bind C:    {emit_fn(ar.snode)}")
     info("bind Rust: {remit_fn(ar.snode)}")
 
-    cc = parse_fn(lex("wrap(s: str) -> str => \"[\" ++ s ++ \"]\""), 0)
+    cc = parse_fn(lex("wrap(s: str) -> str => \"[\" + s + \"]\""), 0)
     info("concat C:    {emit_fn(cc.snode)}")
     info("concat Rust: {remit_fn(cc.snode)}")
 
-    st = parse_fn(lex("numbered(n: int) -> str => \"#\" ++ str(n)"), 0)
+    st = parse_fn(lex("numbered(n: int) -> str => \"#\" + str(n)"), 0)
     info("str C:    {emit_fn(st.snode)}")
     info("str Rust: {remit_fn(st.snode)}")
 
@@ -6094,7 +6094,7 @@ demo() -> int {
     rm = parse_module(lex(real), 0, [])
     info("real file: {rm.items.length()} items after skipping imports")
 
-    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} Shape = Circle(int) | Rect(int, int) area(sh: Shape) -> int => match sh {{ Circle(r) => r * r Rect(w, h) => w * h }} hi(a: str, b: str) -> int => (a ++ b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" ++ str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) el(s: str) -> int => div(class = \"w\", s).length() == 22 ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) * area(Rect(1, 1)) * el(\"x\") }}"
+    program = "Point = {{ x: int, y: int }} Color = Red | Green | Blue fld(p: Point) -> int => p.x code(c: Color) -> int => match c {{ Red => 1 Green => 2 Blue => 3 }} Shape = Circle(int) | Rect(int, int) area(sh: Shape) -> int => match sh {{ Circle(r) => r * r Rect(w, h) => w * h }} hi(a: str, b: str) -> int => (a + b) == \"hello\" ? 1 : 0 chk(n: int) -> int => (\"v\" + str(n)) == \"v42\" ? 1 : 0 slen(s: str) -> int => s.length() head(xs: int[]) -> int => xs.get(0) el(s: str) -> int => div(class = \"w\", s).length() == 22 ? 1 : 0 main() -> int {{ q = Point {{ x = 40, y = 9 }} ys = [1, 99] info(\"self-hosted!\") (fld(q) + code(Green)) * hi(\"hel\", \"lo\") * chk(42) * slen(\"z\") * head(ys) * area(Rect(1, 1)) * el(\"x\") }}"
     prog_mod = annotated(parse_module(lex(program), 0, []))
     info("=== emitted program ===")
     info(emit_module(prog_mod))

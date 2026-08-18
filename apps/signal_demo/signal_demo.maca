@@ -34,9 +34,9 @@ report(s: Store) -> Store {
         info("  nothing to patch")
     } else {
         for line in describe_all(ops) {
-            info("  " ++ line)
+            info("  " + line)
         }
-        info("  js: " ++ patch_script(s))
+        info("  js: " + patch_script(s))
     }
 
     s.clear_changed()

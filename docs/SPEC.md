@@ -143,14 +143,15 @@ and which manifest answers.
   stays the untyped text layer. (`tests/programs/json_typed.maca`.)
 - Ternary is spaced `c ? x : y`; error-propagation is attached `x?`.
 - Operator overloading (no new syntax): on a user type, an operator resolves to
-  a same-named function: `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, `++` →
-  `concat`, etc. Primitives keep the native operator. (`apps/examples/operators.maca`.)
+  a same-named function: `a + b` → `add(a, b)`, `==` → `eq`, `<` → `lt`, etc.
+  Primitives keep the native operator. (`apps/examples/operators.maca`.)
 - Pattern & codegen completeness: record patterns (`match p { { x, y } => … }`),
-  the `!` (logical-not) prefix operator, `++` string concat (vs. array concat),
-  `+` as a second spelling of that join when *both* sides are strings or both
-  are lists (so `"a" + "b"` and `[1] + [2]` mean what `++` means, while a number
+  the `!` (logical-not) prefix operator, and `+` as the one join: it
+  concatenates when *both* sides are strings or both are lists, while a number
   beside a string stays a mistake, which is what keeps `+` from silently
-  stringifying),
+  stringifying. Binary `++` is refused by name (joining is `+`), and the only
+  `++` left is the statement `n++` (or `++n`), which is `n = n + 1` written
+  small,
   and record fields that reference a record declared later in the file all work
   natively. The parser no longer hangs on malformed input (a stalled `ident()`
   now advances). (`apps/examples/record_pattern.maca`.)
@@ -268,7 +269,7 @@ and which manifest answers.
   names to `state.x` so handlers can read and mutate state.
   **A child may be a list of elements.** `Element` is the type of a rendered
   element (a `str` natively, a DOM node on `js`) and `Element[]` a list of
-  them; each element of the list is a child in its place, `++` joins two such
+  them; each element of the list is a child in its place, `+` joins two such
   lists, and `[]` contributes *nothing at all* on either target, which is what
   replaces a `class="hidden"` ternary. A function says so in its signature
   (`-> Element` / `-> Element[]`), which is what tells the compiler the call

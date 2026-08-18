@@ -80,8 +80,8 @@ test_a_model_answers_with_json_a_program_can_read() {
         assert(true, "set OPENROUTER_API_KEY to reach a host")
     } else {
         s = generate_object(free_chat(),
-                            "Give the colour of a clear midday sky as "
-                                ++ "{{\"colour\": \"...\"}}")
+                            "Give the colour of a clear midday sky as " +
+                                "{{\"colour\": \"...\"}}")
 
         if s.error.contains("429") {
             assert(true, "the free tier is throttling, which is its right")

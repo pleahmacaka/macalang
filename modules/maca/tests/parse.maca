@@ -24,9 +24,9 @@ wide_run() -> str =>
     "x".repeat(70000)
 
 test_a_string_literal_far_longer_than_a_stack_run_still_parses() {
-    assert_eq(str(parse_errors_in("s = \"" ++ wide_run() ++ "\"")), "0",
+    assert_eq(str(parse_errors_in("s = \"" + wide_run() + "\"")), "0",
               "70000 characters in one literal, and the parser walks it")
-    assert_eq(str(parse_errors_in("s = \"{{a}}" ++ wide_run() ++ "\"")), "0",
+    assert_eq(str(parse_errors_in("s = \"{{a}}" + wide_run() + "\"")), "0",
               "and the same literal behind an interpolation")
 }
 
@@ -98,24 +98,24 @@ test_a_record_update_takes_a_shorthand_field_too() {
 
 test_a_record_update_copies_before_it_assigns_in_c() {
     assert_eq(c_of(Bumper),
-              "Point bump(Point p) {{ return ({{ __typeof__(p) _w = p;"
-                  ++ " _w.x = 1; _w; }});  }}",
+              "Point bump(Point p) {{ return ({{ __typeof__(p) _w = p;" +
+                  " _w.x = 1; _w; }});  }}",
               "C has no update expression, so it is a statement expression")
 }
 
 test_a_record_update_copies_before_it_assigns_in_rust() {
     assert_eq(rust_of(Bumper),
-              "fn bump(p: Point) -> Point {{ {{ let mut _w = p;"
-                  ++ " _w.x = 1i64; _w }}  }}",
+              "fn bump(p: Point) -> Point {{ {{ let mut _w = p;" +
+                  " _w.x = 1i64; _w }}  }}",
               "a block that mutates its own copy")
 }
 
 test_a_record_update_has_the_type_of_its_base() {
-    assert_eq(errors_in("Point = {{ x: int }}"
-                        ++ " bump(p: Point) -> Point => p with {{ x = 1 }}"),
+    assert_eq(errors_in("Point = {{ x: int }}" +
+                        " bump(p: Point) -> Point => p with {{ x = 1 }}"),
               "0", "the update is still a Point")
-    assert_eq(errors_in("Point = {{ x: int }}"
-                        ++ " bump(p: Point) -> int => p with {{ x = 1 }}"),
+    assert_eq(errors_in("Point = {{ x: int }}" +
+                        " bump(p: Point) -> int => p with {{ x = 1 }}"),
               "1", "a Point is not an int")
 }
 
@@ -135,19 +135,19 @@ test_a_subtraction_in_argument_position_is_still_a_subtraction() {
 }
 
 test_a_list_is_matched_by_its_shape() {
-    assert_eq(errors_in("f(xs: int[]) -> str => match xs {{\n"
-                        ++ "[] => \"none\"\n[x] => \"one\"\n"
-                        ++ "[x, ..rest] => \"more\"\n}}"),
+    assert_eq(errors_in("f(xs: int[]) -> str => match xs {{\n" +
+                        "[] => \"none\"\n[x] => \"one\"\n" +
+                        "[x, ..rest] => \"more\"\n}}"),
               "0", "empty, exactly one, and one with a rest behind it")
-    assert(annotated_c("f(xs: int[]) -> str => match xs {{"
-                       ++ " [] => \"none\" _ => \"some\" }}")
+    assert(annotated_c("f(xs: int[]) -> str => match xs {{" +
+                       " [] => \"none\" _ => \"some\" }}")
                .index_of(".len == 0") >= 0,
            "an empty list is a length nobody has to bind")
 }
 
 test_a_bracket_that_opens_a_line_is_not_an_index() {
-    assert_eq(errors_in("f(xs: int[]) -> str => match xs {{"
-                        ++ " [x] => \"one\"\n [x, y] => \"two\" _ => \"more\" }}"),
+    assert_eq(errors_in("f(xs: int[]) -> str => match xs {{" +
+                        " [x] => \"one\"\n [x, y] => \"two\" _ => \"more\" }}"),
               "0", "the next arm's `[` was read as an index on the last body")
     assert_eq(errors_in("f(s: str) -> str =>\n    s.trim()\n        .upper()"),
               "0", "while a `.` that opens a line still continues the chain")
@@ -156,53 +156,53 @@ test_a_bracket_that_opens_a_line_is_not_an_index() {
 test_an_operator_that_opens_a_line_does_not_reach_back() {
     assert(c_of("f(n: int) -> int {{\n    info(\"y\")\n\n    -1\n}}")
                .index_of("return (-1)") >= 0,
-           "a tail opening with `-` is the value, not a subtraction from "
-               ++ "the statement above it")
-    assert_eq(errors_in("f(a: str) -> str =>\n    a\n        ++ \"y\"\n"),
-              "0", "while `++` still continues the line it follows")
-    assert_eq(errors_in("f(a: int, b: int) -> bool =>\n    (a\n"
-                        ++ "        >= b)\n"),
+           "a tail opening with `-` is the value, not a subtraction from " +
+               "the statement above it")
+    assert_eq(errors_in("f(a: str) -> str =>\n    a +\n        \"y\"\n"),
+              "0", "while a `+` ending the line carries it on")
+    assert_eq(errors_in("f(a: int, b: int) -> bool =>\n    (a\n" +
+                        "        >= b)\n"),
               "0", "and inside brackets every operator does")
 }
 
 test_a_comma_pattern_matches_a_list_without_brackets() {
-    assert_eq(errors_in("f(xs: str[]) -> str => match xs {{\n"
-                        ++ "\"done\", id => id\n"
-                        ++ "\"add\", ..rest => \"more\"\n_ => \"none\"\n}}"),
+    assert_eq(errors_in("f(xs: str[]) -> str => match xs {{\n" +
+                        "\"done\", id => id\n" +
+                        "\"add\", ..rest => \"more\"\n_ => \"none\"\n}}"),
               "0", "a bare comma list is a pattern, and its head may be a literal")
-    assert(annotated_c("f(xs: str[]) -> str => match xs {{"
-                       ++ " \"done\", id => id\n _ => \"none\" }}")
+    assert(annotated_c("f(xs: str[]) -> str => match xs {{" +
+                       " \"done\", id => id\n _ => \"none\" }}")
                .index_of("\"done\") == 0") >= 0,
            "a cell the pattern spells out is compared, not bound")
 }
 
 test_a_rest_parameter_is_one_list_the_call_fills() {
-    assert_eq(errors_in("total(...rest: int) -> int => 0\n"
-                        ++ "f() -> int => total(1, 2, 3)"),
+    assert_eq(errors_in("total(...rest: int) -> int => 0\n" +
+                        "f() -> int => total(1, 2, 3)"),
               "0", "a variadic takes as many arguments as the call hands it")
-    assert(annotated_c("total(...rest: int) -> int => 0\n"
-                       ++ "f() -> int => total(1, 2)")
+    assert(annotated_c("total(...rest: int) -> int => 0\n" +
+                       "f() -> int => total(1, 2)")
                .index_of("total(maca_listv(") >= 0,
            "the loose arguments arrive as the one list the callee declared")
 }
 
 test_a_tag_a_function_also_names_is_still_a_tag() {
-    assert_eq(errors_in("html(s: str) -> str => s\n"
-                        ++ "f() -> str => html(\"a\", \"b\", \"c\")"),
+    assert_eq(errors_in("html(s: str) -> str => s\n" +
+                        "f() -> str => html(\"a\", \"b\", \"c\")"),
               "0", "three arguments cannot be the one-parameter function")
-    assert_eq(errors_in("html(s: str) -> str => s\n"
-                        ++ "f() -> str => html(1)"),
+    assert_eq(errors_in("html(s: str) -> str => s\n" +
+                        "f() -> str => html(1)"),
               "1", "while one argument still has to be the type it declares")
 }
 
 test_a_function_written_inside_a_body_is_a_local() {
-    assert_eq(errors_in("f(n: int) -> int {{\n"
-                        ++ "twice(x: int) -> int => x + x\n"
-                        ++ "twice(n)\n}}"),
+    assert_eq(errors_in("f(n: int) -> int {{\n" +
+                        "twice(x: int) -> int => x + x\n" +
+                        "twice(n)\n}}"),
               "0", "a nested declaration is not a call with a type in it")
-    assert_eq(errors_in("f(n: int) -> int {{\n"
-                        ++ "twice(x: int) -> int {{ x + x }}\n"
-                        ++ "twice(n)\n}}"),
+    assert_eq(errors_in("f(n: int) -> int {{\n" +
+                        "twice(x: int) -> int {{ x + x }}\n" +
+                        "twice(n)\n}}"),
               "0", "and it may carry a block for a body")
 }
 
@@ -222,10 +222,10 @@ test_a_map_is_a_type_and_its_lookups_are_its_own() {
 }
 
 test_a_user_record_keeps_its_own_get_and_at() {
-    made = annotated_c("Store = {{ keys: str[] }}"
-                       ++ " get(s: Store, k: str) -> str => k"
-                       ++ " at(s: Store, i: int) -> str => s.keys.get(i)"
-                       ++ " use(s: Store) -> str => s.get(\"a\") ++ s.at(0)")
+    made = annotated_c("Store = {{ keys: str[] }}" +
+                       " get(s: Store, k: str) -> str => k" +
+                       " at(s: Store, i: int) -> str => s.keys.get(i)" +
+                       " use(s: Store) -> str => s.get(\"a\") ++ s.at(0)")
 
     assert(made.contains("get(s, \"a\")"),
            "a method on a record is the module's function, not a map read")
@@ -241,10 +241,10 @@ test_clamp_and_gcd_are_lowered_rather_than_called() {
 }
 
 test_an_operator_on_a_user_type_is_the_function_of_that_name() {
-    made = annotated_c("V = {{ x: int }}"
-                       ++ " add(a: V, b: V) -> V => V {{ x = a.x + b.x }}"
-                       ++ " mul(a: V, k: int) -> V => V {{ x = a.x * k }}"
-                       ++ " go(p: V, q: V) -> V => (p + q) * 2")
+    made = annotated_c("V = {{ x: int }}" +
+                       " add(a: V, b: V) -> V => V {{ x = a.x + b.x }}" +
+                       " mul(a: V, k: int) -> V => V {{ x = a.x * k }}" +
+                       " go(p: V, q: V) -> V => (p + q) * 2")
 
     assert(made.contains("mul(add(p, q), 2)"),
            "`+` on a record is add and `*` is mul, which C has no operator for")
@@ -253,16 +253,16 @@ test_an_operator_on_a_user_type_is_the_function_of_that_name() {
 }
 
 test_a_record_is_defined_before_the_record_that_holds_it() {
-    made = annotated_c("Line = {{ head: Point }} Point = {{ x: int }}"
-                       ++ " dx(l: Line) -> int => l.head.x")
+    made = annotated_c("Line = {{ head: Point }} Point = {{ x: int }}" +
+                       " dx(l: Line) -> int => l.head.x")
 
     assert(made.index_of("}} Point;") < made.index_of("}} Line;"),
            "a field holds a Point by value, so Point is defined first")
 }
 
 test_a_variant_carries_its_payload_at_the_type_it_declared() {
-    made = annotated_c("Shape = Dot | At(P) P = {{ x: int }}"
-                       ++ " f(s: Shape) -> int => match s {{ At(p) => p.x Dot => 0 }}")
+    made = annotated_c("Shape = Dot | At(P) P = {{ x: int }}" +
+                       " f(s: Shape) -> int => match s {{ At(p) => p.x Dot => 0 }}")
 
     assert(made.index_of("P _0;") >= 0,
            "the slot is the record the variant declared, not a long long")
@@ -271,8 +271,8 @@ test_a_variant_carries_its_payload_at_the_type_it_declared() {
 }
 
 test_a_guard_binds_the_name_it_reads() {
-    made = annotated_c("classify(n: int) -> str => match n {{"
-                       ++ " x if x < 0 => \"neg\" _ => \"other\" }}")
+    made = annotated_c("classify(n: int) -> str => match n {{" +
+                       " x if x < 0 => \"neg\" _ => \"other\" }}")
 
     assert(made.index_of("__typeof__(n) x = n;") >= 0,
            "the scrutinee is bound before the guard reads it")
@@ -281,23 +281,23 @@ test_a_guard_binds_the_name_it_reads() {
 }
 
 test_a_task_is_spawned_and_awaited_with_no_async_keyword() {
-    assert(annotated_c("w(n: int) -> int => n * 2\n"
-                       ++ "f() -> int {{ a = spawn w(10)\n await a }}")
+    assert(annotated_c("w(n: int) -> int => n * 2\n" +
+                       "f() -> int {{ a = spawn w(10)\n await a }}")
                .contains("maca_spawn((MacaTask)w, (long long)(10))"),
            "a one-argument task is a function pointer and its argument")
-    assert(annotated_c("w(a: int, b: int) -> int => a + b\n"
-                       ++ "f() -> int {{ t = spawn w(1, 2)\n await t }}")
+    assert(annotated_c("w(a: int, b: int) -> int => a + b\n" +
+                       "f() -> int {{ t = spawn w(1, 2)\n await t }}")
                .contains("maca_spawn2((MacaTask2)w,"),
            "and two arguments is the second arity, not a boxed list")
-    assert(annotated_c("w(n: int) -> int => n * 2\n"
-                       ++ "f() -> int {{ a = spawn w(10)\n await a }}")
+    assert(annotated_c("w(n: int) -> int => n * 2\n" +
+                       "f() -> int {{ a = spawn w(10)\n await a }}")
                .contains("maca_await(a)"),
            "await joins the thread the spawn started")
 }
 
 test_a_task_is_a_thread_on_the_rust_target_too() {
-    made = annotated_rust("w(n: int) -> int => n * 2\n"
-                          ++ "f() -> int {{ a = spawn w(10)\n await a }}")
+    made = annotated_rust("w(n: int) -> int => n * 2\n" +
+                          "f() -> int {{ a = spawn w(10)\n await a }}")
 
     assert(made.contains("std::thread::spawn(move || w(10i64))"),
            "spawn is the thread Rust already has, not a runtime of our own")
@@ -308,17 +308,17 @@ test_a_task_is_a_thread_on_the_rust_target_too() {
 }
 
 test_a_branch_that_ends_in_an_assignment_keeps_it() {
-    assert(annotated_c("f(c: bool) -> int {{ ys: int[] = []\n"
-                       ++ "if c {{ ys = ys.push(1) }}\n"
-                       ++ "ys.length() }}")
+    assert(annotated_c("f(c: bool) -> int {{ ys: int[] = []\n" +
+                       "if c {{ ys = ys.push(1) }}\n" +
+                       "ys.length() }}")
                .index_of("ys = maca_list_pushed") >= 0,
            "the last statement of a branch is a statement, not just its value")
 }
 
 test_a_branch_with_no_else_answers_with_a_zero_of_its_own_type() {
-    made = annotated_c("f(c: bool) -> int {{ n = 0\n"
-                       ++ "if c {{ n = 2 if c {{ n = 1 }} }}\n"
-                       ++ "n }}")
+    made = annotated_c("f(c: bool) -> int {{ n = 0\n" +
+                       "if c {{ n = 2 if c {{ n = 1 }} }}\n" +
+                       "n }}")
     assert(made.index_of(": ?)") < 0,
            "a missing else emitted a bare `?`, which is not C")
     assert(made.index_of("n = 1") >= 0,
@@ -326,13 +326,13 @@ test_a_branch_with_no_else_answers_with_a_zero_of_its_own_type() {
 }
 
 test_a_constant_is_declared_as_the_type_its_value_has() {
-    assert(annotated_c("C = {{ n: int }} mk() -> C => C {{ n = 1 }}\n"
-                       ++ "Spec = mk()")
+    assert(annotated_c("C = {{ n: int }} mk() -> C => C {{ n = 1 }}\n" +
+                       "Spec = mk()")
                .index_of("static C Spec;") >= 0,
            "a record-valued constant is that record, not the int of a guess")
-    assert(annotated_c("C = {{ n: int }} wide(c: C) -> C => c\n"
-                       ++ "mk() -> C => C {{ n = 1 }}\n"
-                       ++ "Spec = mk().wide()")
+    assert(annotated_c("C = {{ n: int }} wide(c: C) -> C => c\n" +
+                       "mk() -> C => C {{ n = 1 }}\n" +
+                       "Spec = mk().wide()")
                .index_of("static C Spec;") >= 0,
            "and a method that is really a function answers with what it declared")
 }
@@ -372,8 +372,8 @@ test_a_map_lookup_takes_a_fallback_and_a_key_comes_back_out() {
 }
 
 test_a_match_arm_may_answer_with_a_block() {
-    assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{"
-                        ++ " A => {{ n = 1 n + 1 }} B => 0 }}"),
+    assert_eq(errors_in("C = A | B f(c: C) -> int => match c {{" +
+                        " A => {{ n = 1 n + 1 }} B => 0 }}"),
               "0", "an arm answers the way a branch of an `if` does")
     assert(shown("match c {{ A => {{ n = 1 n }} B => 0 }}")
                .index_of("match c") >= 0,
@@ -390,23 +390,23 @@ lifted_c(src: str) -> str =>
     emit_module(annotated(lifted(annotated(parse_module(lex(src), 0, [])))))
 
 test_a_lambda_handed_to_a_function_becomes_a_function() {
-    made = lifted_c("call(f) -> int => f(2)\n"
-                    ++ "main() -> int => call(v => v + 1)")
+    made = lifted_c("call(f) -> int => f(2)\n" +
+                    "main() -> int => call(v => v + 1)")
 
     assert(made.contains("maca_lambda_0"),
            "the lambda is lifted to a function every back end can pass by name")
     assert(made.index_of("call(0)") < 0,
            "where it used to be the null pointer that segfaulted std/list")
-    assert(lifted_c("pick(xs: str[], f) -> bool => f(xs.get(0))\n"
-                    ++ "main() -> int => pick([\"c\"], s => s == \"c\") ? 0 : 1")
+    assert(lifted_c("pick(xs: str[], f) -> bool => f(xs.get(0))\n" +
+                    "main() -> int => pick([\"c\"], s => s == \"c\") ? 0 : 1")
                .contains("maca_lambda_0(const char* s)"),
            "and the pass that runs after the lift is what types it")
 }
 
 test_a_lambda_that_reads_its_surroundings_stays_where_it_is() {
-    made = lifted_c("pick(xs: int[], f) -> bool => f(xs.get(0))\n"
-                    ++ "main() -> int {{ n = 3\n"
-                    ++ "pick([5], v => v > n) ? 0 : 1 }}")
+    made = lifted_c("pick(xs: int[], f) -> bool => f(xs.get(0))\n" +
+                    "main() -> int {{ n = 3\n" +
+                    "pick([5], v => v > n) ? 0 : 1 }}")
 
     assert(made.index_of("maca_lambda_0") < 0,
            "a captured name has no home in a bare function, so it is not lifted")
@@ -591,8 +591,8 @@ test_a_block_branch_types_by_its_last_expression() {
 }
 
 test_a_block_binding_does_not_escape_its_branch() {
-    assert_eq(errors_in("pick(n: int) -> int {{"
-                        ++ " q = if n > 0 {{ d = n d }} else {{ 0 }} q }}"),
+    assert_eq(errors_in("pick(n: int) -> int {{" +
+                        " q = if n > 0 {{ d = n d }} else {{ 0 }} q }}"),
               "0", "d is gone by the time q is bound")
 }
 
@@ -618,20 +618,20 @@ test_a_record_field_may_be_an_array() {
 }
 
 test_a_string_inside_an_interpolation_does_not_end_the_string() {
-    assert_eq(items_of("g(a: int[], s: str) -> str => s"
-                       ++ " f(a: int[]) -> str => \"x {{g(a, \" \")}} y\""),
+    assert_eq(items_of("g(a: int[], s: str) -> str => s" +
+                       " f(a: int[]) -> str => \"x {{g(a, \" \")}} y\""),
               "2", "the quote inside the braces belongs to the interpolation")
 }
 
 test_a_call_before_a_branch_marks_a_block_not_a_record() {
-    assert_eq(items_of("f(t: int) -> int {{"
-                       ++ " if t == 0 {{ at = g(t)\n if at < 0 {{ 1 }} else {{ 2 }} }}"
-                       ++ " else {{ 3 }} }}"),
+    assert_eq(items_of("f(t: int) -> int {{" +
+                       " if t == 0 {{ at = g(t)\n if at < 0 {{ 1 }} else {{ 2 }} }}" +
+                       " else {{ 3 }} }}"),
               "1", "a `)` before an `if` is two statements, not a field")
 }
 
-Guardy = "pick(a: int) -> int => match true {{"
-    ++ " _ if a > 5 => 1 _ if a > 0 => 2 _ => 0 }}"
+Guardy = "pick(a: int) -> int => match true {{" +
+    " _ if a > 5 => 1 _ if a > 0 => 2 _ => 0 }}"
 
 test_a_match_arm_may_carry_a_guard() {
     assert(c_of(Guardy).index_of("(a > 5) ? 1") >= 0,
@@ -659,16 +659,16 @@ Backslash = "\\"
 OneBrace = "{{"
 
 test_an_escaped_brace_does_not_open_an_interpolation() {
-    src = "a" ++ Backslash ++ OneBrace ++ "b"
+    src = "a" + Backslash + OneBrace + "b"
     assert(!has_interp(src.chars(), 0),
            "a backslash before a brace is a brace, not an interpolation")
-    assert(has_interp(("a" ++ OneBrace ++ "b").chars(), 0),
+    assert(has_interp(("a" + OneBrace + "b").chars(), 0),
            "a bare brace still opens one")
 }
 
 test_an_escaped_brace_loses_its_backslash_in_the_literal() {
-    src = "a" ++ Backslash ++ OneBrace ++ "b"
-    assert_eq(plain_braces(src.chars(), 0, ""), "a" ++ OneBrace ++ "b",
+    src = "a" + Backslash + OneBrace + "b"
+    assert_eq(plain_braces(src.chars(), 0, ""), "a" + OneBrace + "b",
               "what the emitter writes is one brace")
 }
 
@@ -677,11 +677,11 @@ CloseBrace = "}}"
 Reopen = "f(n: int) -> str => \"a {{n}}}} b\""
 
 test_a_doubled_brace_is_still_one_brace() {
-    assert(!has_interp((OneBrace ++ OneBrace).chars(), 0),
+    assert(!has_interp((OneBrace + OneBrace).chars(), 0),
            "the doubled form is not an interpolation either")
-    assert_eq(plain_braces((OneBrace ++ OneBrace).chars(), 0, ""), OneBrace,
+    assert_eq(plain_braces((OneBrace + OneBrace).chars(), 0, ""), OneBrace,
               "and the literal it writes is the one brace it stands for")
-    assert_eq(plain_braces((CloseBrace ++ CloseBrace).chars(), 0, ""),
+    assert_eq(plain_braces((CloseBrace + CloseBrace).chars(), 0, ""),
               CloseBrace, "the closing pair collapses the same way")
 }
 
@@ -692,8 +692,8 @@ test_a_string_literal_compares_by_content_without_a_typed_tree() {
 }
 
 test_a_doubled_brace_after_an_interpolation_closes_it_first() {
-    assert(c_of(Reopen).index_of("maca_int_to_str(n)), \"" ++ CloseBrace
-                                 ++ " b\")") >= 0,
+    assert(c_of(Reopen).index_of("maca_int_to_str(n)), \"" + CloseBrace +
+                                 " b\")") >= 0,
            "the brace that shuts the hole is not half of the pair after it")
 }
 
@@ -729,8 +729,8 @@ test_a_loop_body_reassigns_rather_than_redeclaring() {
            "never a fresh declaration, which would loop for ever")
 }
 
-Jumper = "run(n: int) -> int {{ i = 0 while true {{ if i > n {{ break }}"
-    ++ " i = i + 1 }} i }}"
+Jumper = "run(n: int) -> int {{ i = 0 while true {{ if i > n {{ break }}" +
+    " i = i + 1 }} i }}"
 
 test_break_and_continue_are_the_loop_keywords_not_names() {
     assert(c_of(Jumper).index_of("break") >= 0, "break lowers to C's break")
@@ -741,8 +741,8 @@ test_break_and_continue_are_the_loop_keywords_not_names() {
     assert_eq(shown("break"), "break", "and it prints as what it is")
 }
 
-Walker = "total(xs: int[]) -> int {{ acc = 0 for x in xs"
-    ++ " {{ acc = acc + x }} acc }}"
+Walker = "total(xs: int[]) -> int {{ acc = 0 for x in xs" +
+    " {{ acc = acc + x }} acc }}"
 
 test_a_for_loop_binds_one_element_at_a_time() {
     assert_eq(str(bad_of(Walker).length()), "0", "the loop is read whole")
@@ -800,9 +800,9 @@ test_a_record_field_keeps_an_applied_type_too() {
 Header = "run(n: int) -> int {{ i = 0 while i < n {{ acc = 1 i = i + 1 }} i }}"
 
 test_a_loop_header_cannot_open_a_record_literal() {
-    assert_eq(str(bad_of(Header ++ " after() -> int => 1").length()), "0",
+    assert_eq(str(bad_of(Header + " after() -> int => 1").length()), "0",
               "the brace after the condition opens the body")
-    assert_eq(items_of(Header ++ " after() -> int => 1"), "2",
+    assert_eq(items_of(Header + " after() -> int => 1"), "2",
               "so the declaration after the loop is still found")
 }
 
@@ -833,11 +833,11 @@ test_a_lambda_body_may_set_a_field_rather_than_answer_one() {
 }
 
 test_a_lambda_argument_is_counted_as_one_argument() {
-    assert_eq(errors_in("pick(xs: int[], f) -> int => 0"
-                        ++ " use(xs: int[]) -> int => pick(xs, v => v > 2)"),
+    assert_eq(errors_in("pick(xs: int[], f) -> int => 0" +
+                        " use(xs: int[]) -> int => pick(xs, v => v > 2)"),
               "0", "two arguments, the second a lambda")
-    assert_eq(errors_in("pick(xs: int[], f) -> int => 0"
-                        ++ " use(xs: int[]) -> int => pick(xs)"),
+    assert_eq(errors_in("pick(xs: int[], f) -> int => 0" +
+                        " use(xs: int[]) -> int => pick(xs)"),
               "1", "and a missing one is still an arity error")
 }
 
@@ -894,8 +894,8 @@ test_a_const_is_a_binding_and_an_alias_is_a_second_name() {
 }
 
 test_config_mode_binds_a_dotted_path_as_one_name() {
-    m = parse_module(lex("networking.hostName = \"rigel\" "
-                             ++ "services.nginx = {{ port = 80 }}"), 0, [])
+    m = parse_module(lex("networking.hostName = \"rigel\" " +
+                             "services.nginx = {{ port = 80 }}"), 0, [])
 
     assert_eq(str(m.items.length()), "2", "each dotted path is one binding")
     assert_eq(m.items.get(0).name, "networking.hostName",
@@ -906,8 +906,8 @@ test_config_mode_binds_a_dotted_path_as_one_name() {
 }
 
 test_a_binding_that_declares_a_type_holds_a_value_not_fields() {
-    m = parse_module(lex("zed: Program : nixpkgs.zed = "
-                             ++ "{{ extensions = \"nix\", \"rust\" }}"), 0, [])
+    m = parse_module(lex("zed: Program : nixpkgs.zed = " +
+                             "{{ extensions = \"nix\", \"rust\" }}"), 0, [])
 
     assert_eq(str(m.items.length()), "1",
               "however many types it names, a binding is one item")
@@ -942,12 +942,12 @@ n_params(src: str) -> int =>
     parse_fn(lex(src), 0).snode.params.length()
 
 brace_escaped() -> str =>
-    "a \{ b"
-        ++ " tail"
+    "a \{ b" +
+        " tail"
 
 brace_doubled() -> str =>
-    "a {{ b"
-        ++ " tail"
+    "a {{ b" +
+        " tail"
 
 test_a_parameter_may_be_declared_a_function() {
     assert_eq(param_ty("apply(x: int, f: (int) -> str) -> str => f(x)", 1),
@@ -983,16 +983,16 @@ test_a_lambda_may_declare_the_type_it_returns() {
 }
 
 test_one_declared_function_parameter_serves_two_return_types() {
-    assert_eq(errors_in("label(r: int) -> str => \"x\"\n"
-                            ++ "size(r: int) -> int => r\n"
-                            ++ "apply(x: a, f: (a) -> b) -> b => f(x)\n"
-                            ++ "main() -> int {{\n"
-                            ++ "    info(apply(1, label))\n"
-                            ++ "    info(str(apply(1, size)))\n"
-                            ++ "    0\n}}\n"),
+    assert_eq(errors_in("label(r: int) -> str => \"x\"\n" +
+                            "size(r: int) -> int => r\n" +
+                            "apply(x: a, f: (a) -> b) -> b => f(x)\n" +
+                            "main() -> int {{\n" +
+                            "    info(apply(1, label))\n" +
+                            "    info(str(apply(1, size)))\n" +
+                            "    0\n}}\n"),
               "0",
-              "a declared arrow type is a function type, so one call does "
-                  ++ "not pin the next one's return")
+              "a declared arrow type is a function type, so one call does " +
+                  "not pin the next one's return")
 }
 
 test_a_pipe_makes_its_left_side_the_first_argument() {
@@ -1037,8 +1037,8 @@ test_a_lambda_in_an_argument_does_not_start_a_local_function() {
 test_a_real_local_function_is_still_read_as_one() {
     assert_eq(str(n_stmts("double(n: int) -> int => n * 2")), "1",
               "an arrow body after the closing paren of its own parameters")
-    assert_eq(str(n_stmts("double(n: int) -> int \{ n * 2 \}\n"
-                              ++ "info(str(double(2)))")), "2",
+    assert_eq(str(n_stmts("double(n: int) -> int \{ n * 2 \}\n" +
+                              "info(str(double(2)))")), "2",
               "a block body, and the call that follows it")
 }
 

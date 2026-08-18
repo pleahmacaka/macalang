@@ -23,12 +23,12 @@ Site = app()
 handle(ctx: Ctx) -> Response {
     match ctx.name {
         "home" => text("root")
-        "show_user" => text("user " ++ param(ctx, "id"))
+        "show_user" => text("user " + param(ctx, "id"))
         "new_user" => text("new")
-        "show_post" => text(param(ctx, "id") ++ "/" ++ param(ctx, "post"))
-        "create_user" => text("made " ++ ctx.body)
+        "show_post" => text(param(ctx, "id") + "/" + param(ctx, "post"))
+        "create_user" => text("made " + ctx.body)
         "drop_user" => no_content()
-        "files" => text("file " ++ wildcard(ctx))
+        "files" => text("file " + wildcard(ctx))
         "boom" => broke("/var/lib/secret.db is missing")
         _ => pass()
     }
@@ -450,7 +450,7 @@ test_a_handler_is_handed_the_query_as_a_map() {
 
 echo_handle(ctx: Ctx) -> Response {
     if ctx.name == "echo" {
-        text(query(ctx, "say") ++ "/" ++ query(ctx, "n"))
+        text(query(ctx, "say") + "/" + query(ctx, "n"))
     } else {
         pass()
     }
@@ -503,7 +503,7 @@ test_a_fallback_answers_instead_of_the_404() {
 
 fallback_handle(ctx: Ctx) -> Response {
     if ctx.name == "missing" {
-        text("no page " ++ ctx.path) with { status = 404 }
+        text("no page " + ctx.path) with { status = 404 }
     } else {
         handle(ctx)
     }
@@ -538,8 +538,8 @@ guarded_handle(ctx: Ctx) -> Response {
     if ctx.name == "guard" {
         header(ctx, "x-key") == "open" ? pass() : status(403)
     } else if ctx.name == "stamp" {
-        with_header(with_header(ctx.reply, "X-Route: " ++ ctx.pattern),
-                    "X-Named: " ++ ctx.route)
+        with_header(with_header(ctx.reply, "X-Route: " + ctx.pattern),
+                    "X-Named: " + ctx.route)
     } else {
         handle(ctx)
     }

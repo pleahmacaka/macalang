@@ -10,8 +10,8 @@ import { Tolerance } from bench/compare
 import { kernels, langs, params, case_name } from apps/bench/run
 import { recursion_kernels, compute_kernels } from apps/bench/run
 
-InstallUrl = "https://github.com/pleahmacaka/macalang/releases/latest"
-    ++ "/download/maca-install-linux-x86_64"
+InstallUrl = "https://github.com/pleahmacaka/macalang/releases/latest" +
+    "/download/maca-install-linux-x86_64"
 
 Topic  = Config | Async | Markup | Values
 Spec   = Types | Memory | Output | Colour
@@ -134,7 +134,7 @@ MarkupSample = """card(name: str) -> str =>
 ValueSample = """shift(p: Point, dx: int) -> Point =>
     p with { x = p.x + dx }"""
 
-InstallSample = """curl -fsSL """ ++ InstallUrl ++ """ | bash
+InstallSample = """curl -fsSL """ + InstallUrl + """ | bash
 maca init hello && cd hello
 maca run main.maca"""
 
@@ -144,14 +144,14 @@ english() -> Copy =>
         endonym = "English",
         locale = "en_US",
         title = "Maca: one typed language for programs and infrastructure",
-        descr = "A statically typed, compiled language with no garbage"
-            ++ " collector. The same source builds a native binary, a browser"
-            ++ " UI, or the NixOS module for the machine it runs on.",
+        descr = "A statically typed, compiled language with no garbage" +
+            " collector. The same source builds a native binary, a browser" +
+            " UI, or the NixOS module for the machine it runs on.",
         nav_docs = "Handbook",
         nav_api = "API",
         headline = "One language for machines",
-        sub = "Typed, compiled, no garbage collector. The language that writes"
-            ++ " your service also describes the machine it runs on.",
+        sub = "Typed, compiled, no garbage collector. The language that writes" +
+            " your service also describes the machine it runs on.",
         cta_start = "Get started",
         cta_play = "Playground",
         box_title = "The language",
@@ -161,39 +161,39 @@ english() -> Copy =>
         install = "Install",
         install_more = "Full install instructions",
         bench_title = "Benchmarks",
-        bench_sub = "Every kernel below is one algorithm written out in each"
-            ++ " language, on one machine, with every column verified to have"
-            ++ " computed the same answer. The bars are Maca against C, because"
-            ++ " Maca compiles through C and C is therefore the ceiling. Lower"
-            ++ " is better, and not every row reaches it.",
-        bench_note = "Where it is behind: `sieve` is the real gap, and it is"
-            ++ " not a code-generation deficit. Maca's only array type is a"
-            ++ " 64-bit `int[]`, so a sieve to 10⁷ touches about 80 MB where"
-            ++ " C's `char` array touches 10 MB; it is bound by memory"
-            ++ " bandwidth, and a compact byte array would close it. `matmul`"
-            ++ " trails by a margin a single timed run cannot separate from"
-            ++ " noise. Everything else lands on C, because it is C, at"
-            ++ " `-O2`.",
+        bench_sub = "Every kernel below is one algorithm written out in each" +
+            " language, on one machine, with every column verified to have" +
+            " computed the same answer. The bars are Maca against C, because" +
+            " Maca compiles through C and C is therefore the ceiling. Lower" +
+            " is better, and not every row reaches it.",
+        bench_note = "Where it is behind: `sieve` is the real gap, and it is" +
+            " not a code-generation deficit. Maca's only array type is a" +
+            " 64-bit `int[]`, so a sieve to 10⁷ touches about 80 MB where" +
+            " C's `char` array touches 10 MB; it is bound by memory" +
+            " bandwidth, and a compact byte array would close it. `matmul`" +
+            " trails by a margin a single timed run cannot separate from" +
+            " noise. Everything else lands on C, because it is C, at" +
+            " `-O2`.",
         bench_readme = "How the benchmark works",
         bench_full = "Every number, as tables",
         tbl_kernel = "kernel",
         tbl_workload = "workload",
-        tbl_note = "Median time in milliseconds, lower is better, and in"
-            ++ " brackets the multiple of C's time.",
+        tbl_note = "Median time in milliseconds, lower is better, and in" +
+            " brackets the multiple of C's time.",
         lim_title = "Limits",
         lim_sub = "What this language does not do.",
         eval_title = "Evaluations",
-        eval_sub = "pass@1 over a mechanically ported HumanEval set, by what"
-            ++ " the model was told.",
-        eval_note = "Model: `claude-haiku-4-5`. Task: 25 HumanEval problems"
-            ++ " ported to Maca. Graded by compiling the answer and running the"
-            ++ " problem's own tests; pass@1 is one attempt per problem.",
-        eval_caveat = "25 problems is a small set: one solved problem moves"
-            ++ " the figure four points, so treat a single run as a sample.",
+        eval_sub = "pass@1 over a mechanically ported HumanEval set, by what" +
+            " the model was told.",
+        eval_note = "Model: `claude-haiku-4-5`. Task: 25 HumanEval problems" +
+            " ported to Maca. Graded by compiling the answer and running the" +
+            " problem's own tests; pass@1 is one attempt per problem.",
+        eval_caveat = "25 problems is a small set: one solved problem moves" +
+            " the figure four points, so treat a single run as a sample.",
         docs_sub = "The handbook, from installing to the back ends.",
         api_sub = "Every documented item in the standard library.",
-        install_body = "The line above fetches the build for your machine."
-            ++ " Then `maca init` writes a project that already builds.",
+        install_body = "The line above fetches the build for your machine." +
+            " Then `maca init` writes a project that already builds.",
         prov_label = "Source",
         back_home = "Back to the directory",
         footer = "Apache-2.0.",
@@ -216,40 +216,40 @@ en_feature(t: Topic) -> Feature =>
     match t {
         Config => Feature {
             title = "The same language configures the machine",
-            body = "Pass `--target nix` and the same file compiles to a NixOS"
-                ++ " module instead of a binary. Same syntax, same checker,"
-                ++ " and the checker refuses I/O in config mode, so a machine"
-                ++ " description cannot quietly do something."
+            body = "Pass `--target nix` and the same file compiles to a NixOS" +
+                " module instead of a binary. Same syntax, same checker," +
+                " and the checker refuses I/O in config mode, so a machine" +
+                " description cannot quietly do something."
         }
         Async => Feature {
             title = "Async has no colour",
-            body = "Async-ness is an inferred effect, not a property of a"
-                ++ " function's type. No function is dyed a colour that spreads"
-                ++ " to everything calling it, and there is no async keyword to"
-                ++ " write."
+            body = "Async-ness is an inferred effect, not a property of a" +
+                " function's type. No function is dyed a colour that spreads" +
+                " to everything calling it, and there is no async keyword to" +
+                " write."
         }
         Markup => Feature {
             title = "Markup is syntax, not a string",
-            body = "A tag called as a function is an element. On the JS target"
-                ++ " it builds a reactive DOM; on native it renders to HTML,"
-                ++ " with a stylesheet generated for exactly the utilities you"
-                ++ " used. This page is that feature."
+            body = "A tag called as a function is an element. On the JS target" +
+                " it builds a reactive DOM; on native it renders to HTML," +
+                " with a stylesheet generated for exactly the utilities you" +
+                " used. This page is that feature."
         }
         Values => Feature {
             title = "Values stay values",
-            body = "No manual free and no borrow checker to satisfy: the"
-                ++ " compiler inserts the reference counts and works out where"
-                ++ " a buffer dies. Reach through the C FFI and you are back to"
-                ++ " C's rules, as you would expect."
+            body = "No manual free and no borrow checker to satisfy: the" +
+                " compiler inserts the reference counts and works out where" +
+                " a buffer dies. Reach through the C FFI and you are back to" +
+                " C's rules, as you would expect."
         }
     }
 
 en_caveat(c: Caveat) -> str =>
     match c {
-        Ecosystem => "You want a large ecosystem today. Maca reaches C,"
-            ++ " Python, crates.io and Maven rather than having grown its own."
-        Cycles => "You want a tracing collector. Reference counting does not"
-            ++ " collect a cycle."
+        Ecosystem => "You want a large ecosystem today. Maca reaches C," +
+            " Python, crates.io and Maven rather than having grown its own."
+        Cycles => "You want a tracing collector. Reference counting does not" +
+            " collect a cycle."
         Young => "You want a proven language. This one is young, and says so."
     }
 
@@ -257,13 +257,13 @@ en_family(f: Family) -> Feature =>
     match f {
         Recursion => Feature {
             title = "Recursion-bound",
-            body = "Tree and nested recursion, where the cost of a function"
-                ++ " call is the cost of the program."
+            body = "Tree and nested recursion, where the cost of a function" +
+                " call is the cost of the program."
         }
         Compute => Feature {
             title = "Compute-bound",
-            body = "Tight loops over arrays and floating point, where the"
-                ++ " inner loop is the cost of the program."
+            body = "Tight loops over arrays and floating point, where the" +
+                " inner loop is the cost of the program."
         }
     }
 
@@ -280,11 +280,11 @@ en_prov(p: Provenance, rs: Result[]) -> Fact =>
         Host => Fact { label = "Measured on", value = bench_host() }
         Tools => Fact { label = "Toolchains", value = Toolchains }
         Runs => Fact { label = "Timed runs",
-                       value = "{timed_runs(rs)} per language, median of the"
-                           ++ " samples, wall clock with process start in it" }
+                       value = "{timed_runs(rs)} per language, median of the" +
+                           " samples, wall clock with process start in it" }
         Answers => Fact { label = "Verified", value = en_answers(rs) }
         Repro => Fact { label = "Reproduce",
-                        value = "`" ++ ReproCommand ++ "`" }
+                        value = "`" + ReproCommand + "`" }
     }
 
 en_answers(rs: Result[]) -> str {
@@ -301,14 +301,14 @@ korean() -> Copy =>
         endonym = "한국어",
         locale = "ko_KR",
         title = "Maca: 프로그램과 인프라를 위한 하나의 타입 있는 언어",
-        descr = "정적 타입, 컴파일, 가비지 컬렉터 없음. 같은 소스가 네이티브"
-            ++ " 바이너리도, 브라우저 UI도, 그것이 돌아갈 기계의 NixOS 모듈도"
-            ++ " 만듭니다.",
+        descr = "정적 타입, 컴파일, 가비지 컬렉터 없음. 같은 소스가 네이티브" +
+            " 바이너리도, 브라우저 UI도, 그것이 돌아갈 기계의 NixOS 모듈도" +
+            " 만듭니다.",
         nav_docs = "핸드북",
         nav_api = "API 문서",
         headline = "기계를 위한 하나의 언어",
-        sub = "정적 타입, 네이티브 컴파일, GC 없음. 서비스를 쓰는 언어가 그"
-            ++ " 서비스가 도는 기계도 기술합니다.",
+        sub = "정적 타입, 네이티브 컴파일, GC 없음. 서비스를 쓰는 언어가 그" +
+            " 서비스가 도는 기계도 기술합니다.",
         cta_start = "시작하기",
         cta_play = "플레이그라운드",
         box_title = "언어",
@@ -318,38 +318,38 @@ korean() -> Copy =>
         install = "설치",
         install_more = "설치 안내 전체 보기",
         bench_title = "얼마나 빠릅니까?",
-        bench_sub = "아래 커널들은 같은 알고리즘을 언어마다 그대로 옮겨 쓴"
-            ++ " 것이고, 한 대의 기계에서 모든 열이 같은 답을 계산했음을"
-            ++ " 확인했습니다. 막대는 Maca와 C의 비교입니다. Maca는 C를 거쳐"
-            ++ " 컴파일되므로 C가 천장이고, 낮을수록 좋습니다. 그리고 모든"
-            ++ " 줄이 그 천장에 닿지는 않습니다.",
-        bench_note = "뒤처지는 곳: `sieve`가 진짜 격차이고, 코드 생성의"
-            ++ " 문제는 아닙니다. Maca의 배열 타입은 64비트 `int[]`"
-            ++ " 하나뿐이라 10⁷까지의 체는 약 80 MB를 건드리고, C의 `char`"
-            ++ " 배열은 10 MB를 건드립니다. 메모리 대역폭에 걸린 것이고,"
-            ++ " 바이트 배열이 생기면 메워집니다. `matmul`은 한 번의 측정으로"
-            ++ " 노이즈와 구분할 수 없는 차이로 뒤에 있습니다. 나머지는 C에"
-            ++ " 붙습니다. `-O2`로 컴파일된 C 그 자체이기 때문입니다.",
+        bench_sub = "아래 커널들은 같은 알고리즘을 언어마다 그대로 옮겨 쓴" +
+            " 것이고, 한 대의 기계에서 모든 열이 같은 답을 계산했음을" +
+            " 확인했습니다. 막대는 Maca와 C의 비교입니다. Maca는 C를 거쳐" +
+            " 컴파일되므로 C가 천장이고, 낮을수록 좋습니다. 그리고 모든" +
+            " 줄이 그 천장에 닿지는 않습니다.",
+        bench_note = "뒤처지는 곳: `sieve`가 진짜 격차이고, 코드 생성의" +
+            " 문제는 아닙니다. Maca의 배열 타입은 64비트 `int[]`" +
+            " 하나뿐이라 10⁷까지의 체는 약 80 MB를 건드리고, C의 `char`" +
+            " 배열은 10 MB를 건드립니다. 메모리 대역폭에 걸린 것이고," +
+            " 바이트 배열이 생기면 메워집니다. `matmul`은 한 번의 측정으로" +
+            " 노이즈와 구분할 수 없는 차이로 뒤에 있습니다. 나머지는 C에" +
+            " 붙습니다. `-O2`로 컴파일된 C 그 자체이기 때문입니다.",
         bench_readme = "벤치마크가 어떻게 동작하는지",
         bench_full = "모든 수치, 표로",
         tbl_kernel = "커널",
         tbl_workload = "작업량",
-        tbl_note = "밀리초 단위 중앙값, 낮을수록 좋습니다. 괄호 안은 C"
-            ++ " 대비 배수입니다.",
+        tbl_note = "밀리초 단위 중앙값, 낮을수록 좋습니다. 괄호 안은 C" +
+            " 대비 배수입니다.",
         lim_title = "한계",
         lim_sub = "이 언어가 하지 않는 것들입니다.",
         eval_title = "평가",
-        eval_sub = "기계적으로 옮긴 HumanEval 문제들에 대한 pass@1을, 모델에게"
-            ++ " 무엇을 알려주었는지에 따라 잰 것입니다.",
-        eval_note = "모델은 `claude-haiku-4-5`, 문제는 Maca로 옮긴 HumanEval"
-            ++ " 25개입니다. 답을 컴파일해 그 문제의 테스트를 돌려서 채점하고,"
-            ++ " pass@1은 문제당 한 번의 시도입니다.",
-        eval_caveat = "25개는 작은 집합입니다. 한 문제가 4점을 움직이니 한"
-            ++ " 번의 실행은 표본으로 보십시오.",
+        eval_sub = "기계적으로 옮긴 HumanEval 문제들에 대한 pass@1을, 모델에게" +
+            " 무엇을 알려주었는지에 따라 잰 것입니다.",
+        eval_note = "모델은 `claude-haiku-4-5`, 문제는 Maca로 옮긴 HumanEval" +
+            " 25개입니다. 답을 컴파일해 그 문제의 테스트를 돌려서 채점하고," +
+            " pass@1은 문제당 한 번의 시도입니다.",
+        eval_caveat = "25개는 작은 집합입니다. 한 문제가 4점을 움직이니 한" +
+            " 번의 실행은 표본으로 보십시오.",
         docs_sub = "설치부터 백엔드까지, 핸드북 전체입니다.",
         api_sub = "표준 라이브러리의 문서화된 항목 전부입니다.",
-        install_body = "위 한 줄이 당신의 기계에 맞는 빌드를 받아옵니다."
-            ++ " 그다음 `maca init`이 바로 빌드되는 프로젝트를 만듭니다.",
+        install_body = "위 한 줄이 당신의 기계에 맞는 빌드를 받아옵니다." +
+            " 그다음 `maca init`이 바로 빌드되는 프로젝트를 만듭니다.",
         prov_label = "출처",
         back_home = "목록으로",
         footer = "Apache-2.0.",
@@ -371,38 +371,38 @@ ko_feature(t: Topic) -> Feature =>
     match t {
         Config => Feature {
             title = "같은 언어가 기계를 설정합니다",
-            body = "`--target nix`를 주면 같은 파일이 바이너리 대신 NixOS"
-                ++ " 모듈로 컴파일됩니다. 같은 문법, 같은 검사기입니다. 그리고"
-                ++ " 설정 모드에서는 I/O를 거부하므로 기계 기술서가 몰래 무언가를 할"
-                ++ " 수 없습니다."
+            body = "`--target nix`를 주면 같은 파일이 바이너리 대신 NixOS" +
+                " 모듈로 컴파일됩니다. 같은 문법, 같은 검사기입니다. 그리고" +
+                " 설정 모드에서는 I/O를 거부하므로 기계 기술서가 몰래 무언가를 할" +
+                " 수 없습니다."
         }
         Async => Feature {
             title = "비동기에 색이 없습니다",
-            body = "비동기성은 함수 타입의 성질이 아니라 추론되는 이펙트입니다."
-                ++ " 어떤 함수도 자기를 부르는 모든 것에 번지는 색으로 물들지"
-                ++ " 않고, 쓸 async 키워드도 없습니다."
+            body = "비동기성은 함수 타입의 성질이 아니라 추론되는 이펙트입니다." +
+                " 어떤 함수도 자기를 부르는 모든 것에 번지는 색으로 물들지" +
+                " 않고, 쓸 async 키워드도 없습니다."
         }
         Markup => Feature {
             title = "마크업이 문자열이 아니라 문법입니다",
-            body = "태그를 함수처럼 부르면 그게 요소입니다. JS 타깃에서는"
-                ++ " 반응형 DOM을, 네이티브에서는 HTML을 만들고, 실제로 쓴"
-                ++ " 유틸리티만큼의 스타일시트가 생성됩니다. 이 페이지가 그"
-                ++ " 기능입니다."
+            body = "태그를 함수처럼 부르면 그게 요소입니다. JS 타깃에서는" +
+                " 반응형 DOM을, 네이티브에서는 HTML을 만들고, 실제로 쓴" +
+                " 유틸리티만큼의 스타일시트가 생성됩니다. 이 페이지가 그" +
+                " 기능입니다."
         }
         Values => Feature {
             title = "값은 값으로 남습니다",
-            body = "수동 free 없음, 만족시켜야 할 빌림 검사기도 없음. 참조"
-                ++ " 카운트는 컴파일러가 넣고, 버퍼가 죽는 지점도 컴파일러가"
-                ++ " 알아냅니다. C FFI로 손을 뻗으면 그때부터는 C의 규칙입니다."
+            body = "수동 free 없음, 만족시켜야 할 빌림 검사기도 없음. 참조" +
+                " 카운트는 컴파일러가 넣고, 버퍼가 죽는 지점도 컴파일러가" +
+                " 알아냅니다. C FFI로 손을 뻗으면 그때부터는 C의 규칙입니다."
         }
     }
 
 ko_caveat(c: Caveat) -> str =>
     match c {
-        Ecosystem => "오늘 당장 큰 생태계가 필요할 때. Maca는 자기 생태계를"
-            ++ " 키우는 대신 C, Python, crates.io, Maven에 닿습니다."
-        Cycles => "추적 수집기가 필요할 때. 참조 카운팅은 순환을 수거하지"
-            ++ " 않습니다."
+        Ecosystem => "오늘 당장 큰 생태계가 필요할 때. Maca는 자기 생태계를" +
+            " 키우는 대신 C, Python, crates.io, Maven에 닿습니다."
+        Cycles => "추적 수집기가 필요할 때. 참조 카운팅은 순환을 수거하지" +
+            " 않습니다."
         Young => "검증된 언어가 필요할 때. 이 언어는 어리고, 그렇다고 말합니다."
     }
 
@@ -410,13 +410,13 @@ ko_family(f: Family) -> Feature =>
     match f {
         Recursion => Feature {
             title = "재귀 위주",
-            body = "트리 재귀와 중첩 재귀. 함수 호출 비용이 곧 프로그램의"
-                ++ " 비용인 경우입니다."
+            body = "트리 재귀와 중첩 재귀. 함수 호출 비용이 곧 프로그램의" +
+                " 비용인 경우입니다."
         }
         Compute => Feature {
             title = "계산 위주",
-            body = "배열을 도는 촘촘한 루프와 부동소수점. 내부 루프가 곧"
-                ++ " 프로그램의 비용인 경우입니다."
+            body = "배열을 도는 촘촘한 루프와 부동소수점. 내부 루프가 곧" +
+                " 프로그램의 비용인 경우입니다."
         }
     }
 
@@ -433,10 +433,10 @@ ko_prov(p: Provenance, rs: Result[]) -> Fact =>
         Host => Fact { label = "측정 환경", value = bench_host() }
         Tools => Fact { label = "툴체인", value = Toolchains }
         Runs => Fact { label = "측정 횟수",
-                       value = "언어당 {timed_runs(rs)}회, 샘플의 중앙값,"
-                           ++ " 프로세스 시작을 포함한 실측 시간" }
+                       value = "언어당 {timed_runs(rs)}회, 샘플의 중앙값," +
+                           " 프로세스 시작을 포함한 실측 시간" }
         Answers => Fact { label = "검증", value = ko_answers(rs) }
-        Repro => Fact { label = "재현", value = "`" ++ ReproCommand ++ "`" }
+        Repro => Fact { label = "재현", value = "`" + ReproCommand + "`" }
     }
 
 ko_answers(rs: Result[]) -> str {
@@ -506,7 +506,7 @@ default_lang() -> str =>
 StartChapter = "01-installing"
 
 start_href(c: Copy, up: str) -> str =>
-    up ++ c.lang ++ "/" ++ StartChapter ++ ".html"
+    up + c.lang + "/" + StartChapter + ".html"
 
 
 
@@ -524,8 +524,8 @@ BenchReport = "apps/bench/results.md"
 
 ReproCommand = "maca run apps/bench/run.maca"
 
-Toolchains = "Maca `maca build` → `cc -O2`, C `cc -O2`, Rust `rustc -O`,"
-    ++ " Go `go build`, JS `node`, Python `python3`"
+Toolchains = "Maca `maca build` → `cc -O2`, C `cc -O2`, Rust `rustc -O`," +
+    " Go `go build`, JS `node`, Python `python3`"
 
 MacaLang = "Maca"
 BaseLang = "C"
@@ -673,8 +673,8 @@ kernel_row(c: Copy, rs: Result[], algo: str) -> str {
     div(class="grid gap-x-6 gap-y-3 md:grid-cols-[11rem_1fr] items-start",
         div(class="min-w-0",
             div(class="font-mono text-[0.9rem] font-medium", escape_html(algo))
-            div(class="font-mono text-[0.75rem] text-zinc-500"
-                      ++ " dark:text-zinc-400", escape_html(params(algo)))
+            div(class="font-mono text-[0.75rem] text-zinc-500" +
+                      " dark:text-zinc-400", escape_html(params(algo)))
             div(class="mt-2", verdict_chip(c, rs, algo)))
         div(class="min-w-0 grid gap-2",
             bar_row(MacaLang, mine, worst, mine_tone(rs, algo))
@@ -682,10 +682,10 @@ kernel_row(c: Copy, rs: Result[], algo: str) -> str {
 }
 
 verdict_chip(c: Copy, rs: Result[], algo: str) -> str =>
-    span(class="inline-block px-2 py-[0.1rem] text-[0.72rem]"
-               ++ " font-medium " ++ chip_tone(rs, algo),
-         escape_html(ratio_text(rs, algo)
-                     ++ standing_of(c, standing(rs, algo))))
+    span(class="inline-block px-2 py-[0.1rem] text-[0.72rem]" +
+               " font-medium " + chip_tone(rs, algo),
+         escape_html(ratio_text(rs, algo) +
+                     standing_of(c, standing(rs, algo))))
 
 ratio_text(rs: Result[], algo: str) -> str {
     r = ratio(rs, algo)
@@ -721,14 +721,14 @@ chip_tone(rs: Result[], algo: str) -> str {
 
 bar_row(who: str, ms: float, worst: float, tone: str) -> str =>
     div(class="flex items-center gap-3",
-        span(class="w-[3.2rem] shrink-0 text-[0.78rem] text-zinc-500"
-                   ++ " dark:text-zinc-400", escape_html(who))
-        span(class="flex-1 min-w-0 h-2 bg-zinc-100"
-                   ++ " dark:bg-zinc-900 overflow-hidden",
-             span(class="block h-2 " ++ tone,
+        span(class="w-[3.2rem] shrink-0 text-[0.78rem] text-zinc-500" +
+                   " dark:text-zinc-400", escape_html(who))
+        span(class="flex-1 min-w-0 h-2 bg-zinc-100" +
+                   " dark:bg-zinc-900 overflow-hidden",
+             span(class="block h-2 " + tone,
                   style="width:{bar_width(ms, worst)}%"))
-        span(class="w-[4.6rem] shrink-0 text-right font-mono tabular-nums"
-                   ++ " text-[0.78rem]", escape_html(ms_text(ms))))
+        span(class="w-[4.6rem] shrink-0 text-right font-mono tabular-nums" +
+                   " text-[0.78rem]", escape_html(ms_text(ms))))
 
 bar_width(ms: float, worst: float) -> int {
     if ms <= 0.0 || worst <= 0.0 {
@@ -754,28 +754,28 @@ bench_table(c: Copy, rs: Result[]) -> str =>
           prose(c.tbl_note))
         div(class="mt-3 overflow-x-auto",
             table(class="w-full border-collapse text-[0.82rem]",
-                thead(tr(head_cell(c.tbl_kernel) ++ head_cell(c.tbl_workload)
-                         ++ langs().map(head_cell).join("")))
+                thead(tr(head_cell(c.tbl_kernel) + head_cell(c.tbl_workload) +
+                         langs().map(head_cell).join("")))
                 tbody(kernels().map(k => table_row(rs, k)).join("")))))
 
 head_cell(text: str) -> str =>
-    th(class="border-b border-zinc-300 dark:border-zinc-700 px-3 py-2"
-             ++ " text-left font-medium whitespace-nowrap text-zinc-500"
-             ++ " dark:text-zinc-400", escape_html(text))
+    th(class="border-b border-zinc-300 dark:border-zinc-700 px-3 py-2" +
+             " text-left font-medium whitespace-nowrap text-zinc-500" +
+             " dark:text-zinc-400", escape_html(text))
 
 table_row(rs: Result[], algo: str) -> str =>
-    tr(th(class=body_cell() ++ " text-left font-mono font-medium",
-          scope="row", escape_html(algo))
-       ++ td(class=body_cell() ++ " text-zinc-500 dark:text-zinc-400",
-             escape_html(params(algo)))
-       ++ langs().map(l => lang_cell(rs, algo, l)).join(""))
+    tr(th(class=body_cell() + " text-left font-mono font-medium",
+          scope="row", escape_html(algo)) +
+       td(class=body_cell() + " text-zinc-500 dark:text-zinc-400",
+             escape_html(params(algo))) +
+       langs().map(l => lang_cell(rs, algo, l)).join(""))
 
 body_cell() -> str =>
-    "border-b border-zinc-100 dark:border-zinc-900 px-3 py-2 align-top"
-        ++ " whitespace-nowrap"
+    "border-b border-zinc-100 dark:border-zinc-900 px-3 py-2 align-top" +
+        " whitespace-nowrap"
 
 lang_cell(rs: Result[], algo: str, lang: str) -> str =>
-    td(class=body_cell() ++ " font-mono tabular-nums " ++ cell_tone(lang),
+    td(class=body_cell() + " font-mono tabular-nums " + cell_tone(lang),
        escape_html(cell_text(rs, algo, lang)))
 
 cell_tone(lang: str) -> str {
@@ -811,12 +811,12 @@ bench_provenance(c: Copy, rs: Result[]) -> str =>
               escape_html(c.bench_full))))
 
 bench_doc(file: str) -> str =>
-    Repo ++ "/blob/main/apps/bench/" ++ file
+    Repo + "/blob/main/apps/bench/" + file
 
 prov_cell(f: Fact) -> str =>
     div(class=Cell,
         div(class=Eyebrow, escape_html(f.label))
-        div(class="mt-3 " ++ Muted, prose(f.value)))
+        div(class="mt-3 " + Muted, prose(f.value)))
 
 
 
@@ -882,11 +882,11 @@ blurb_of(c: Copy, k: Key) -> str =>
  * own directory.
  */
 page_href(o: Copy, up: str, k: Key) -> str =>
-    up ++ o.lang ++ "/" ++ page_file(k) ++ ".html"
+    up + o.lang + "/" + page_file(k) + ".html"
 
 home_href(c: Copy, up: str) -> str {
     if c.lang == default_lang() {
-        return up ++ "index.html"
+        return up + "index.html"
     }
 
     page_href(c, up, Home)
@@ -894,7 +894,7 @@ home_href(c: Copy, up: str) -> str {
 
 canonical(c: Copy, up: str, k: Key) -> str {
     if k == Home && c.lang == default_lang() {
-        return up ++ "index.html"
+        return up + "index.html"
     }
 
     page_href(c, up, k)
@@ -902,14 +902,14 @@ canonical(c: Copy, up: str, k: Key) -> str {
 
 alternates(up: str, k: Key) -> str =>
     copies().map(o => link(rel="alternate", hreflang=o.lang,
-                           href=canonical(o, up, k))).join("")
-        ++ link(rel="alternate", hreflang="x-default",
+                           href=canonical(o, up, k))).join("") +
+        link(rel="alternate", hreflang="x-default",
                 href=canonical(copies().get(0), up, k))
 
 /** The whole chrome every page on this site shares. */
 document(c: Copy, up: str, k: Key, ...body: str) -> str =>
-    "<!doctype html>\n"
-        ++ html(lang=c.lang,
+    "<!doctype html>\n" +
+        html(lang=c.lang,
             head(
                 meta(charset="utf-8")
                 meta(name="viewport",
@@ -924,35 +924,35 @@ document(c: Copy, up: str, k: Key, ...body: str) -> str =>
                 alternates(up, k)
                 title_tag(c.title)
                 font_link(up)
-                style(base_css() ++ code_css() ++ styles())
+                style(base_css() + code_css() + styles())
             )
             body_tag(page_class("font-sans"),
-                skip_link(c)
-                    ++ masthead(c, up)
-                    ++ element("main", id="content", tabindex="-1",
-                               body.join(""))
-                    ++ colophon(c))) ++ "\n"
+                skip_link(c) +
+                    masthead(c, up) +
+                    element("main", id="content", tabindex="-1",
+                               body.join("")) +
+                    colophon(c))) + "\n"
 
 skip_link(c: Copy) -> str =>
-    a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-30"
-            ++ " bg-white dark:bg-zinc-950 px-4 py-2 border border-zinc-300"
-            ++ " dark:border-zinc-700 text-inherit",
+    a(class="absolute left-[-9999px] focus:left-2 focus:top-2 focus:z-30" +
+            " bg-white dark:bg-zinc-950 px-4 py-2 border border-zinc-300" +
+            " dark:border-zinc-700 text-inherit",
       href="#content", escape_html(c.skip))
 
 masthead(c: Copy, up: str) -> str =>
     header(class="border-b border-zinc-200 dark:border-zinc-800",
-        div(class=Frame ++ " flex flex-wrap items-center justify-between"
-                  ++ " gap-x-6 gap-y-3 py-4",
-            a(class="font-bold text-[1.1rem] no-underline text-inherit"
-                    ++ " tracking-tight focus:underline",
+        div(class=Frame + " flex flex-wrap items-center justify-between" +
+                  " gap-x-6 gap-y-3 py-4",
+            a(class="font-bold text-[1.1rem] no-underline text-inherit" +
+                    " tracking-tight focus:underline",
               href=home_href(c, up), "Maca")
             nav(aria-label=c.nav_label,
                 class="flex flex-wrap items-center gap-x-6 gap-y-3",
-                a(class=NavLink, href=up ++ c.lang ++ "/index.html",
+                a(class=NavLink, href=up + c.lang + "/index.html",
                   escape_html(c.nav_docs))
-                a(class=NavLink, href=up ++ "api/index.html",
+                a(class=NavLink, href=up + "api/index.html",
                   escape_html(c.nav_api))
-                a(class=NavLink, href=up ++ "play/index.html",
+                a(class=NavLink, href=up + "play/index.html",
                   escape_html(c.cta_play))
                 a(class=NavLink, href=Repo, "GitHub")
                 lang_control(c, up, Home))))
@@ -975,7 +975,7 @@ lang_option(c: Copy, up: str, k: Key, other: Copy) -> str {
 
 colophon(c: Copy) -> str =>
     footer(class="border-t border-zinc-200 dark:border-zinc-800",
-        div(class=Frame ++ " py-10 " ++ Muted,
+        div(class=Frame + " py-10 " + Muted,
             p(class="m-0", prose(c.footer))
             p(class="mt-2 m-0",
               a(class=InlineLink, href=Repo,
@@ -984,26 +984,26 @@ colophon(c: Copy) -> str =>
 /** The front page: a banner, four facts, and the eight places the site goes. */
 directory_page(c: Copy, up: str, rs: Result[]) -> str =>
     document(c, up, Home,
-        section(class=Frame ++ " py-14 md:py-20 grid gap-10 md:grid-cols-12"
-                      ++ " md:items-center",
+        section(class=Frame + " py-14 md:py-20 grid gap-10 md:grid-cols-12" +
+                      " md:items-center",
             div(class="md:col-span-7 min-w-0",
-                h1(class="m-0 " ++ Display, escape_html(c.headline))
-                p(class="mt-5 m-0 " ++ Lead, prose(c.sub))
+                h1(class="m-0 " + Display, escape_html(c.headline))
+                p(class="mt-5 m-0 " + Lead, prose(c.sub))
                 div(class="mt-8 flex flex-wrap gap-3",
                     a(class=Primary, href=start_href(c, up),
                       escape_html(c.cta_start))
-                    a(class=Ghost, href=up ++ "play/index.html",
+                    a(class=Ghost, href=up + "play/index.html",
                       escape_html(c.cta_play))))
             div(class="md:col-span-5 min-w-0",
                 code_panel(HeroSample, "maca")))
-        section(class=Frame ++ " pb-14",
+        section(class=Frame + " pb-14",
             div(class=lattice("grid-cols-2 md:grid-cols-4"),
                 specs().map(sp => fact_cell(fact_of(c, sp))).join("")))
-        section(class=Frame ++ " pb-14",
+        section(class=Frame + " pb-14",
             div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-4"),
-                keys().map(k => dest_cell(c, up, k, rs)).join("")
-                    ++ handbook_cell(c, up) ++ reference_cell(c, up)
-                    ++ play_cell(c, up)))
+                keys().map(k => dest_cell(c, up, k, rs)).join("") +
+                    handbook_cell(c, up) + reference_cell(c, up) +
+                    play_cell(c, up)))
         install_strip(c, up))
 
 /** One destination, which ends in a figure and the file that figure came from.
@@ -1013,37 +1013,37 @@ dest_cell(c: Copy, up: str, k: Key, rs: Result[]) -> str {
 
     a(class=CellLink, href=page_href(c, up, k),
       div(class=Ordinal, ordinal(k))
-      div(class="mt-3 " ++ CellTitle, escape_html(title_of(c, k)))
-      div(class="mt-5 " ++ Figure, escape_html(r.value))
-      div(class="mt-1 " ++ Unit, escape_html(r.unit)))
+      div(class="mt-3 " + CellTitle, escape_html(title_of(c, k)))
+      div(class="mt-5 " + Figure, escape_html(r.value))
+      div(class="mt-1 " + Unit, escape_html(r.unit)))
 }
 
 handbook_cell(c: Copy, up: str) -> str {
     r = handbook_reading()
 
-    a(class=CellLink, href=up ++ c.lang ++ "/index.html",
+    a(class=CellLink, href=up + c.lang + "/index.html",
       div(class=Ordinal, "06")
-      div(class="mt-3 " ++ CellTitle, escape_html(c.nav_docs))
-      div(class="mt-5 " ++ Figure, escape_html(r.value))
-      div(class="mt-1 " ++ Unit, escape_html(r.unit)))
+      div(class="mt-3 " + CellTitle, escape_html(c.nav_docs))
+      div(class="mt-5 " + Figure, escape_html(r.value))
+      div(class="mt-1 " + Unit, escape_html(r.unit)))
 }
 
 reference_cell(c: Copy, up: str) -> str {
     r = reference_reading()
 
-    a(class=CellLink, href=up ++ "api/index.html",
+    a(class=CellLink, href=up + "api/index.html",
       div(class=Ordinal, "07")
-      div(class="mt-3 " ++ CellTitle, escape_html(c.nav_api))
-      div(class="mt-5 " ++ Figure, escape_html(r.value))
-      div(class="mt-1 " ++ Unit, escape_html(r.unit)))
+      div(class="mt-3 " + CellTitle, escape_html(c.nav_api))
+      div(class="mt-5 " + Figure, escape_html(r.value))
+      div(class="mt-1 " + Unit, escape_html(r.unit)))
 }
 
 play_cell(c: Copy, up: str) -> str =>
-    a(class=CellLink, href=up ++ "play/index.html",
+    a(class=CellLink, href=up + "play/index.html",
       div(class=Ordinal, "08")
-      div(class="mt-3 " ++ CellTitle, escape_html(c.cta_play))
-      div(class="mt-5 " ++ Figure, "0")
-      div(class="mt-1 " ++ Unit, escape_html(c.play_unit)))
+      div(class="mt-3 " + CellTitle, escape_html(c.cta_play))
+      div(class="mt-5 " + Figure, "0")
+      div(class="mt-1 " + Unit, escape_html(c.play_unit)))
 
 /** The figure a destination carries, computed from a committed file. */
 reading_of(k: Key, rs: Result[]) -> Reading =>
@@ -1051,8 +1051,8 @@ reading_of(k: Key, rs: Result[]) -> Reading =>
         Home       => release_reading()
         Language   => Reading { value = "{topics().length()}",
                                 unit = "capabilities", from = SiteCopy }
-        Benchmarks => Reading { value = "{ahead_count(rs)} of"
-                                        ++ " {kernels().length()}",
+        Benchmarks => Reading { value = "{ahead_count(rs)} of" +
+                                        " {kernels().length()}",
                                 unit = "kernels at or ahead of C",
                                 from = BenchData }
         Evals      => eval_reading()
@@ -1076,7 +1076,7 @@ one_line(s: str) -> str {
         return s
     }
 
-    cut.get(0) ++ "."
+    cut.get(0) + "."
 }
 
 fact_cell(f: Fact) -> str =>
@@ -1086,12 +1086,12 @@ fact_cell(f: Fact) -> str =>
 
 code_panel(src: str, lang: str) -> str =>
     pre(class=CodePlate,
-        code(class="font-mono language-" ++ lang, highlight(lang, src)))
+        code(class="font-mono language-" + lang, highlight(lang, src)))
 
 /** Two lines, one per platform, the way a reader expects to find them. */
 install_strip(c: Copy, up: str) -> str =>
     section(id="install", class="border-t border-zinc-200 dark:border-zinc-800",
-        div(class=Frame ++ " py-10",
+        div(class=Frame + " py-10",
             div(class=lattice("grid-cols-1 md:grid-cols-2"),
                 install_cell("macOS, Linux, WSL", PosixInstall)
                 install_cell("Windows", WindowsInstall))))
@@ -1105,80 +1105,80 @@ install_cell(os: str, line: str) -> str =>
 
 SiteRoot = "https://pleahmacaka.github.io/macalang"
 
-PosixInstall = "curl -fsSL " ++ SiteRoot ++ "/install | sh"
+PosixInstall = "curl -fsSL " + SiteRoot + "/install | sh"
 
-WindowsInstall = "powershell -c \"irm " ++ SiteRoot ++ "/install.ps1 | iex\""
+WindowsInstall = "powershell -c \"irm " + SiteRoot + "/install.ps1 | iex\""
 
 /** The head of a numbered document: its ordinal, its title, and where its facts
  * come from.
  */
 doc_head(c: Copy, up: str, k: Key) -> str =>
-    section(class=Frame ++ " py-12 md:py-16 grid gap-8 md:grid-cols-12",
+    section(class=Frame + " py-12 md:py-16 grid gap-8 md:grid-cols-12",
         div(class="md:col-span-8 min-w-0",
-            div(class=Eyebrow, ordinal(k) ++ " / "
-                               ++ escape_html(title_of(c, k)))
-            h1(class="mt-4 m-0 " ++ DocTitle, escape_html(title_of(c, k)))
-            p(class="mt-5 m-0 " ++ Lead, prose(blurb_of(c, k))))
+            div(class=Eyebrow, ordinal(k) + " / " +
+                               escape_html(title_of(c, k)))
+            h1(class="mt-4 m-0 " + DocTitle, escape_html(title_of(c, k)))
+            p(class="mt-5 m-0 " + Lead, prose(blurb_of(c, k))))
         div(class="md:col-span-4 min-w-0"))
 
 /** Every document ends by saying where it sits and what is next. */
 doc_foot(c: Copy, up: str, k: Key) -> str =>
-    section(class=Frame ++ " py-10 border-t border-zinc-200"
-                  ++ " dark:border-zinc-800",
+    section(class=Frame + " py-10 border-t border-zinc-200" +
+                  " dark:border-zinc-800",
         a(class=NavLink, href=home_href(c, up), escape_html(c.back_home)))
 
 section_head(title: str) -> str =>
-    h2(class="mt-12 pt-6 border-t border-zinc-200 dark:border-zinc-800 m-0 "
-             ++ Head2, escape_html(title))
+    h2(class="mt-12 pt-6 border-t border-zinc-200 dark:border-zinc-800 m-0 " +
+             Head2, escape_html(title))
 
 /** 01: what the language is, at a size where the samples can be read. */
 language_doc(c: Copy, up: str) -> str =>
     document(c, up, Language,
         doc_head(c, up, Language)
-        section(class=Frame ++ " pb-14",
-            div(class="grid gap-px bg-zinc-200 dark:bg-zinc-800 border"
-                      ++ " border-zinc-200 dark:border-zinc-800 md:grid-cols-2",
+        section(class=Frame + " pb-14",
+            div(class="grid gap-px bg-zinc-200 dark:bg-zinc-800 border" +
+                      " border-zinc-200 dark:border-zinc-800 md:grid-cols-2",
                 topics().map(t => feature_cell(feature_of(c, t), sample(t)))
                         .join("")))
         doc_foot(c, up, Language))
 
 feature_cell(f: Feature, src: str) -> str =>
     article(class=Cell,
-        h3(class="m-0 " ++ Head3, escape_html(f.title))
-        p(class="mt-3 m-0 " ++ Body, prose(f.body))
-        pre(class="mt-4 " ++ CodeLight,
+        h3(class="m-0 " + Head3, escape_html(f.title))
+        p(class="mt-3 m-0 " + Body, prose(f.body))
+        pre(class="mt-4 " + CodeLight,
             code(class="font-mono language-maca", highlight("maca", src))))
 
 /** 02: the measured argument, with its provenance beside the title. */
 bench_doc_page(c: Copy, up: str, rs: Result[]) -> str =>
     document(c, up, Benchmarks,
         doc_head(c, up, Benchmarks)
-        section(class=Frame ++ " pb-10",
+        section(class=Frame + " pb-10",
             div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-5"),
                 provenance().map(v => prov_cell(prov_of(c, v, rs))).join("")))
-        section(class=Frame ++ " pb-14",
+        section(class=Frame + " pb-14",
             families().map(f => family_group(c, rs, f)).join("")
             bench_table(c, rs)
-            p(class="mt-6 m-0 " ++ Muted, prose(c.bench_note)))
+            p(class="mt-6 m-0 " + Muted, prose(c.bench_note)))
         doc_foot(c, up, Benchmarks))
 
 /** 03: pass@1, and the reason the third column is not the headline. */
 evals_doc(c: Copy, up: str) -> str =>
     document(c, up, Evals,
         doc_head(c, up, Evals)
-        section(class=Frame ++ " pb-10",
+        section(class=Frame + " pb-10",
             div(class=lattice("grid-cols-1 md:grid-cols-3"),
                 scores().map(score_cell).join("")))
-        section(class=Frame ++ " pb-14",
-            p(class="m-0 " ++ Body, prose(c.eval_note))
-            p(class="mt-4 m-0 " ++ Body, prose(c.eval_caveat)))
+        section(class=Frame + " pb-14",
+            p(class="m-0 " + Body, prose(c.eval_note))
+            p(class="mt-4 m-0 " + Body, prose(c.eval_caveat)))
         doc_foot(c, up, Evals))
 
 score_cell(s: Score) -> str =>
     div(class=Cell,
         div(class=Eyebrow, escape_html(s.condition))
-        div(class="mt-3 " ++ Figure, "{s.percent}%")
-        div(class="mt-1 " ++ Unit, "{s.passed} of {s.of}")
+        div(class="mt-3 " + Figure, "{s.percent}%")
+        div(class="mt-1 " + Unit, "{s.passed} of {s.of}")
         div(class="mt-4",
             span(class="block h-2 bg-zinc-900 dark:bg-zinc-100",
                  style="width:{s.percent}%")))
@@ -1187,7 +1187,7 @@ score_cell(s: Score) -> str =>
 targets_doc(c: Copy, up: str) -> str =>
     document(c, up, Targets,
         doc_head(c, up, Targets)
-        section(class=Frame ++ " pb-14",
+        section(class=Frame + " pb-14",
             div(class=lattice("grid-cols-1 sm:grid-cols-2 md:grid-cols-4"),
                 targets().map(target_cell).join("")))
         doc_foot(c, up, Targets))
@@ -1199,20 +1199,20 @@ target_cell(t: str) -> str =>
 install_doc(c: Copy, up: str) -> str =>
     document(c, up, Install,
         doc_head(c, up, Install)
-        section(class=Frame ++ " pb-14",
+        section(class=Frame + " pb-14",
             pre(class=CodePlate,
                 code(class="font-mono language-sh",
                      highlight("sh", InstallSample)))
-            p(class="mt-6 m-0 " ++ Body, prose(c.install_body)))
+            p(class="mt-6 m-0 " + Body, prose(c.install_body)))
         doc_foot(c, up, Install))
 
 /** 06: what this language does not do, at the same size as what it does. */
 limits_doc(c: Copy, up: str) -> str =>
     document(c, up, Limits,
         doc_head(c, up, Limits)
-        section(class=Frame ++ " pb-14",
-            ul(class=lattice("grid-cols-1 md:grid-cols-3") ++ " list-none m-0"
-                      ++ " p-0",
+        section(class=Frame + " pb-14",
+            ul(class=lattice("grid-cols-1 md:grid-cols-3") + " list-none m-0" +
+                      " p-0",
                caveats().map(v => li(class=Cell, prose(caveat_of(c, v))))
                         .join("")))
         doc_foot(c, up, Limits))
@@ -1273,7 +1273,7 @@ write_docs(dir: str, c: Copy, ks: Key[], i: int, rs: Result[]) -> int {
     }
 
     k = ks.get(i)
-    n = write_page(join(dir, page_file(k) ++ ".html"), body_for(c, "../", k, rs))
+    n = write_page(join(dir, page_file(k) + ".html"), body_for(c, "../", k, rs))
 
     n + write_docs(dir, c, ks, i + 1, rs)
 }
@@ -1307,8 +1307,8 @@ spans(parts: str[], i: int, out: str) -> str {
         out
     } else if i % 2 == 1 {
         span = code(class=CodeSpan, escape_html(parts.get(i)))
-        spans(parts, i + 1, out ++ span)
+        spans(parts, i + 1, out + span)
     } else {
-        spans(parts, i + 1, out ++ escape_html(parts.get(i)))
+        spans(parts, i + 1, out + escape_html(parts.get(i)))
     }
 }

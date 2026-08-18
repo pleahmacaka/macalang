@@ -37,7 +37,7 @@ under(root: str, path: str) -> str {
     resolved = real_path(joined)
     inside = if resolved == "" { normalize(joined) } else { resolved }
 
-    if base != "" && (inside == base || inside.starts_with(base ++ "/")) {
+    if base != "" && (inside == base || inside.starts_with(base + "/")) {
         inside
     } else {
         ""

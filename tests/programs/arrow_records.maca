@@ -20,7 +20,7 @@ reassigning() -> int => {
 
 greeting(who: str) -> str => {
     head = "hello, "
-    head ++ who
+    head + who
 }
 
 origin() -> Point => { x = 0, y = 0 }

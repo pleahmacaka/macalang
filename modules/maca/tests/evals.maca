@@ -4,11 +4,11 @@ import std/fs
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-evals-twin"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-evals-twin"
 
     exec("rm", ["-rf", dir])
     make_dir(dir)
@@ -18,25 +18,25 @@ scratch() -> str {
 
 /** A model that solves one problem, so the count is the harness's own. */
 stand_in(dir: str) -> str {
-    at = dir ++ "/model.sh"
+    at = dir + "/model.sh"
 
-    write_file(at, "#!/bin/sh\nif grep -q below_zero \"$1\"; then\n"
-        ++ "  printf '%s\\n' 'below_zero(operations: int[]) -> bool \{' \\\n"
-        ++ "    '    balance = 0' \\\n"
-        ++ "    '    for i in 0..operations.length() \{' \\\n"
-        ++ "    '        balance = balance + operations[i]' \\\n"
-        ++ "    '        if balance < 0 \{ return true \}' \\\n"
-        ++ "    '    \}' \\\n    '    false' \\\n    '\}'\nelse\n"
-        ++ "  echo 'nothing()'\nfi\n")
+    write_file(at, "#!/bin/sh\nif grep -q below_zero \"$1\"; then\n" +
+        "  printf '%s\\n' 'below_zero(operations: int[]) -> bool \{' \\\n" +
+        "    '    balance = 0' \\\n" +
+        "    '    for i in 0..operations.length() \{' \\\n" +
+        "    '        balance = balance + operations[i]' \\\n" +
+        "    '        if balance < 0 \{ return true \}' \\\n" +
+        "    '    \}' \\\n    '    false' \\\n    '\}'\nelse\n" +
+        "  echo 'nothing()'\nfi\n")
     exec("chmod", ["+x", at])
 
     at
 }
 
 graded(dir: str, model: str, into: str) -> int =>
-    exec("sh", ["-c", "MACA_EVAL_MODEL='{model}' MACA='{maca_bin()}' "
-                          ++ "TMPDIR='{dir}' '{maca_bin()}' run "
-                          ++ "apps/evals/run.maca '{into}'"])
+    exec("sh", ["-c", "MACA_EVAL_MODEL='{model}' MACA='{maca_bin()}' " +
+                          "TMPDIR='{dir}' '{maca_bin()}' run " +
+                          "apps/evals/run.maca '{into}'"])
 
 problems() -> str[] =>
     find("apps/evals/problems", ".maca")
@@ -54,22 +54,22 @@ test_every_ported_problem_compiles_as_a_stub() {
 test_a_stub_fails_the_test_it_ships_with() {
     assert(exec(maca_bin(),
                 ["test", "apps/evals/problems/below_zero.maca"]) != 0,
-           "the stub passed, so the harness cannot tell a written answer "
-               ++ "from an empty one")
+           "the stub passed, so the harness cannot tell a written answer " +
+               "from an empty one")
 }
 
 test_the_harness_counts_what_the_model_solved_and_grades_apart_each_run() {
     dir = scratch()
     model = stand_in(dir)
 
-    assert_eq(str(graded(dir, model, dir ++ "/BASELINE-0.md")), "0",
+    assert_eq(str(graded(dir, model, dir + "/BASELINE-0.md")), "0",
               "the first run of the harness")
-    assert_eq(str(graded(dir, model, dir ++ "/BASELINE-1.md")), "0",
+    assert_eq(str(graded(dir, model, dir + "/BASELINE-1.md")), "0",
               "the second run of the harness")
 
-    first = read_file(dir ++ "/BASELINE-0.md")
+    first = read_file(dir + "/BASELINE-0.md")
 
-    assert_eq(read_file(dir ++ "/BASELINE-1.md"), first,
+    assert_eq(read_file(dir + "/BASELINE-1.md"), first,
               "the same model scored differently twice")
 
     for condition in ["no spec", "spec", "spec + one check retry"] {
@@ -78,14 +78,14 @@ test_the_harness_counts_what_the_model_solved_and_grades_apart_each_run() {
     }
 
     assert(first.contains("| 1 |"),
-           "the stand-in solves exactly one problem and the baseline does "
-               ++ "not say so:\n{first}")
+           "the stand-in solves exactly one problem and the baseline does " +
+               "not say so:\n{first}")
     assert(!first.contains("| 0 |"),
-           "a condition scored zero, so grading is matching prose again:"
-               ++ "\n{first}")
+           "a condition scored zero, so grading is matching prose again:" +
+               "\n{first}")
     assert(walk_dirs(dir).length() >= 2,
-           "both runs graded in one directory, so whichever wrote last "
-               ++ "graded both")
+           "both runs graded in one directory, so whichever wrote last " +
+               "graded both")
 }
 
 /** The path after `maca run` on one line of prose. */

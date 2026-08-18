@@ -35,7 +35,7 @@ serve(args: str[]) -> int {
     work = args.length() > 1 ? args.get(1) : ".maca/dev/tomo"
     root = args.length() > 2 ? args.get(2) : "apps/tomo"
 
-    if !is_dir(root ++ "/book") {
+    if !is_dir(root + "/book") {
         err("no book at {root}/book: run this from the repository root")
         1
     } else {
@@ -48,7 +48,7 @@ serve(args: str[]) -> int {
 }
 
 book_at(root: str, out: str) -> Book {
-    toml = read_file(root ++ "/book.toml")
+    toml = read_file(root + "/book.toml")
     title = conf_value(toml, "title")
 
     Book {
@@ -69,9 +69,9 @@ host(port: int, work: str) -> int {
 }
 
 /** The two directories a dev session owns. */
-site_dir(work: str) -> str => work ++ "/site"
+site_dir(work: str) -> str => work + "/site"
 
-hmr_dir(work: str) -> str => work ++ "/hmr"
+hmr_dir(work: str) -> str => work + "/hmr"
 
 reply(f: Feed, out: str, req: Request) -> Response {
     if is_poll(req) {
@@ -97,11 +97,11 @@ watch(b: Book, f: Feed) -> int {
                 gen = gen + 1
 
                 if publish(f, gen, patch_json(regions)) {
-                    info(regions_patched(patch(regions).length())
-                         ++ " (generation {gen})")
+                    info(regions_patched(patch(regions).length()) +
+                         " (generation {gen})")
                 } else {
-                    err("could not publish generation {gen} into {f.dir}:"
-                        ++ " an open page will reload on the next save")
+                    err("could not publish generation {gen} into {f.dir}:" +
+                        " an open page will reload on the next save")
                 }
             } else {
                 info("built {b.chs.length()} entries per language")
@@ -123,7 +123,7 @@ regions_patched(n: int) -> str =>
 
 read_sources(b: Book, srcs: Store) -> Store =>
     read_langs(b, srcs.set("src:book.toml",
-                           read_file(b.root ++ "/book.toml")),
+                           read_file(b.root + "/book.toml")),
                b.langs.split(","), 0)
 
 read_langs(b: Book, srcs: Store, codes: str[], li: int) -> Store {
@@ -151,7 +151,7 @@ read_one(b: Book, srcs: Store, fallback: str, lang: str, ch: str) -> Store {
     if src == "" || !file_exists(src) {
         srcs
     } else {
-        srcs.set("src:" ++ page_key(lang, ch), read_file(src))
+        srcs.set("src:" + page_key(lang, ch), read_file(src))
     }
 }
 
@@ -206,7 +206,7 @@ render_page(b: Book, regions: Store, srcs: Store, lang: str, fallback: str,
         navs = regions.set(region_key("nav", key),
                            side_items(b.chs, titles, ch, 0))
 
-        if !touched(srcs, "src:" ++ key) && !touched(srcs, "src:book.toml") {
+        if !touched(srcs, "src:" + key) && !touched(srcs, "src:book.toml") {
             navs
         } else {
             p = parts_of(b.chs, titles, ci, read_file(src))

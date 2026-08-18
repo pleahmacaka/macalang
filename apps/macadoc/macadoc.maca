@@ -70,7 +70,7 @@ module_blurb(lines: str[], i: int, acc: str[]) -> str[] {
     if i >= lines.length() || !is_plain_comment(lines.get(i)) {
         acc
     } else {
-        module_blurb(lines, i + 1, acc ++ [comment_body(lines.get(i))])
+        module_blurb(lines, i + 1, acc + [comment_body(lines.get(i))])
     }
 }
 
@@ -102,14 +102,14 @@ scan(lines: str[], i: int, doc: str[], acc: Item[]) -> Item[] {
     } else if opens_block(lines.get(i)) {
         shut = block_shut(lines, i)
 
-        scan(lines, shut + 1, doc ++ block_body(lines, i, shut, []), acc)
+        scan(lines, shut + 1, doc + block_body(lines, i, shut, []), acc)
     } else if doc.length() == 0 {
         scan(lines, i + 1, [], acc)
     } else if !is_decl(lines.get(i)) {
         warn_orphan(doc, i)
         scan(lines, i + 1, [], acc)
     } else {
-        scan(lines, i + 1, [], acc ++ [declared(lines, i, doc)])
+        scan(lines, i + 1, [], acc + [declared(lines, i, doc)])
     }
 }
 
@@ -158,17 +158,17 @@ split_top(r: str, i: int, depth: int, in_str: bool, cur: str,
         c = r.at(i)
 
         if c == "\"" {
-            split_top(r, i + 1, depth, !in_str, cur ++ c, acc)
+            split_top(r, i + 1, depth, !in_str, cur + c, acc)
         } else if in_str {
-            split_top(r, i + 1, depth, in_str, cur ++ c, acc)
+            split_top(r, i + 1, depth, in_str, cur + c, acc)
         } else if c == "(" {
-            split_top(r, i + 1, depth + 1, in_str, cur ++ c, acc)
+            split_top(r, i + 1, depth + 1, in_str, cur + c, acc)
         } else if c == ")" {
-            split_top(r, i + 1, depth - 1, in_str, cur ++ c, acc)
+            split_top(r, i + 1, depth - 1, in_str, cur + c, acc)
         } else if c == "|" && depth == 0 {
             split_top(r, i + 1, depth, in_str, "", acc.push(cur))
         } else {
-            split_top(r, i + 1, depth, in_str, cur ++ c, acc)
+            split_top(r, i + 1, depth, in_str, cur + c, acc)
         }
     }
 }
@@ -266,7 +266,7 @@ appended(acc: str, line: str) -> str {
     if acc == "" {
         line.trim()
     } else {
-        acc ++ " " ++ line.trim()
+        acc + " " + line.trim()
     }
 }
 
@@ -325,16 +325,16 @@ prose(ls: str[]) -> str =>
 
 blocks(ls: str[], i: int, cur: str[], out: str) -> str {
     if i >= ls.length() {
-        out ++ block(cur)
+        out + block(cur)
     } else if is_fence(ls.get(i)) {
         stop = fence_end(ls, i + 1)
         fenced = code_block(fence_tag(ls.get(i)),
                             ls.slice(i + 1, stop).join("\n"))
-        blocks(ls, stop + 1, [], out ++ block(cur) ++ fenced)
+        blocks(ls, stop + 1, [], out + block(cur) + fenced)
     } else if ls.get(i).trim() == "" {
-        blocks(ls, i + 1, [], out ++ block(cur))
+        blocks(ls, i + 1, [], out + block(cur))
     } else {
-        blocks(ls, i + 1, cur ++ [ls.get(i)], out)
+        blocks(ls, i + 1, cur + [ls.get(i)], out)
     }
 }
 
@@ -381,10 +381,10 @@ spans(parts: str[], i: int, out: str) -> str {
         out
     } else if i % 2 == 1 {
         span = code(class=CodeSpan, escape_html(parts.get(i)))
-        spans(parts, i + 1, out ++ span)
+        spans(parts, i + 1, out + span)
     } else {
         starred = paired(parts.get(i).split("*"), "*")
-        spans(parts, i + 1, out ++ emphasis(starred, 0, ""))
+        spans(parts, i + 1, out + emphasis(starred, 0, ""))
     }
 }
 
@@ -392,11 +392,11 @@ emphasis(parts: str[], i: int, out: str) -> str {
     if i >= parts.length() {
         out
     } else if i % 2 == 0 {
-        emphasis(parts, i + 1, out ++ escape_html(parts.get(i)))
+        emphasis(parts, i + 1, out + escape_html(parts.get(i)))
     } else if is_emphasis(parts.get(i)) {
-        emphasis(parts, i + 1, out ++ em(escape_html(parts.get(i))))
+        emphasis(parts, i + 1, out + em(escape_html(parts.get(i))))
     } else {
-        emphasis(parts, i + 1, out ++ "*" ++ escape_html(parts.get(i)) ++ "*")
+        emphasis(parts, i + 1, out + "*" + escape_html(parts.get(i)) + "*")
     }
 }
 
@@ -409,71 +409,71 @@ paired(parts: str[], sep: str) -> str[] {
     } else {
         n = parts.length()
         str_take(parts, n - 2)
-            .push(parts.get(n - 2) ++ sep ++ parts.get(n - 1))
+            .push(parts.get(n - 2) + sep + parts.get(n - 1))
     }
 }
 
 Wrap = "max-w-[78rem] mx-auto px-6"
 
-Shell = "grid grid-cols-[16rem_minmax(0,52rem)] gap-10 justify-center px-6"
-    ++ " py-10 max-md:block max-md:max-w-[52rem] max-md:mx-auto max-md:px-5"
+Shell = "grid grid-cols-[16rem_minmax(0,52rem)] gap-10 justify-center px-6" +
+    " py-10 max-md:block max-md:max-w-[52rem] max-md:mx-auto max-md:px-5"
 
-PreClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 border"
-    ++ " border-zinc-200 dark:border-zinc-800 p-4 overflow-x-auto"
-    ++ " text-[0.85rem] m-0"
+PreClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 border" +
+    " border-zinc-200 dark:border-zinc-800 p-4 overflow-x-auto" +
+    " text-[0.85rem] m-0"
 
-SigClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 border"
-    ++ " border-zinc-200 dark:border-zinc-800 px-4 py-3 overflow-x-auto"
-    ++ " text-[0.9rem] m-0"
+SigClass = "mt-3 bg-zinc-50 dark:bg-zinc-900 border" +
+    " border-zinc-200 dark:border-zinc-800 px-4 py-3 overflow-x-auto" +
+    " text-[0.9rem] m-0"
 
-ProseClass = "mt-3 text-[0.95rem] leading-relaxed text-zinc-600"
-    ++ " dark:text-zinc-400 m-0"
+ProseClass = "mt-3 text-[0.95rem] leading-relaxed text-zinc-600" +
+    " dark:text-zinc-400 m-0"
 
 Measure = "max-w-[42rem]"
 
 Stack = "grid grid-cols-1"
 
 page(title: str, side: str, body: str) -> str =>
-    "<!doctype html>\n"
-        ++ html(lang="en",
+    "<!doctype html>\n" +
+        html(lang="en",
             head(
                 meta(charset="utf-8")
                 meta(name="viewport",
                      content="width=device-width,initial-scale=1")
                 title_tag(title)
                 font_link("../")
-                style(base_css() ++ code_css() ++ doc_css() ++ styles())
+                style(base_css() + code_css() + doc_css() + styles())
             )
             body_tag(page_class("font-sans"),
-                top_bar(title)
-                    ++ div(class=Shell, side ++ element("main", body))
-                    ++ hover_card()
-                    ++ nav_script()))
-        ++ "\n"
+                top_bar(title) +
+                    div(class=Shell, side + element("main", body)) +
+                    hover_card() +
+                    nav_script())) +
+        "\n"
 
 top_bar(title: str) -> str =>
-    header(class="sticky top-0 z-40 bg-white dark:bg-zinc-950 border-b"
-                 ++ " border-zinc-200 dark:border-zinc-800",
-        div(class=Wrap ++ " flex flex-wrap items-center justify-between"
-                  ++ " gap-x-4 gap-y-2 py-3",
+    header(class="sticky top-0 z-40 bg-white dark:bg-zinc-950 border-b" +
+                 " border-zinc-200 dark:border-zinc-800",
+        div(class=Wrap + " flex flex-wrap items-center justify-between" +
+                  " gap-x-4 gap-y-2 py-3",
             nav(aria-label="Reference",
                 class="flex items-center gap-2 text-[0.9rem]",
                 a(class="font-bold no-underline text-inherit focus:underline",
                   href="../index.html", "Maca")
                 span(class="text-zinc-300 dark:text-zinc-700", "/")
-                a(class="no-underline text-zinc-600 dark:text-zinc-400"
-                        ++ " hover:text-black dark:hover:text-white"
-                        ++ " focus:underline",
+                a(class="no-underline text-zinc-600 dark:text-zinc-400" +
+                        " hover:text-black dark:hover:text-white" +
+                        " focus:underline",
                   href="index.html", "API reference"))
-            span(class="text-[0.85rem] text-zinc-500"
-                       ++ " dark:text-zinc-400",
+            span(class="text-[0.85rem] text-zinc-500" +
+                       " dark:text-zinc-400",
                  escape_html(title))))
 
 hover_card() -> str =>
     div(id="macadoc-card", hidden=true,
-        class="absolute z-50 max-w-[26rem] pointer-events-none"
-              ++ " border border-zinc-200 dark:border-zinc-700"
-              ++ " bg-white dark:bg-zinc-900 p-3",
+        class="absolute z-50 max-w-[26rem] pointer-events-none" +
+              " border border-zinc-200 dark:border-zinc-700" +
+              " bg-white dark:bg-zinc-900 p-3",
         pre(class="m-0 overflow-x-auto text-[0.8rem]",
             code(class=Mono, ""))
         p(class="mt-2 mb-0 text-[0.8rem] text-zinc-600 dark:text-zinc-400",
@@ -482,38 +482,38 @@ hover_card() -> str =>
 index_page(ms: Module[]) -> str =>
     page("API reference", sidebar(ms, ""),
          section(class="py-2",
-             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500"
-                     ++ " dark:text-zinc-400 m-0",
+             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500" +
+                     " dark:text-zinc-400 m-0",
                "Reference")
              h1(class="mt-1 font-bold text-[2.1rem] tracking-tight m-0",
                 "API reference")
-             p(class=ProseClass ++ " " ++ Measure,
-               "Every module of the standard library, generated from the"
-                   ++ " source by " ++ code(class=CodeSpan,
-                                            "apps/macadoc/macadoc.maca") ++ ". Press "
-                   ++ element("kbd", class=KbdClass, "/") ++ " to search.")
-             div(class=Stack ++ " mt-8 gap-4", module_cards(ms, 0))))
+             p(class=ProseClass + " " + Measure,
+               "Every module of the standard library, generated from the" +
+                   " source by " + code(class=CodeSpan,
+                                            "apps/macadoc/macadoc.maca") + ". Press " +
+                   element("kbd", class=KbdClass, "/") + " to search.")
+             div(class=Stack + " mt-8 gap-4", module_cards(ms, 0))))
 
 Mono = "font-mono text-[0.9em]"
 
-KbdClass = "text-[0.7rem] px-1 py-[0.05rem] border"
-    ++ " border-zinc-300 dark:border-zinc-700 text-zinc-500"
-    ++ " dark:text-zinc-400"
+KbdClass = "text-[0.7rem] px-1 py-[0.05rem] border" +
+    " border-zinc-300 dark:border-zinc-700 text-zinc-500" +
+    " dark:text-zinc-400"
 
 module_cards(ms: Module[], i: int) -> str {
     if i >= ms.length() {
         ""
     } else {
-        module_card(ms.get(i)) ++ module_cards(ms, i + 1)
+        module_card(ms.get(i)) + module_cards(ms, i + 1)
     }
 }
 
 module_card(m: Module) -> str =>
-    a(class="block no-underline text-inherit border"
-            ++ " border-zinc-200 dark:border-zinc-800 p-5 hover:bg-zinc-50"
-            ++ " dark:hover:bg-zinc-900 hover:border-zinc-300"
-            ++ " dark:hover:border-zinc-700",
-      href=m.name ++ ".html",
+    a(class="block no-underline text-inherit border" +
+            " border-zinc-200 dark:border-zinc-800 p-5 hover:bg-zinc-50" +
+            " dark:hover:bg-zinc-900 hover:border-zinc-300" +
+            " dark:hover:border-zinc-700",
+      href=m.name + ".html",
       div(class="flex items-baseline justify-between gap-4",
           span(class="font-mono font-semibold", escape_html(m.path))
           span(class="text-[0.8rem] text-zinc-500 dark:text-zinc-400",
@@ -544,38 +544,38 @@ first_sentence(ls: str[]) -> str {
 module_page(ms: Module[], m: Module) -> str =>
     page(m.path, sidebar(ms, m.name),
          section(class="py-2",
-             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500"
-                     ++ " dark:text-zinc-400 m-0",
+             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500" +
+                     " dark:text-zinc-400 m-0",
                "Module")
-             div(class="mt-1 flex flex-wrap items-baseline justify-between"
-                       ++ " gap-3",
-                 h1(class="font-mono font-bold text-[1.7rem] tracking-tight"
-                          ++ " m-0",
+             div(class="mt-1 flex flex-wrap items-baseline justify-between" +
+                       " gap-3",
+                 h1(class="font-mono font-bold text-[1.7rem] tracking-tight" +
+                          " m-0",
                     escape_html(m.path))
                  span(class="flex items-center gap-3",
-                      span(class="text-[0.8rem] text-zinc-500"
-                                 ++ " dark:text-zinc-400",
+                      span(class="text-[0.8rem] text-zinc-500" +
+                                 " dark:text-zinc-400",
                            counted(m.items.length()))
                       source_link(m.path, 0, "source")))
              div(class=Measure, prose(m.blurb))
-             div(class=Stack ++ " mt-10 gap-6", entries(ms, m, m.items, 0))))
+             div(class=Stack + " mt-10 gap-6", entries(ms, m, m.items, 0))))
 
 entries(ms: Module[], m: Module, items: Item[], i: int) -> str {
     if i >= items.length() {
         ""
     } else {
-        entry(ms, m, items.get(i)) ++ entries(ms, m, items, i + 1)
+        entry(ms, m, items.get(i)) + entries(ms, m, items, i + 1)
     }
 }
 
 entry(ms: Module[], m: Module, it: Item) -> str =>
     article(id=it.name, class=ItemClass,
-        div(class="flex flex-wrap items-center justify-between gap-x-3"
-                  ++ " gap-y-2",
+        div(class="flex flex-wrap items-center justify-between gap-x-3" +
+                  " gap-y-2",
             div(class="flex items-center gap-3",
                 h2(class="font-mono font-semibold text-[1.05rem] m-0",
                    a(class="no-underline text-inherit hover:underline",
-                     href="#" ++ it.name, escape_html(it.name)))
+                     href="#" + it.name, escape_html(it.name)))
                 span(data-kind=it.kind, class=badge_class(it.kind),
                      kind_word(it.kind)))
             div(class="flex items-center gap-3",
@@ -584,14 +584,14 @@ entry(ms: Module[], m: Module, it: Item) -> str =>
         signature_block(ms, m, it)
         div(class=Measure, prose(it.doc)))
 
-ItemClass = "scroll-mt-20 border border-zinc-200"
-    ++ " dark:border-zinc-800 p-5 max-sm:p-4"
+ItemClass = "scroll-mt-20 border border-zinc-200" +
+    " dark:border-zinc-800 p-5 max-sm:p-4"
 
 anchor_link(name: str) -> str =>
-    a(class="no-underline text-[0.8rem] text-zinc-400"
-            ++ " dark:text-zinc-600 hover:text-black"
-            ++ " dark:hover:text-white focus:underline",
-      href="#" ++ name, title="Link to " ++ name, "#")
+    a(class="no-underline text-[0.8rem] text-zinc-400" +
+            " dark:text-zinc-600 hover:text-black" +
+            " dark:hover:text-white focus:underline",
+      href="#" + name, title="Link to " + name, "#")
 
 signature_block(ms: Module[], m: Module, it: Item) -> str =>
     pre(class=SigClass, data-sig=flat(it.sig),
@@ -612,7 +612,7 @@ linked_spans(parts: str[], i: int, ms: Module[], here: str, own: str,
         out
     } else {
         linked_spans(parts, i + 1, ms, here, own,
-                     out ++ TySpan ++ linked_span(parts.get(i), ms, here, own))
+                     out + TySpan + linked_span(parts.get(i), ms, here, own))
     }
 }
 
@@ -624,11 +624,11 @@ linked_span(part: str, ms: Module[], here: str, own: str) -> str {
     if name == own || where == "" {
         part
     } else {
-        a(class="no-underline text-inherit underline-offset-2"
-                ++ " hover:underline focus:underline",
+        a(class="no-underline text-inherit underline-offset-2" +
+                " hover:underline focus:underline",
           href=item_href(where, name, where == here),
-          data-mod=where, data-item=name, name)
-            ++ part.slice(at, part.length())
+          data-mod=where, data-item=name, name) +
+            part.slice(at, part.length())
     }
 }
 
@@ -679,7 +679,7 @@ squeezed(cs: str[], i: int, out: str) -> str {
     } else if cs.get(i) == " " && out.ends_with(" ") {
         squeezed(cs, i + 1, out)
     } else {
-        squeezed(cs, i + 1, out ++ cs.get(i))
+        squeezed(cs, i + 1, out + cs.get(i))
     }
 }
 
@@ -696,8 +696,8 @@ kind_word(kind: str) -> str {
 }
 
 badge_class(kind: str) -> str =>
-    "px-2 py-[0.1rem] text-[0.7rem] uppercase tracking-wide"
-        ++ " border font-semibold kind-" ++ kind
+    "px-2 py-[0.1rem] text-[0.7rem] uppercase tracking-wide" +
+        " border font-semibold kind-" + kind
 
 doc_css() -> str =>
     """.kind-fn { color: #6d28d9; border-color: #ddd6fe }
@@ -715,29 +715,29 @@ a[aria-current="true"] { background-color: #27272a; color: #fafafa }
 """
 
 source_link(path: str, line: int, label: str) -> str =>
-    a(class="no-underline text-zinc-500 dark:text-zinc-400 text-[0.75rem]"
-            ++ " hover:underline",
+    a(class="no-underline text-zinc-500 dark:text-zinc-400 text-[0.75rem]" +
+            " hover:underline",
       href=source_url(path, line), label)
 
 source_url(path: str, line: int) -> str {
     if line <= 0 {
-        Repo ++ "/blob/main/" ++ path
+        Repo + "/blob/main/" + path
     } else {
-        Repo ++ "/blob/main/" ++ path ++ "#L{line}"
+        Repo + "/blob/main/" + path + "#L{line}"
     }
 }
 
-SideClass = "text-[0.85rem] sticky top-[4.5rem] self-start"
-    ++ " max-h-[calc(100vh_-_6rem)]"
-    ++ " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none"
-    ++ " max-md:mb-6 max-md:border-b max-md:border-zinc-200"
-    ++ " max-md:dark:border-zinc-800"
+SideClass = "text-[0.85rem] sticky top-[4.5rem] self-start" +
+    " max-h-[calc(100vh_-_6rem)]" +
+    " overflow-y-auto overscroll-contain max-md:static max-md:max-h-none" +
+    " max-md:mb-6 max-md:border-b max-md:border-zinc-200" +
+    " max-md:dark:border-zinc-800"
 
 sidebar(ms: Module[], cur: str) -> str =>
     div(class=SideClass,
         details(data-doc="nav", open=true,
-            summary(class="hidden max-md:block cursor-pointer py-2 list-none"
-                          ++ " details-marker:hidden text-zinc-500",
+            summary(class="hidden max-md:block cursor-pointer py-2 list-none" +
+                          " details-marker:hidden text-zinc-500",
                     "☰ Modules")
             search_box()
             div(class="mt-2", module_trees(ms, 0, cur))))
@@ -747,19 +747,19 @@ search_box() -> str =>
         input(id="macadoc-search", type="search",
               placeholder="Search names and types",
               aria-label="Search names and types", autocomplete="off",
-              class="w-full px-2 py-1 pr-7 border border-zinc-200"
-                    ++ " dark:border-zinc-700 bg-white"
-                    ++ " dark:bg-zinc-900 text-[0.85rem]")
+              class="w-full px-2 py-1 pr-7 border border-zinc-200" +
+                    " dark:border-zinc-700 bg-white" +
+                    " dark:bg-zinc-900 text-[0.85rem]")
         span(class="absolute right-2 top-[0.35rem] pointer-events-none",
-             element("kbd", class=KbdClass, "/")))
-        ++ p(id="macadoc-empty", hidden=true,
+             element("kbd", class=KbdClass, "/"))) +
+        p(id="macadoc-empty", hidden=true,
              class="text-zinc-500 text-[0.8rem] my-1", "No matches.")
 
 module_trees(ms: Module[], i: int, cur: str) -> str {
     if i >= ms.length() {
         ""
     } else {
-        module_tree(ms.get(i), cur) ++ module_trees(ms, i + 1, cur)
+        module_tree(ms.get(i), cur) + module_trees(ms, i + 1, cur)
     }
 }
 
@@ -767,8 +767,8 @@ module_tree(m: Module, cur: str) -> str {
     here = m.name == cur
 
     details(data-mod=m.name, open=here,
-        summary(class="cursor-pointer py-1 font-mono font-semibold"
-                      ++ " text-[0.82rem] " ++ summary_class(here),
+        summary(class="cursor-pointer py-1 font-mono font-semibold" +
+                      " text-[0.82rem] " + summary_class(here),
                 escape_html(m.name))
         div(class="pb-2", kind_groups(m, here, 0)))
 }
@@ -801,7 +801,7 @@ kind_groups(m: Module, here: bool, i: int) -> str {
     if i >= kinds.length() {
         ""
     } else {
-        kind_group(m, here, kinds.get(i)) ++ kind_groups(m, here, i + 1)
+        kind_group(m, here, kinds.get(i)) + kind_groups(m, here, i + 1)
     }
 }
 
@@ -812,8 +812,8 @@ kind_group(m: Module, here: bool, kind: str) -> str {
         ""
     } else {
         div(data-group=kind,
-            p(class="mt-3 mb-1 px-1 text-[0.7rem] uppercase tracking-wide"
-                    ++ " text-zinc-500 dark:text-zinc-400",
+            p(class="mt-3 mb-1 px-1 text-[0.7rem] uppercase tracking-wide" +
+                    " text-zinc-500 dark:text-zinc-400",
               kind_label(kind))
             ul(class="list-none m-0 p-0", side_rows(m, got, here, 0)))
     }
@@ -823,7 +823,7 @@ of_kind(items: Item[], i: int, kind: str, acc: Item[]) -> Item[] {
     if i >= items.length() {
         acc
     } else if items.get(i).kind == kind {
-        of_kind(items, i + 1, kind, acc ++ [items.get(i)])
+        of_kind(items, i + 1, kind, acc + [items.get(i)])
     } else {
         of_kind(items, i + 1, kind, acc)
     }
@@ -833,18 +833,18 @@ side_rows(m: Module, items: Item[], here: bool, i: int) -> str {
     if i >= items.length() {
         ""
     } else {
-        side_row(m, items.get(i), here)
-            ++ side_rows(m, items, here, i + 1)
+        side_row(m, items.get(i), here) +
+            side_rows(m, items, here, i + 1)
     }
 }
 
 side_row(m: Module, it: Item, here: bool) -> str =>
     li(data-item=it.name, data-sig=flat(it.sig),
        data-brief=plain(first_sentence(it.doc)), class="m-0",
-       a(class="block px-2 py-[0.15rem] no-underline font-mono"
-               ++ " text-[0.8rem] text-zinc-600 dark:text-zinc-400"
-               ++ " hover:bg-zinc-100 dark:hover:bg-zinc-800"
-               ++ " hover:text-black dark:hover:text-white",
+       a(class="block px-2 py-[0.15rem] no-underline font-mono" +
+               " text-[0.8rem] text-zinc-600 dark:text-zinc-400" +
+               " hover:bg-zinc-100 dark:hover:bg-zinc-800" +
+               " hover:text-black dark:hover:text-white",
          href=item_href(m.name, it.name, here),
          data-mod=m.name, data-item=it.name, escape_html(it.name)))
 
@@ -853,9 +853,9 @@ plain(s: str) -> str =>
 
 item_href(module: str, name: str, here: bool) -> str {
     if here {
-        "#" ++ name
+        "#" + name
     } else {
-        module ++ ".html#" ++ name
+        module + ".html#" + name
     }
 }
 
@@ -992,8 +992,8 @@ generate(out: str, sources: str[]) -> int {
     write_file(join(out, "index.html"), index_page(modules))
     written = write_modules(out, modules, 0)
 
-    info(ok("{written} modules, {total_items(modules, 0)} items → "
-            ++ dim(out)))
+    info(ok("{written} modules, {total_items(modules, 0)} items → " +
+            dim(out)))
     0
 }
 
@@ -1021,7 +1021,7 @@ read_all(sources: str[], i: int, acc: Module[]) -> Module[] {
     if i >= sources.length() {
         acc
     } else {
-        read_all(sources, i + 1, acc ++ [read_module(sources.get(i))])
+        read_all(sources, i + 1, acc + [read_module(sources.get(i))])
     }
 }
 
@@ -1029,7 +1029,7 @@ write_modules(out: str, ms: Module[], i: int) -> int {
     if i >= ms.length() {
         0
     } else {
-        write_file(join(out, ms.get(i).name ++ ".html"),
+        write_file(join(out, ms.get(i).name + ".html"),
                    module_page(ms, ms.get(i)))
         1 + write_modules(out, ms, i + 1)
     }

@@ -7,8 +7,8 @@ test_a_tag_call_renders_its_children_in_order() {
     )
 
     assert_eq(html,
-              "<div class=\"wrap\"><h1>Title</h1><p>text</p>"
-                  ++ "<a href=\"x.html\">link</a><hr></div>",
+              "<div class=\"wrap\"><h1>Title</h1><p>text</p>" +
+                  "<a href=\"x.html\">link</a><hr></div>",
               "attributes, children and a void element")
 }
 
@@ -106,7 +106,7 @@ test_a_void_tag_chosen_at_runtime_still_self_closes() {
 }
 
 head_at(level: int, text: str) -> str =>
-    element("h" ++ level, id="s", text)
+    element("h{level}", id="s", text)
 
 test_a_user_function_shadows_the_tag_of_the_same_name() {
     assert_eq(label(true), "side: right", "`label` is the user's function")
@@ -156,8 +156,8 @@ pencil(on: bool) -> Element[] {
 
 row(link: Row, on: bool) -> Element =>
     li(class="row",
-       [i(class="icon", link.icon), span(class="title", link.title)]
-           ++ pencil(on))
+       [i(class="icon", link.icon), span(class="title", link.title)] +
+           pencil(on))
 
 test_a_view_that_renders_nothing_adds_no_node() {
     assert_eq(section(pencil(false)), "<section></section>",
@@ -171,13 +171,13 @@ test_a_list_of_children_is_spliced_into_the_parent() {
     link = Row { title = "Docs", icon = "book" }
 
     assert_eq(row(link, false),
-              "<li class=\"row\"><i class=\"icon\">book</i>"
-                  ++ "<span class=\"title\">Docs</span></li>",
+              "<li class=\"row\"><i class=\"icon\">book</i>" +
+                  "<span class=\"title\">Docs</span></li>",
               "two children and no pencil")
     assert_eq(row(link, true),
-              "<li class=\"row\"><i class=\"icon\">book</i>"
-                  ++ "<span class=\"title\">Docs</span>"
-                  ++ "<button class=\"pencil\">edit</button></li>",
+              "<li class=\"row\"><i class=\"icon\">book</i>" +
+                  "<span class=\"title\">Docs</span>" +
+                  "<button class=\"pencil\">edit</button></li>",
               "and three when the pencil is there")
 }
 
@@ -217,7 +217,7 @@ test_a_view_local_a_nested_function_writes_renders_where_it_ended() {
 }
 
 test_two_calls_to_the_same_view_do_not_share_a_local() {
-    assert_eq(board(1) ++ board(0),
+    assert_eq(board(1) + board(0),
               "<div><span>held 1</span></div><div><span>idle</span></div>",
               "the second call starts over")
 }

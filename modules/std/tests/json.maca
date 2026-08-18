@@ -72,13 +72,13 @@ wide(s: str, n: int) -> str {
     if s.length() >= n {
         s
     } else {
-        wide(s ++ s, n)
+        wide(s + s, n)
     }
 }
 
 test_reading_a_long_string_value_costs_one_pass() {
     big = wide("abcdefghij0123456789", 80000)
-    doc = "\{\"s\":" ++ quote(big) ++ ",\"n\":1\}"
+    doc = "\{\"s\":" + quote(big) + ",\"n\":1\}"
     began = now_ms()
     got = get(doc, "s")
     spent = now_ms() - began

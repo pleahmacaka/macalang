@@ -187,9 +187,9 @@ scan_name(xs: Span[], name: str, i: int) -> int {
 to_json(t: Trace) -> str {
     parts = span_objects(t.spans, 0, [])
     body = parts.join(",")
-    head = "\{\"label\":" ++ quote(t.label)
+    head = "\{\"label\":" + quote(t.label)
 
-    head ++ ",\"spans\":[" ++ body ++ "]\}"
+    head + ",\"spans\":[" + body + "]\}"
 }
 
 span_objects(xs: Span[], i: int, acc: str[]) -> str[] {
@@ -204,9 +204,9 @@ span_json(s: Span) -> str {
     flag = s.closed ? "true" : "false"
     when = "\"start\":{s.start},\"end\":{s.end},\"depth\":{s.depth}"
     where = "\"parent\":{s.parent},\"closed\":{flag}"
-    head = "\{\"name\":" ++ quote(s.name)
+    head = "\{\"name\":" + quote(s.name)
 
-    head ++ "," ++ when ++ "," ++ where ++ "\}"
+    head + "," + when + "," + where + "\}"
 }
 
 /** A trace read back from `to_json`. */

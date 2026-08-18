@@ -32,7 +32,7 @@ str_concat(n: int) -> int {
     out = ""
     i = 0
     while i < n {
-        out = out ++ "ab"
+        out = out + "ab"
         i = i + 1
     }
     out.length()
@@ -45,7 +45,7 @@ str_interp(n: int) -> int {
     out = ""
     i = 0
     while i < n {
-        out = out ++ "{i}|"
+        out = out + "{i}|"
         i = i + 1
     }
     out.length()

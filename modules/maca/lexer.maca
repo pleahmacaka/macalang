@@ -60,7 +60,7 @@ moved(acc: Lexed, i: int) -> Lexed =>
     acc with { pos = i }
 
 note_error(acc: Lexed, msg: str) -> Lexed =>
-    acc with { errors = acc.errors ++ [msg] }
+    acc with { errors = acc.errors + [msg] }
 
 lex(src: str) -> Token[] =>
     lex_all(src).tokens
@@ -100,9 +100,9 @@ emptied(acc: Lexed) -> Lexed =>
             broke = acc.broke, depth = acc.depth }
 
 merged_runs(out: Lexed, left: Lexed, right: Lexed) -> Lexed =>
-    Lexed { tokens = out.tokens ++ left.tokens ++ right.tokens,
-            marks = out.marks ++ left.marks ++ right.marks,
-            errors = out.errors ++ left.errors ++ right.errors,
+    Lexed { tokens = out.tokens + left.tokens + right.tokens,
+            marks = out.marks + left.marks + right.marks,
+            errors = out.errors + left.errors + right.errors,
             pos = right.pos, broke = right.broke, depth = right.depth }
 
 end_run(out: Lexed, i: int, n: int) -> Lexed {
@@ -201,7 +201,7 @@ escape_raw(cs: str[], i: int, acc: str) -> str {
         parts = parts.push(raw_char(cs.get(j)))
         j = j + 1
     }
-    acc ++ parts.join("")
+    acc + parts.join("")
 }
 
 raw_char(c: str) -> str {
@@ -242,9 +242,9 @@ lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
  */
 escaped_in_interp(cs: str[], i: int, out: Lexed) -> Lexed {
     shut = plain_end(cs, i + 1)
-    held = note_error(out, "a `\\` inside an interpolation is not an escape:"
-                           ++ " a string written inside `{{…}}` is quoted"
-                           ++ " plainly, as in `xs.join(\", \")`")
+    held = note_error(out, "a `\\` inside an interpolation is not an escape:" +
+                           " a string written inside `{{…}}` is quoted" +
+                           " plainly, as in `xs.join(\", \")`")
 
     moved(keep(held, mk_token(TStr, span(cs, i + 1, shut), i)), shut + 1)
 }
@@ -272,8 +272,8 @@ unclosed(out: Lexed, cs: str[], from: int, j: int) -> Lexed {
     if j < cs.length() {
         out
     } else if opens_interp(cs, from, j) {
-        note_error(out, "unterminated interpolation: a literal `{{` in a"
-                        ++ " string is written `{{{{`")
+        note_error(out, "unterminated interpolation: a literal `{{` in a" +
+                        " string is written `{{{{`")
     } else {
         note_error(out, "unterminated string")
     }
@@ -448,8 +448,8 @@ at_or_blank(cs: str[], i: int) -> str {
 }
 
 lex_punct(cs: str[], i: int, out: Lexed, c: str) -> Lexed {
-    two = c ++ at_or_blank(cs, i + 1)
-    three = two ++ at_or_blank(cs, i + 2)
+    two = c + at_or_blank(cs, i + 1)
+    three = two + at_or_blank(cs, i + 2)
 
     if three == "..." {
         moved(keep(out, mk_token(Ellipsis, three, i)), i + 3)

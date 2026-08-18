@@ -105,7 +105,7 @@ absent_cells(page: str, rs: Result[], ks: str[], i: int,
         acc
     } else {
         absent_cells(page, rs, ks, i + 1,
-                     acc ++ absent_langs(page, rs, ks.get(i), langs(), 0, []))
+                     acc + absent_langs(page, rs, ks.get(i), langs(), 0, []))
     }
 }
 
@@ -131,7 +131,7 @@ cell(rs: Result[], algo: str, lang: str) -> str {
 test_each_column_is_under_its_own_language() {
     page = bench_page()
     rs = runs()
-    want = [english().tbl_kernel, english().tbl_workload] ++ langs()
+    want = [english().tbl_kernel, english().tbl_workload] + langs()
 
     assert_eq(column_labels(page).join(" | "), want.join(" | "),
               "the header names the kernel, the workload, then each language")
@@ -191,7 +191,7 @@ misplaced(page: str, rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         misplaced(page, rs, ks, i + 1,
-                  acc ++ off_column(rs, ks.get(i),
+                  acc + off_column(rs, ks.get(i),
                                     kernel_cells(page, ks.get(i)),
                                     langs(), 0, []))
     }
@@ -200,13 +200,13 @@ misplaced(page: str, rs: Result[], ks: str[], i: int, acc: str[]) -> str[] {
 off_column(rs: Result[], algo: str, cs: str[], ls: str[], j: int,
            acc: str[]) -> str[] {
     if j >= ls.length() {
-        acc ++ off_workload(algo, cs)
+        acc + off_workload(algo, cs)
     } else if at(cs, j + 2) == cell(rs, algo, ls.get(j)) {
         off_column(rs, algo, cs, ls, j + 1, acc)
     } else {
         off_column(rs, algo, cs, ls, j + 1,
-                   acc.push("{case_name(algo, ls.get(j))} column holds"
-                            ++ " \"{at(cs, j + 2)}\""))
+                   acc.push("{case_name(algo, ls.get(j))} column holds" +
+                            " \"{at(cs, j + 2)}\""))
     }
 }
 
@@ -260,7 +260,7 @@ test_the_page_says_where_maca_loses() {
 all_named(page: str, ks: str[], i: int) -> bool {
     if i >= ks.length() {
         true
-    } else if !page.contains(">" ++ ks.get(i) ++ "</code>") {
+    } else if !page.contains(">" + ks.get(i) + "</code>") {
         false
     } else {
         all_named(page, ks, i + 1)
@@ -395,7 +395,7 @@ chapters_exist(cs: Copy[], i: int) -> bool {
 }
 
 chapter(lang: str) -> str =>
-    "apps/tomo/book/" ++ lang ++ "/" ++ StartChapter ++ ".md"
+    "apps/tomo/book/" + lang + "/" + StartChapter + ".md"
 
 test_the_korean_page_carries_the_same_benchmark() {
     ko = read_file(join(built(), "ko/benchmarks.html"))
@@ -423,7 +423,7 @@ named(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {
         acc
     } else {
-        named(parts, i + 1, acc ++ split_once(parts.get(i), "\"").get(0)
+        named(parts, i + 1, acc + split_once(parts.get(i), "\"").get(0)
                                       .split(" "))
     }
 }
@@ -439,10 +439,10 @@ unruled(sheet: str, cs: str[], i: int, acc: str[]) -> str[] {
 }
 
 has_rule(sheet: str, class: str) -> bool {
-    sel = "." ++ class
+    sel = "." + class
 
-    class.starts_with("language-") || sheet.contains(sel ++ " ")
-        || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
+    class.starts_with("language-") || sheet.contains(sel + " ")
+        || sheet.contains(sel + ":") || sheet.contains(sel + "[")
 }
 
 test_the_examples_on_the_front_page_are_highlighted() {

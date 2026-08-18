@@ -37,7 +37,7 @@ imports_of(src: str, ts: Token[], marks: Token[], i: int,
         imports_of(src, ts, marks, i + 1, acc)
     } else {
         imports_of(src, ts, marks, import_end(ts, i + 1),
-                   acc ++ [one_import(src, ts, marks, i)])
+                   acc + [one_import(src, ts, marks, i)])
     }
 }
 
@@ -64,9 +64,9 @@ in_order(a: Token[], b: Token[], i: int, j: int, acc: Token[]) -> Token[] {
         acc
     } else if j >= b.length()
             || (i < a.length() && a.get(i).pos < b.get(j).pos) {
-        in_order(a, b, i + 1, j, acc ++ [a.get(i)])
+        in_order(a, b, i + 1, j, acc + [a.get(i)])
     } else {
-        in_order(a, b, i, j + 1, acc ++ [b.get(j)])
+        in_order(a, b, i, j + 1, acc + [b.get(j)])
     }
 }
 

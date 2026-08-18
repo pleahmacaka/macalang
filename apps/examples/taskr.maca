@@ -31,7 +31,7 @@ task_of(src: str) -> Task =>
     }
 
 save(tasks: Task[]) -> bool =>
-    write_file(store_path(), "[" ++ tasks.map(json_of).join(",") ++ "]")
+    write_file(store_path(), "[" + tasks.map(json_of).join(",") + "]")
 
 json_of(t: Task) -> str =>
     object_of(["id", "title", "status"],

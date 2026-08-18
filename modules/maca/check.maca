@@ -77,7 +77,7 @@ Signature = {
 }
 
 bind(env: Env, name: str, ty: Ty) -> Env =>
-    env with { names = env.names ++ [name], types = env.types ++ [ty] }
+    env with { names = env.names + [name], types = env.types + [ty] }
 
 complain(env: Env, why: str) -> Env =>
     complain_as(env, "M0001", why)
@@ -88,7 +88,7 @@ complain(env: Env, why: str) -> Env =>
 complain_as(env: Env, code: str, why: str) -> Env {
     said = Diagnostic { code, message = why, note = "", pos = env.here }
 
-    env with { errors = env.errors ++ [said] }
+    env with { errors = env.errors + [said] }
 }
 
 note(env: Env, why: str) -> Env {
@@ -153,10 +153,10 @@ fn_arg_tys(list: str, acc: Ty[]) -> Ty[] {
     if list == "" {
         acc
     } else if cut < 0 {
-        acc ++ [ty_named(list)]
+        acc + [ty_named(list)]
     } else {
         fn_arg_tys(list.slice(cut + 2, list.length()),
-                   acc ++ [ty_named(list.slice(0, cut))])
+                   acc + [ty_named(list.slice(0, cut))])
     }
 }
 
@@ -194,7 +194,7 @@ param_types(env: Env, ps: Expr[], i: int, acc: Ty[]) -> Signature {
     } else {
         got = declared_type(env, ps.get(i).ty)
 
-        param_types(got.env, ps, i + 1, acc ++ [got.ty])
+        param_types(got.env, ps, i + 1, acc + [got.ty])
     }
 }
 
@@ -210,8 +210,8 @@ collect_hidden(env: Env, items: Stmt[], i: int) -> Env {
     if i >= items.length() {
         env
     } else if items.get(i).kind == SFn {
-        collect_hidden(env with { hidden = env.hidden
-                                      ++ hidden_of(items.get(i)) },
+        collect_hidden(env with { hidden = env.hidden +
+                                      hidden_of(items.get(i)) },
                        items, i + 1)
     } else {
         collect_hidden(env, items, i + 1)
@@ -219,13 +219,13 @@ collect_hidden(env: Env, items: Stmt[], i: int) -> Env {
 }
 
 hidden_of(s: Stmt) -> str[] =>
-    hidden_params(s.params, 0, []) ++ hidden_binds(s.body, 0, [])
+    hidden_params(s.params, 0, []) + hidden_binds(s.body, 0, [])
 
 hidden_params(ps: Expr[], i: int, acc: str[]) -> str[] {
     if i >= ps.length() {
         acc
     } else {
-        hidden_params(ps, i + 1, acc ++ [ps.get(i).text])
+        hidden_params(ps, i + 1, acc + [ps.get(i).text])
     }
 }
 
@@ -234,8 +234,8 @@ hidden_binds(stmts: Stmt[], i: int, acc: str[]) -> str[] {
         acc
     } else if stmts.get(i).kind == SBind {
         hidden_binds(stmts, i + 1,
-                     acc ++ [stmts.get(i).name]
-                         ++ hidden_lambda(stmts.get(i).value))
+                     acc + [stmts.get(i).name] +
+                         hidden_lambda(stmts.get(i).value))
     } else {
         hidden_binds(stmts, i + 1, acc)
     }
@@ -248,8 +248,8 @@ hidden_lambda(e: Expr) -> str[] {
     if e.kind != ELambda {
         []
     } else if lambda_body(e).kind == EBlock {
-        hidden_params(lambda_params(e), 0, [])
-            ++ hidden_binds(lambda_body(e).stmts, 0, [])
+        hidden_params(lambda_params(e), 0, []) +
+            hidden_binds(lambda_body(e).stmts, 0, [])
     } else {
         hidden_params(lambda_params(e), 0, [])
     }
@@ -289,17 +289,17 @@ add_const(env: Env, s: Stmt) -> Env {
     got = type_in(env, s.value)
     held = if s.ret != "" { ty_named(s.ret) } else { got.ty }
 
-    got.env with { names = got.env.names ++ [s.name],
-                   types = got.env.types ++ [held] }
+    got.env with { names = got.env.names + [s.name],
+                   types = got.env.types + [held] }
 }
 
 add_fn(env: Env, s: Stmt) -> Env {
     made = param_types(env, s.params, 0, [])
     back = declared_type(made.env, s.ret)
 
-    back.env with { fns = back.env.fns ++ [s.name],
-                    sigs = back.env.sigs ++ [t_fn(made.tys, back.ty)],
-                    varargs = back.env.varargs ++ rest_taker(s) }
+    back.env with { fns = back.env.fns + [s.name],
+                    sigs = back.env.sigs + [t_fn(made.tys, back.ty)],
+                    varargs = back.env.varargs + rest_taker(s) }
 }
 
 rest_before_the_end(ps: Expr[], i: int) -> bool {
@@ -326,8 +326,8 @@ add_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
     if i >= fs.length() {
         env
     } else {
-        held = env with { fields = env.fields ++ [rec ++ "." ++ fs.get(i).text],
-                          ftypes = env.ftypes ++ [ty_named(fs.get(i).ty)] }
+        held = env with { fields = env.fields + [rec + "." + fs.get(i).text],
+                          ftypes = env.ftypes + [ty_named(fs.get(i).ty)] }
 
         add_fields(held, rec, fs, i + 1)
     }
@@ -337,9 +337,9 @@ add_ctors(env: Env, sum: str, vs: Expr[], i: int) -> Env {
     if i >= vs.length() {
         env
     } else {
-        held = env with { ctors = env.ctors ++ [vs.get(i).text],
-                          owners = env.owners ++ [sum],
-                          slots = env.slots ++ [slot_types(vs.get(i))] }
+        held = env with { ctors = env.ctors + [vs.get(i).text],
+                          owners = env.owners + [sum],
+                          slots = env.slots + [slot_types(vs.get(i))] }
 
         add_ctors(held, sum, vs, i + 1)
     }
@@ -365,8 +365,8 @@ type_in(env: Env, e: Expr) -> Typed =>
         EField   => field_type(env, e)
         EMethod  => method_type(env, e)
         EBlock   => block_type(env, e)
-        EBad     => typed(complain(env, "no expression starts at "
-                                        ++ "`{e.text}`"), t_error())
+        EBad     => typed(complain(env, "no expression starts at " +
+                                        "`{e.text}`"), t_error())
         EAttr    => type_in(env, e.children.get(0))
         EGuard   => typed(walk_args(env, e.children, 0), t_bool())
         EMatch   => match_type(env, e)
@@ -449,9 +449,9 @@ unary_type(env: Env, e: Expr) -> Typed {
  */
 spawn_checked(env: Env, e: Expr) -> Env {
     if e.kind == ECall && env.varargs.index_of(e.text) >= 0 {
-        complain(env, "`spawn {e.text}` cannot take a variadic: a task takes"
-                      ++ " whole numbers and strings, so wrap it in a"
-                      ++ " function that does")
+        complain(env, "`spawn {e.text}` cannot take a variadic: a task takes" +
+                      " whole numbers and strings, so wrap it in a" +
+                      " function that does")
     } else {
         env
     }
@@ -467,23 +467,23 @@ ident_type(env: Env, e: Expr) -> Typed {
     } else if variant >= 0 {
         typed(env, t_con(env.owners.get(variant), []))
     } else if declared >= 0 && env.varargs.index_of(e.text) >= 0 {
-        typed(complain(env, "`{e.text}` is variadic, so it cannot be used as a"
-                            ++ " function value; call it, or declare it"
-                            ++ " `{e.text}(xs: T[])` and pass a list"),
+        typed(complain(env, "`{e.text}` is variadic, so it cannot be used as a" +
+                            " function value; call it, or declare it" +
+                            " `{e.text}(xs: T[])` and pass a list"),
               t_error())
     } else if declared >= 0 {
         typed(env, env.sigs.get(declared))
     } else if is_prelude_call(e.text) {
-        typed(complain(env, "`{e.text}` is a builtin, so it cannot be used as a"
-                            ++ " function value; wrap it, as in"
-                            ++ " `xs.map(x => {e.text}(x))`"),
+        typed(complain(env, "`{e.text}` is a builtin, so it cannot be used as a" +
+                            " function value; wrap it, as in" +
+                            " `xs.map(x => {e.text}(x))`"),
               t_error())
     } else if env.hidden.index_of(e.text) >= 0 {
         typed(complain_as(env, "M0006",
-                          "`{e.text}` is a local of another function, and a"
-                              ++ " local is reachable only inside the one that"
-                              ++ " declares it; state two functions share is"
-                              ++ " written at the top level"),
+                          "`{e.text}` is a local of another function, and a" +
+                              " local is reachable only inside the one that" +
+                              " declares it; state two functions share is" +
+                              " written at the top level"),
               t_any())
     } else {
         typed(env, t_any())
@@ -523,10 +523,10 @@ closure_sig(env: Env, e: Expr) -> Ty {
     at < 0 ? t_any() : env.sigs.get(at)
 }
 
-StdExports = " decode std/json encode std/json"
-    ++ " output std/proc have std/proc env_or std/proc"
-    ++ " join std/path basename std/path dirname std/path"
-    ++ " between std/text split_once std/text indent std/text "
+StdExports = " decode std/json encode std/json" +
+    " output std/proc have std/proc env_or std/proc" +
+    " join std/path basename std/path dirname std/path" +
+    " between std/text split_once std/text indent std/text "
 
 /** A name the standard library exports is a missing import, not a missing
  * function.
@@ -554,8 +554,8 @@ unknown_call(env: Env, name: str) -> Env {
     } else if is_host_builtin(name) {
         env
     } else {
-        complain_as(env, "M0006", "call to undefined function `{name}`"
-                                      ++ carried_by(name))
+        complain_as(env, "M0006", "call to undefined function `{name}`" +
+                                      carried_by(name))
     }
 }
 
@@ -592,7 +592,7 @@ arg_types(env: Env, args: Expr[], i: int, acc: Ty[]) -> Signature {
     } else {
         got = type_in(env, args.get(i))
 
-        arg_types(got.env, args, i + 1, acc ++ [got.ty])
+        arg_types(got.env, args, i + 1, acc + [got.ty])
     }
 }
 
@@ -637,8 +637,8 @@ noted_shape(env: Env, want: Ty, got: Ty) -> Env {
             || env.holes.index_of(hole.slot) >= 0 {
         env
     } else {
-        env with { holes = env.holes ++ [hole.slot],
-                   fills = env.fills ++ [seen] }
+        env with { holes = env.holes + [hole.slot],
+                   fills = env.fills + [seen] }
     }
 }
 
@@ -660,7 +660,7 @@ solved_all(env: Env, ts: Ty[], i: int) -> Ty[] {
     if i >= ts.length() {
         []
     } else {
-        [solved_ty(env, ts.get(i))] ++ solved_all(env, ts, i + 1)
+        [solved_ty(env, ts.get(i))] + solved_all(env, ts, i + 1)
     }
 }
 
@@ -669,8 +669,8 @@ takes_rest(env: Env, e: Expr, wanted: int) -> bool =>
 
 wrong_arity(env: Env, e: Expr, wanted: int) -> Env {
     if env.varargs.index_of(e.text) >= 0 {
-        complain(env, "`{e.text}` takes at least {wanted - 1} argument(s), "
-                      ++ "given {e.children.length()}")
+        complain(env, "`{e.text}` takes at least {wanted - 1} argument(s), " +
+                      "given {e.children.length()}")
     } else {
         complain(env, "`{e.text}` takes {wanted} argument(s), given {e.children.length()}")
     }
@@ -770,8 +770,13 @@ operator_type(env: Env, e: Expr) -> Typed {
     lhs = type_in(env, e.children.get(0))
     rhs = type_in(lhs.env, e.children.get(1))
 
-    if e.text == "++" || joins(rhs.env, e.text, lhs.ty, rhs.ty) {
-        typed(rhs.env, concat_type(rhs.env, lhs.ty, rhs.ty))
+    if e.text == "++" {
+        typed(complain(rhs.env,
+                       "`++` is not an operator: joining is `+`, and the only" +
+                           " `++` left is `n++`, which is `n = n + 1`"),
+              concat_type(rhs.env, lhs.ty, rhs.ty))
+    } else if joins(rhs.env, e.text, lhs.ty, rhs.ty) {
+        join_united(rhs.env, e.text, lhs.ty, rhs.ty)
     } else if e.text == ".." {
         range_type(rhs.env, lhs.ty, rhs.ty)
     } else if is_shift(e.text) {
@@ -788,12 +793,27 @@ operator_type(env: Env, e: Expr) -> Typed {
 is_list(t: Ty) -> bool =>
     t.kind == KCon && t.name == "Array"
 
+/** `+` joins when either side already is text or a list: the other side is
+ * then unified toward it, which is what types a lambda's bare parameter.
+ */
 joins(env: Env, op: str, a: Ty, b: Ty) -> bool {
     left = resolve(env.infer, a)
     right = resolve(env.infer, b)
 
-    op == "+" && ((left.kind == KStr && right.kind == KStr)
-                      || (is_list(left) && is_list(right)))
+    op == "+" && (left.kind == KStr || right.kind == KStr || is_list(left)
+                      || is_list(right))
+}
+
+join_united(env: Env, op: str, a: Ty, b: Ty) -> Typed {
+    step = unify(env.infer, a, b)
+
+    if step.error != "" {
+        arith_type(env, op, a, b)
+    } else {
+        held = with_infer(env, step.infer)
+
+        typed(held, concat_type(held, a, b))
+    }
 }
 
 concat_type(env: Env, a: Ty, b: Ty) -> Ty {
@@ -829,7 +849,7 @@ overload_name(op: str) -> str {
 declares_field(env: Env, owner: str, i: int) -> bool {
     if i >= env.fields.length() {
         false
-    } else if env.fields.get(i).index_of(owner ++ ".") == 0 {
+    } else if env.fields.get(i).index_of(owner + ".") == 0 {
         true
     } else {
         declares_field(env, owner, i + 1)
@@ -924,13 +944,13 @@ method_type(env: Env, e: Expr) -> Typed {
     }
 }
 
-StrMethods = " length split trim upper lower contains starts_with ends_with"
-    ++ " replace substr slice index_of repeat pad_start pad_end pad_center"
-    ++ " chars at get is_whitespace is_ascii_digit is_alpha "
+StrMethods = " length split trim upper lower contains starts_with ends_with" +
+    " replace substr slice index_of repeat pad_start pad_end pad_center" +
+    " chars at get is_whitespace is_ascii_digit is_alpha "
 
-ListMethods = " map filter reduce fold sort sort_by reverse push pop set"
-    ++ " insert remove slice contains index_of index_of_by enumerate sum min"
-    ++ " max first last get length parallel join "
+ListMethods = " map filter reduce fold sort sort_by reverse push pop set" +
+    " insert remove slice contains index_of index_of_by enumerate sum min" +
+    " max first last get length parallel join "
 
 MapMethods = " set get has remove keys length "
 
@@ -984,7 +1004,7 @@ method_gap(known: str, name: str, what: str) -> str {
 /** The type of a record's field, when the receiver is a record that names one.
  */
 field_fn_ty(env: Env, recv: Ty, name: str) -> Ty {
-    at = env.fields.index_of(recv.name ++ "." ++ name)
+    at = env.fields.index_of(recv.name + "." + name)
 
     if recv.kind != KCon || at < 0 {
         t_any()
@@ -1142,7 +1162,7 @@ check_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
 }
 
 field_set(env: Env, rec: str, f: Expr) -> Env {
-    at = env.fields.index_of(rec ++ "." ++ f.children.get(0).text)
+    at = env.fields.index_of(rec + "." + f.children.get(0).text)
     got = type_in(env, f)
 
     if at < 0 {
@@ -1177,12 +1197,12 @@ missing_fields(env: Env, rec: str, fs: Expr[]) -> Env {
 absent_fields(env: Env, rec: str, fs: Expr[], i: int, acc: str[]) -> str[] {
     if i >= env.fields.length() {
         acc
-    } else if env.fields.get(i).index_of(rec ++ ".") != 0
+    } else if env.fields.get(i).index_of(rec + ".") != 0
             || names_field(fs, field_tail(env.fields.get(i), rec), 0) {
         absent_fields(env, rec, fs, i + 1, acc)
     } else {
         absent_fields(env, rec, fs, i + 1,
-                      acc ++ [field_tail(env.fields.get(i), rec)])
+                      acc + [field_tail(env.fields.get(i), rec)])
     }
 }
 
@@ -1203,7 +1223,7 @@ lit_field_name(f: Expr) -> str =>
 unknown_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
     if i >= fs.length() {
         env
-    } else if env.fields.index_of(rec ++ "." ++ lit_field_name(fs.get(i))) >= 0 {
+    } else if env.fields.index_of(rec + "." + lit_field_name(fs.get(i))) >= 0 {
         unknown_fields(env, rec, fs, i + 1)
     } else {
         told = lit_field_name(fs.get(i))
@@ -1216,7 +1236,7 @@ unknown_fields(env: Env, rec: str, fs: Expr[], i: int) -> Env {
 field_type(env: Env, e: Expr) -> Typed {
     base = type_in(env, e.children.get(0))
     owner = resolve(base.env.infer, base.ty)
-    at = env.fields.index_of(owner.name ++ "." ++ e.text)
+    at = env.fields.index_of(owner.name + "." + e.text)
 
     if is_entry_type(owner.name) {
         typed(base.env, entry_field_ty(owner.name, e.text))
@@ -1307,7 +1327,7 @@ uncovered(env: Env, e: Expr, sum: str, i: int, acc: str[]) -> str[] {
     } else if env.owners.get(i) != sum || arm_names(e, env.ctors.get(i), 1) {
         uncovered(env, e, sum, i + 1, acc)
     } else {
-        uncovered(env, e, sum, i + 1, acc ++ [env.ctors.get(i)])
+        uncovered(env, e, sum, i + 1, acc + [env.ctors.get(i)])
     }
 }
 
@@ -1382,7 +1402,7 @@ names_but(xs: str[], name: str, i: int, acc: str[]) -> str[] {
     } else if xs.get(i) == name {
         names_but(xs, name, i + 1, acc)
     } else {
-        names_but(xs, name, i + 1, acc ++ [xs.get(i)])
+        names_but(xs, name, i + 1, acc + [xs.get(i)])
     }
 }
 
@@ -1396,9 +1416,9 @@ named_pattern(env: Env, pat: Expr) -> Env {
         env
     } else {
         complain_as(env, "M0006",
-                    "`{pat.text}` is capitalized, so it is a constructor,"
-                        ++ " and nothing declares one by that name:"
-                        ++ " {ctor_hint(env, pat.text)}")
+                    "`{pat.text}` is capitalized, so it is a constructor," +
+                        " and nothing declares one by that name:" +
+                        " {ctor_hint(env, pat.text)}")
     }
 }
 
@@ -1462,12 +1482,12 @@ edit_cells(a: str, b: str, prev: int[], cur: int[], i: int, j: int) -> int[] {
         best = least_of(prev.get(j) + cost, prev.get(j + 1) + 1,
                         cur.get(j) + 1)
 
-        edit_cells(a, b, prev, cur ++ [best], i, j + 1)
+        edit_cells(a, b, prev, cur + [best], i, j + 1)
     }
 }
 
 edit_row(n: int, at: int, acc: int[]) -> int[] =>
-    at >= n ? acc : edit_row(n, at + 1, acc ++ [at])
+    at >= n ? acc : edit_row(n, at + 1, acc + [at])
 
 least_of(a: int, b: int, c: int) -> int {
     m = a < b ? a : b
@@ -1615,16 +1635,16 @@ jump_kids(env: Env, s: Stmt, xs: Expr[], i: int, held: bool) -> Env {
 
 jump_stands(env: Env, s: Stmt, e: Expr, held: bool) -> Env {
     if !held {
-        complain(env, "this `return` stands inside an expression, and"
-                          ++ " `return` is a statement")
+        complain(env, "this `return` stands inside an expression, and" +
+                          " `return` is a statement")
     } else if s.name == "" {
         env
     } else if s.ret == "" && e.children.length() > 0 {
-        complain(env, "`{s.name}` declares no result, so this `return` has"
-                          ++ " nothing to carry")
+        complain(env, "`{s.name}` declares no result, so this `return` has" +
+                          " nothing to carry")
     } else if s.ret != "" && e.children.length() == 0 {
-        complain(env, "`{s.name}` gives back a `{s.ret}`, and a bare `return`"
-                          ++ " leaves without one")
+        complain(env, "`{s.name}` gives back a `{s.ret}`, and a bare `return`" +
+                          " leaves without one")
     } else if e.children.length() == 0 {
         env
     } else {
@@ -1723,9 +1743,9 @@ extend(env: Env, s: Stmt, ty: Ty) -> Env {
     if s.kind != SBind {
         env
     } else if env.frozen.index_of(s.name) >= 0 {
-        complain_as(env, "M0005", "cannot reassign constant `{s.name}`;"
-                                      ++ " declare it mutable with"
-                                      ++ " `{s.name} = …` (no `const`)")
+        complain_as(env, "M0005", "cannot reassign constant `{s.name}`;" +
+                                      " declare it mutable with" +
+                                      " `{s.name} = …` (no `const`)")
     } else if s.ret != "" {
         sealed(bind(joined(env, ty_named(s.ret), ty), s.name,
                     ty_named(s.ret)), s)
@@ -1739,7 +1759,7 @@ extend(env: Env, s: Stmt, ty: Ty) -> Env {
  */
 sealed(env: Env, s: Stmt) -> Env {
     if s.frozen || starts_upper(s.name) {
-        env with { frozen = env.frozen ++ [s.name] }
+        env with { frozen = env.frozen + [s.name] }
     } else {
         env
     }
@@ -1788,17 +1808,17 @@ check_item(env: Env, s: Stmt) -> Env {
  * from starts.
  */
 check_diagnostics(m: Module) -> Diagnostic[] =>
-    checked_module(m).errors ++ clashing_names(m.items, 0, [], [])
-        ++ variadic_errors(m.items, 0, [])
-        ++ config_errors(m.items)
+    checked_module(m).errors + clashing_names(m.items, 0, [], []) +
+        variadic_errors(m.items, 0, []) +
+        config_errors(m.items)
 
 check_errors(m: Module) -> str[] =>
     check_diagnostics(m).map(diag_message)
 
-NixosRoots = " networking system services users user environment programs"
-    ++ " fonts boot hardware security nix nixpkgs virtualisation systemd"
-    ++ " i18n time sound xdg home imports console powerManagement"
-    ++ " documentation location "
+NixosRoots = " networking system services users user environment programs" +
+    " fonts boot hardware security nix nixpkgs virtualisation systemd" +
+    " i18n time sound xdg home imports console powerManagement" +
+    " documentation location "
 
 /** A dotted path left of `=` is how config mode writes an option, and a program
  * has no such statement.
@@ -1821,7 +1841,7 @@ config_refusals(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
     } else {
-        config_refusals(items, i + 1, acc ++ config_refusal(items.get(i)))
+        config_refusals(items, i + 1, acc + config_refusal(items.get(i)))
     }
 }
 
@@ -1833,7 +1853,7 @@ config_refusal(s: Stmt) -> Diagnostic[] {
     } else if s.kind != SBind {
         []
     } else {
-        impure_value(s) ++ misspelt_option(s)
+        impure_value(s) + misspelt_option(s)
     }
 }
 
@@ -1844,8 +1864,8 @@ impure_value(s: Stmt) -> Diagnostic[] {
 }
 
 impure_config(name: str) -> str =>
-    "config must be pure, and `{name}` performs {effect_of(name)}: a NixOS"
-        ++ " module is data, so there is no moment at which it could run"
+    "config must be pure, and `{name}` performs {effect_of(name)}: a NixOS" +
+        " module is data, so there is no moment at which it could run"
 
 /** An effect is named by the word that carries it, because config mode forces
  * the empty effect row.
@@ -1911,15 +1931,15 @@ clashing_names(items: Stmt[], i: int, seen: str[],
     } else if items.get(i).kind != SFn {
         clashing_names(items, i + 1, seen, acc)
     } else if seen.index_of(items.get(i).name) >= 0 {
-        clashing_names(items, i + 1, seen, acc ++ [clash_of(items.get(i))])
+        clashing_names(items, i + 1, seen, acc + [clash_of(items.get(i))])
     } else {
-        clashing_names(items, i + 1, seen ++ [items.get(i).name], acc)
+        clashing_names(items, i + 1, seen + [items.get(i).name], acc)
     }
 }
 
 clash_of(s: Stmt) -> Diagnostic {
-    why = "`{s.name}` is defined twice; imports share one namespace, so two"
-        ++ " packages cannot both name a function this"
+    why = "`{s.name}` is defined twice; imports share one namespace, so two" +
+        " packages cannot both name a function this"
 
     diag_at(s, "M0001", why)
 }
@@ -1939,7 +1959,7 @@ surface_of(t: Ty) -> str =>
 
 con_surface(t: Ty) -> str {
     if t.name == "Array" && t.args.length() == 1 {
-        surface_of(t.args.get(0)) ++ "[]"
+        surface_of(t.args.get(0)) + "[]"
     } else {
         t.name
     }
@@ -1954,7 +1974,7 @@ surface_joined(ts: Ty[], i: int) -> str {
     } else if i == ts.length() - 1 {
         surface_of(ts.get(i))
     } else {
-        surface_of(ts.get(i)) ++ ", " ++ surface_joined(ts, i + 1)
+        surface_of(ts.get(i)) + ", " + surface_joined(ts, i + 1)
     }
 }
 
@@ -2014,7 +2034,7 @@ annotated_each(env: Env, fs: Expr[], i: int, acc: Expr[]) -> Expr[] {
     } else {
         one = annotated_method(env, fs.get(i))
 
-        annotated_each(env, fs, i + 1, acc ++ [one])
+        annotated_each(env, fs, i + 1, acc + [one])
     }
 }
 
@@ -2022,7 +2042,7 @@ annotated_method(env: Env, f: Expr) -> Expr {
     lam = f.children.get(1)
     kept = lam.children.slice(0, lam.children.length() - 1)
     body = annotate_expr(env, lambda_body(lam))
-    made = lam with { children = kept ++ [body] }
+    made = lam with { children = kept + [body] }
 
     f with { children = [f.children.get(0), made] }
 }
@@ -2050,8 +2070,8 @@ annotate_params(env: Env, ps: Expr[], tys: Ty[], i: int,
     if i >= ps.length() {
         []
     } else {
-        [annotate_param(env, ps.get(i), tys, i, keep)]
-            ++ annotate_params(env, ps, tys, i + 1, keep)
+        [annotate_param(env, ps.get(i), tys, i, keep)] +
+            annotate_params(env, ps, tys, i + 1, keep)
     }
 }
 
@@ -2075,7 +2095,7 @@ grounded_all(inf: Infer, ts: Ty[], i: int) -> Ty[] {
     if i >= ts.length() {
         []
     } else {
-        [grounded(inf, ts.get(i))] ++ grounded_all(inf, ts, i + 1)
+        [grounded(inf, ts.get(i))] + grounded_all(inf, ts, i + 1)
     }
 }
 
@@ -2088,7 +2108,7 @@ annotate_body(env: Env, stmts: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
         marked = st with { value = annotate_expr(env, st.value) }
 
         annotate_body(extend(got.env, st, got.ty), stmts, i + 1,
-                      acc ++ [marked])
+                      acc + [marked])
     }
 }
 
@@ -2176,7 +2196,7 @@ named_elems(env: Env, want: Ty, xs: Expr[], i: int, acc: Expr[]) -> Expr[] {
         acc
     } else {
         named_elems(env, want, xs, i + 1,
-                    acc ++ [named_lit(env, want, xs.get(i))])
+                    acc + [named_lit(env, want, xs.get(i))])
     }
 }
 
@@ -2186,12 +2206,12 @@ named_lit_fields(env: Env, rec: str, fs: Expr[], i: int,
         acc
     } else {
         named_lit_fields(env, rec, fs, i + 1,
-                         acc ++ [named_lit_field(env, rec, fs.get(i))])
+                         acc + [named_lit_field(env, rec, fs.get(i))])
     }
 }
 
 named_lit_field(env: Env, rec: str, f: Expr) -> Expr {
-    at = env.fields.index_of(rec ++ "." ++ f.children.get(0).text)
+    at = env.fields.index_of(rec + "." + f.children.get(0).text)
 
     if at < 0 || f.children.length() < 2 {
         f
@@ -2239,7 +2259,7 @@ named_body(env: Env, s: Stmt, i: int, acc: Stmt[]) -> Stmt[] {
         want = tail ? ty_named(s.ret) : t_any()
 
         named_body(env, s, i + 1,
-                   acc ++ [named_stmt(env, want, s.body.get(i))])
+                   acc + [named_stmt(env, want, s.body.get(i))])
     }
 }
 
@@ -2263,7 +2283,7 @@ named_children(env: Env, tys: Ty[], xs: Expr[], i: int,
         want = i < tys.length() ? tys.get(i) : t_any()
 
         named_children(env, tys, xs, i + 1,
-                       acc ++ [named_in(env, want, xs.get(i))])
+                       acc + [named_in(env, want, xs.get(i))])
     }
 }
 
@@ -2320,8 +2340,8 @@ gathered_rest(env: Env, e: Expr) -> Expr {
     at = fixed_arity(env, e.text)
     gathered = e.children.slice(at, e.children.length())
 
-    e with { children = e.children.slice(0, at)
-                        ++ [e_list(gathered) with { ival = 1 }] }
+    e with { children = e.children.slice(0, at) +
+                        [e_list(gathered) with { ival = 1 }] }
 }
 
 fixed_arity(env: Env, name: str) -> int =>
@@ -2363,7 +2383,7 @@ lowered_element(env: Env, e: Expr) -> Expr {
 
     env.target == "rust"
         ? e_call("maca_element",
-                 text ++ [e_list(kept_attrs(e.children, from, [])),
+                 text + [e_list(kept_attrs(e.children, from, [])),
                           e_list(kept_kids(e.children, from, []))])
         : e_call("maca_element", text)
 }
@@ -2399,7 +2419,7 @@ element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
         element_attrs(env, cs, i + 1, acc)
     } else {
         element_attrs(env, cs, i + 1,
-                      e_binary("++", acc, one_attribute(env, cs.get(i))))
+                      e_binary("+", acc, one_attribute(env, cs.get(i))))
     }
 }
 
@@ -2425,7 +2445,7 @@ element_kids(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
         element_kids(env, cs, i + 1, acc)
     } else {
         element_kids(env, cs, i + 1,
-                     e_binary("++", acc, one_kid(env, cs.get(i))))
+                     e_binary("+", acc, one_kid(env, cs.get(i))))
     }
 }
 
@@ -2463,7 +2483,7 @@ annotate_children(env: Env, e: Expr, i: int, acc: Expr[]) -> Expr[] {
         acc
     } else {
         annotate_children(env, e, i + 1,
-                          acc ++ [annotate_expr(child_scope(env, e, i),
+                          acc + [annotate_expr(child_scope(env, e, i),
                                                 e.children.get(i))])
     }
 }
@@ -2604,8 +2624,8 @@ desugared(m: Module, src: str) -> Module {
         Module { items = m.items, errors = [] }
     } else {
         held = Module { items = embed_items(m.items, at, 0, []),
-                        errors = embed_faults(m.items, at, 0, [])
-                            ++ decode_faults(m.items, 0, []) }
+                        errors = embed_faults(m.items, at, 0, []) +
+                            decode_faults(m.items, 0, []) }
 
         kept_stored(held, at)
     }
@@ -2619,13 +2639,13 @@ kept_stored(m: Module, at: Assets) -> Module {
     loose = loose_keys(m.items, at, 0, [])
 
     if loose.length() > 0 {
-        m with { errors = m.errors ++ loose }
+        m with { errors = m.errors + loose }
     } else if slots.length() == 0 {
         m
     } else {
         Module { items = saved_items(started_items(m.items, at, 0, []), slots,
                                      [], 0, []),
-                 errors = m.errors ++ stored_faults(m.items, slots) }
+                 errors = m.errors + stored_faults(m.items, slots) }
     }
 }
 
@@ -2639,7 +2659,7 @@ stored_slots(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
         s = items.get(i)
         key = stored_key(s, at)
 
-        stored_slots(items, at, i + 1, key == "" ? acc : acc ++ ["{s.name} {key}"])
+        stored_slots(items, at, i + 1, key == "" ? acc : acc + ["{s.name} {key}"])
     }
 }
 
@@ -2654,9 +2674,9 @@ loose_keys(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
         bad = is_stored_call(s) && asset_spec(s.value.children.get(0), at) == ""
 
         loose_keys(items, at, i + 1,
-                   bad ? acc ++ ["stored(…): the key names a slot in the"
-                                     ++ " browser, so write it out or bind it"
-                                     ++ " to a constant"]
+                   bad ? acc + ["stored(…): the key names a slot in the" +
+                                     " browser, so write it out or bind it" +
+                                     " to a constant"]
                        : acc)
     }
 }
@@ -2690,9 +2710,9 @@ stored_const_faults(items: Stmt[], slots: str[], i: int, acc: str[]) -> str[] {
         bad = s.frozen && slot_key(slots, s.name) != ""
 
         stored_const_faults(items, slots, i + 1,
-                            bad ? acc ++ ["`{s.name}` is a constant, and a"
-                                              ++ " stored name is written back"
-                                              ++ " whenever it is assigned"]
+                            bad ? acc + ["`{s.name}` is a constant, and a" +
+                                              " stored name is written back" +
+                                              " whenever it is assigned"]
                                 : acc)
     }
 }
@@ -2724,7 +2744,7 @@ saved_items(items: Stmt[], slots: str[], bound: str[], i: int,
         s = items.get(i)
         made = declares_slot(s, slots) ? s : saved_stmt(s, slots, bound)
 
-        saved_items(items, slots, bound, i + 1, acc ++ [made])
+        saved_items(items, slots, bound, i + 1, acc + [made])
     }
 }
 
@@ -2732,7 +2752,7 @@ declares_slot(s: Stmt, slots: str[]) -> bool =>
     s.kind == SBind && slot_key(slots, s.name) != ""
 
 saved_stmt(s: Stmt, slots: str[], bound: str[]) -> Stmt {
-    inner = bound ++ lambda_names(s.params, 0, [])
+    inner = bound + lambda_names(s.params, 0, [])
     made = s with { body = saved_body(s.body, slots, inner, 0, []),
                     value = saved_expr(s.value, slots, inner) }
     key = bound.index_of(s.name) >= 0 || s.kind != SBind
@@ -2752,7 +2772,7 @@ saved_body(ss: Stmt[], slots: str[], bound: str[], i: int,
         acc
     } else {
         saved_body(ss, slots, bound, i + 1,
-                   acc ++ [saved_stmt(ss.get(i), slots, bound)])
+                   acc + [saved_stmt(ss.get(i), slots, bound)])
     }
 }
 
@@ -2766,7 +2786,7 @@ saved_kids(xs: Expr[], slots: str[], bound: str[], i: int,
         acc
     } else {
         saved_kids(xs, slots, bound, i + 1,
-                   acc ++ [saved_expr(xs.get(i), slots, bound)])
+                   acc + [saved_expr(xs.get(i), slots, bound)])
     }
 }
 
@@ -2784,7 +2804,7 @@ started_items(items: Stmt[], at: Assets, i: int, acc: Stmt[]) -> Stmt[] {
                                                    [e_str(key),
                                                     s.value.children.get(1)]) }
 
-        started_items(items, at, i + 1, acc ++ [made])
+        started_items(items, at, i + 1, acc + [made])
     }
 }
 
@@ -2799,7 +2819,7 @@ decode_faults(items: Stmt[], i: int, acc: str[]) -> str[] {
             : decode_expr_faults(s.value, [])
 
         decode_faults(items, i + 1,
-                      acc ++ here ++ decode_faults(s.body, 0, []))
+                      acc + here + decode_faults(s.body, 0, []))
     }
 }
 
@@ -2811,8 +2831,8 @@ decode_call(e: Expr) -> bool =>
 
 decode_expr_faults(e: Expr, acc: str[]) -> str[] {
     if decode_call(e) {
-        acc ++ ["`decode`: say what it reads into, as in"
-                    ++ " `c: Config = decode(text)`"]
+        acc + ["`decode`: say what it reads into, as in" +
+                    " `c: Config = decode(text)`"]
     } else {
         decode_faults(e.stmts, 0, decode_kid_faults(e.children, 0, acc))
     }
@@ -2846,7 +2866,7 @@ text_const_names(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
     } else if is_text_const(items.get(i)) {
-        text_const_names(items, i + 1, acc ++ [items.get(i).name])
+        text_const_names(items, i + 1, acc + [items.get(i).name])
     } else {
         text_const_names(items, i + 1, acc)
     }
@@ -2856,7 +2876,7 @@ text_const_texts(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
     } else if is_text_const(items.get(i)) {
-        text_const_texts(items, i + 1, acc ++ [items.get(i).value.text])
+        text_const_texts(items, i + 1, acc + [items.get(i).value.text])
     } else {
         text_const_texts(items, i + 1, acc)
     }
@@ -2878,9 +2898,9 @@ asset_spec(e: Expr, at: Assets) -> str {
 
 /** The file `data("x")` reads: the `.local` copy when the tree holds one. */
 data_file(base: str, spec: str) -> str {
-    local = base ++ local_spec(spec)
+    local = base + local_spec(spec)
 
-    file_exists(local) ? local : base ++ spec
+    file_exists(local) ? local : base + spec
 }
 
 /** `config/links.json` is shadowed by `config/links.local.json` beside it. */
@@ -2890,10 +2910,10 @@ local_spec(spec: str) -> str {
     dot = last_dot(tail.chars(), tail.length() - 1)
 
     if dot > 0 {
-        spec.slice(0, cut + dot) ++ ".local"
-            ++ tail.slice(dot, tail.length())
+        spec.slice(0, cut + dot) + ".local" +
+            tail.slice(dot, tail.length())
     } else {
-        spec ++ ".local"
+        spec + ".local"
     }
 }
 
@@ -2931,7 +2951,7 @@ embed_items(items: Stmt[], at: Assets, i: int, acc: Stmt[]) -> Stmt[] {
         acc
     } else {
         embed_items(items, at, i + 1,
-                    acc ++ [embed_stmt(items.get(i), at)])
+                    acc + [embed_stmt(items.get(i), at)])
     }
 }
 
@@ -2962,7 +2982,7 @@ embed_kids(xs: Expr[], at: Assets, i: int, acc: Expr[]) -> Expr[] {
     if i >= xs.length() {
         acc
     } else {
-        embed_kids(xs, at, i + 1, acc ++ [embed_expr(xs.get(i), at)])
+        embed_kids(xs, at, i + 1, acc + [embed_expr(xs.get(i), at)])
     }
 }
 
@@ -2971,8 +2991,8 @@ embed_faults(items: Stmt[], at: Assets, i: int, acc: str[]) -> str[] {
         acc
     } else {
         embed_faults(items, at, i + 1,
-                     acc ++ expr_faults(items.get(i).value, at)
-                         ++ embed_faults(items.get(i).body, at, 0, []))
+                     acc + expr_faults(items.get(i).value, at) +
+                         embed_faults(items.get(i).body, at, 0, []))
     }
 }
 
@@ -2980,8 +3000,8 @@ expr_faults(e: Expr, at: Assets) -> str[] {
     if is_data_call(e) {
         data_faults(e, at)
     } else {
-        kid_faults(e.children, at, 0, [])
-            ++ embed_faults(e.stmts, at, 0, [])
+        kid_faults(e.children, at, 0, []) +
+            embed_faults(e.stmts, at, 0, [])
     }
 }
 
@@ -2989,7 +3009,7 @@ kid_faults(xs: Expr[], at: Assets, i: int, acc: str[]) -> str[] {
     if i >= xs.length() {
         acc
     } else {
-        kid_faults(xs, at, i + 1, acc ++ expr_faults(xs.get(i), at))
+        kid_faults(xs, at, i + 1, acc + expr_faults(xs.get(i), at))
     }
 }
 
@@ -2997,11 +3017,11 @@ data_faults(e: Expr, at: Assets) -> str[] {
     if e.children.length() != 1 {
         ["data(...) takes one path, as in `data(\"config/links.json\")`"]
     } else if asset_spec(e.children.get(0), at) == "" {
-        ["data(...): the path is read while building, so write it out"
-             ++ " or bind it to a constant"]
+        ["data(...): the path is read while building, so write it out" +
+             " or bind it to a constant"]
     } else if !file_exists(asset_file(e, at)) {
-        ["data(\"" ++ asset_spec(e.children.get(0), at) ++ "\"): "
-             ++ asset_file(e, at) ++ ": no such file"]
+        ["data(\"" + asset_spec(e.children.get(0), at) + "\"): " +
+             asset_file(e, at) + ": no such file"]
     } else {
         []
     }
@@ -3014,7 +3034,7 @@ lift_items(items: Stmt[], i: int, at: Lift) -> Lift {
         one = lift_stmt(items.get(i), at)
 
         lift_items(items, i + 1,
-                   one.at with { items = one.at.items ++ one.stmts })
+                   one.at with { items = one.at.items + one.stmts })
     }
 }
 
@@ -3038,7 +3058,7 @@ lift_body(stmts: Stmt[], i: int, acc: Stmt[], at: Lift) -> LiftedBody {
     } else {
         one = lift_stmt(stmts.get(i), at)
 
-        lift_body(stmts, i + 1, acc ++ one.stmts, one.at)
+        lift_body(stmts, i + 1, acc + one.stmts, one.at)
     }
 }
 
@@ -3060,11 +3080,11 @@ lift_all(cs: Expr[], i: int, acc: Expr[], at: Lift, owner: Expr) -> LiftedAll {
     if i >= cs.length() {
         LiftedAll { nodes = acc, at }
     } else if held_inline(owner, cs.get(i)) {
-        lift_all(cs, i + 1, acc ++ [cs.get(i)], at, owner)
+        lift_all(cs, i + 1, acc + [cs.get(i)], at, owner)
     } else {
         one = lift_expr(cs.get(i), at)
 
-        lift_all(cs, i + 1, acc ++ [one.node], one.at, owner)
+        lift_all(cs, i + 1, acc + [one.node], one.at, owner)
     }
 }
 
@@ -3095,7 +3115,7 @@ lift_one(e: Expr, at: Lift) -> Lifted {
     inner = lift_stmt(made, at with { n = at.n + 1 })
 
     Lifted { node = e_ident(name),
-             at = inner.at with { items = inner.at.items ++ inner.stmts } }
+             at = inner.at with { items = inner.at.items + inner.stmts } }
 }
 
 /** A lambda that reads a name from around it becomes a function plus the values
@@ -3106,11 +3126,11 @@ lift_closure(e: Expr, at: Lift) -> Lifted {
     caps = captures_of(e)
     held = ref_names(lambda_body(e), [])
     made = s_fn(name, lambda_body(e).ty, lambda_params(e),
-                cap_binds(caps, held, 0) ++ [s_expr(lambda_body(e))])
+                cap_binds(caps, held, 0) + [s_expr(lambda_body(e))])
     inner = lift_stmt(made, at with { n = at.n + 1 })
 
-    Lifted { node = e_call("maca_closure", [e_ident(name)] ++ caps),
-             at = inner.at with { items = inner.at.items ++ inner.stmts } }
+    Lifted { node = e_call("maca_closure", [e_ident(name)] + caps),
+             at = inner.at with { items = inner.at.items + inner.stmts } }
 }
 
 /** A name the body reaches through a cell, which is what the enclosing scope
@@ -3121,7 +3141,7 @@ ref_names(e: Expr, acc: str[]) -> str[] {
         && (e.text == "maca_deref" || e.text == "maca_setref")
         && e.children.length() > 0
         && acc.index_of(e.children.get(0).text) < 0
-        ? acc ++ [e.children.get(0).text]
+        ? acc + [e.children.get(0).text]
         : acc
 
     ref_stmts(e.stmts, 0, ref_kids(e.children, 0, seen))
@@ -3188,7 +3208,7 @@ cell_stmts(ss: Stmt[], wrote: str[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= ss.length() {
         acc
     } else {
-        acc ++ [cell_stmt(ss.get(i), wrote)] ++ cell_stmts(ss, wrote, i + 1, [])
+        acc + [cell_stmt(ss.get(i), wrote)] + cell_stmts(ss, wrote, i + 1, [])
     }
 }
 
@@ -3216,7 +3236,7 @@ cap_binds(caps: Expr[], wrote: str[], i: int) -> Stmt[] {
         one = s_bind_typed(caps.get(i).text, caps.get(i).ty,
                            e_call(held, [e_str(caps.get(i).ty), e_int(i)]))
 
-        [one] ++ cap_binds(caps, wrote, i + 1)
+        [one] + cap_binds(caps, wrote, i + 1)
     }
 }
 
@@ -3228,7 +3248,7 @@ writes_of_stmts(ss: Stmt[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         seen = ss.get(i).kind == SSet && acc.index_of(ss.get(i).name) < 0
-            ? acc ++ [ss.get(i).name]
+            ? acc + [ss.get(i).name]
             : acc
 
         writes_of_stmts(ss, i + 1, writes_of(ss.get(i).value, 0, seen))
@@ -3259,7 +3279,7 @@ deref_kids(xs: Expr[], wrote: str[], i: int, acc: Expr[]) -> Expr[] {
     if i >= xs.length() {
         acc
     } else {
-        deref_kids(xs, wrote, i + 1, acc ++ [deref_expr(xs.get(i), wrote)])
+        deref_kids(xs, wrote, i + 1, acc + [deref_expr(xs.get(i), wrote)])
     }
 }
 
@@ -3267,7 +3287,7 @@ deref_stmts(ss: Stmt[], wrote: str[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= ss.length() {
         acc
     } else {
-        deref_stmts(ss, wrote, i + 1, acc ++ [deref_stmt(ss.get(i), wrote)])
+        deref_stmts(ss, wrote, i + 1, acc + [deref_stmt(ss.get(i), wrote)])
     }
 }
 
@@ -3291,7 +3311,7 @@ lambda_names(ps: Expr[], i: int, acc: str[]) -> str[] {
     if i >= ps.length() {
         acc
     } else {
-        lambda_names(ps, i + 1, acc ++ [ps.get(i).text])
+        lambda_names(ps, i + 1, acc + [ps.get(i).text])
     }
 }
 
@@ -3300,9 +3320,9 @@ free_idents(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
         free_added(e, bound, acc)
     } else if e.kind == ELambda {
         free_idents(lambda_body(e),
-                    bound ++ lambda_names(lambda_params(e), 0, []), acc)
+                    bound + lambda_names(lambda_params(e), 0, []), acc)
     } else if e.kind == EBlock {
-        free_idents(e.children.get(0), bound ++ stmt_names(e.stmts, 0, []),
+        free_idents(e.children.get(0), bound + stmt_names(e.stmts, 0, []),
                     free_stmts(e.stmts, 0, bound, acc))
     } else {
         free_stmts(e.stmts, 0, free_bound(e, bound),
@@ -3316,7 +3336,7 @@ stmt_names(ss: Stmt[], i: int, acc: str[]) -> str[] {
     } else if ss.get(i).kind == SSet {
         stmt_names(ss, i + 1, acc)
     } else {
-        stmt_names(ss, i + 1, acc ++ [ss.get(i).name])
+        stmt_names(ss, i + 1, acc + [ss.get(i).name])
     }
 }
 
@@ -3327,7 +3347,7 @@ set_target(s: Stmt) -> Expr =>
     e_ident(s.name) with { ival = 4, ty = s.value.ty }
 
 free_bound(e: Expr, bound: str[]) -> str[] =>
-    e.kind == EFor ? bound ++ [e.text] : bound
+    e.kind == EFor ? bound + [e.text] : bound
 
 free_added(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
     if !is_bound_name(e) || bound.index_of(e.text) >= 0 {
@@ -3335,7 +3355,7 @@ free_added(e: Expr, bound: str[], acc: Expr[]) -> Expr[] {
     } else if free_names(acc, 0, []).index_of(e.text) >= 0 {
         acc
     } else {
-        acc ++ [e]
+        acc + [e]
     }
 }
 
@@ -3343,7 +3363,7 @@ free_names(acc: Expr[], i: int, out: str[]) -> str[] {
     if i >= acc.length() {
         out
     } else {
-        free_names(acc, i + 1, out ++ [acc.get(i).text])
+        free_names(acc, i + 1, out + [acc.get(i).text])
     }
 }
 
@@ -3366,7 +3386,7 @@ free_stmts(ss: Stmt[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
                    free_idents(ss.get(i).value, bound,
                                free_added(set_target(ss.get(i)), bound, acc)))
     } else {
-        free_stmts(ss, i + 1, bound ++ [ss.get(i).name],
+        free_stmts(ss, i + 1, bound + [ss.get(i).name],
                    free_idents(ss.get(i).value, bound, acc))
     }
 }
@@ -3375,7 +3395,7 @@ free_stmts(ss: Stmt[], i: int, bound: str[], acc: Expr[]) -> Expr[] {
 named_anons(m: Module) -> Module {
     fixed = anon_stmts(m.items, 0)
 
-    Module { items = fixed ++ anon_decls(anon_in_stmts(fixed, 0), 0, []),
+    Module { items = fixed + anon_decls(anon_in_stmts(fixed, 0), 0, []),
              errors = m.errors }
 }
 
@@ -3383,7 +3403,7 @@ anon_stmts(ss: Stmt[], i: int) -> Stmt[] {
     if i >= ss.length() {
         []
     } else {
-        [anon_stmt(ss.get(i))] ++ anon_stmts(ss, i + 1)
+        [anon_stmt(ss.get(i))] + anon_stmts(ss, i + 1)
     }
 }
 
@@ -3409,7 +3429,7 @@ anon_kids(cs: Expr[], i: int) -> Expr[] {
     if i >= cs.length() {
         []
     } else {
-        [anon_expr(cs.get(i))] ++ anon_kids(cs, i + 1)
+        [anon_expr(cs.get(i))] + anon_kids(cs, i + 1)
     }
 }
 
@@ -3421,7 +3441,7 @@ anon_text(e: Expr) -> str {
     } else if !anon_named_fields(e.children, 0) {
         e.text
     } else {
-        "MacaAnon_" ++ anon_tags(e.children, 0, []).sort().join("_")
+        "MacaAnon_" + anon_tags(e.children, 0, []).sort().join("_")
     }
 }
 
@@ -3450,7 +3470,7 @@ anon_tags(fs: Expr[], i: int, acc: str[]) -> str[] {
     if i >= fs.length() {
         acc
     } else {
-        anon_tags(fs, i + 1, acc ++ [anon_tag(fs.get(i))])
+        anon_tags(fs, i + 1, acc + [anon_tag(fs.get(i))])
     }
 }
 
@@ -3464,24 +3484,24 @@ anon_in_stmts(ss: Stmt[], i: int) -> Expr[] {
     if i >= ss.length() {
         []
     } else {
-        anon_in_stmt(ss.get(i)) ++ anon_in_stmts(ss, i + 1)
+        anon_in_stmt(ss.get(i)) + anon_in_stmts(ss, i + 1)
     }
 }
 
 anon_in_stmt(s: Stmt) -> Expr[] =>
-    anon_in_expr(s.value) ++ anon_in_stmts(s.body, 0)
+    anon_in_expr(s.value) + anon_in_stmts(s.body, 0)
 
 anon_in_expr(e: Expr) -> Expr[] {
-    under = anon_in_kids(e.children, 0) ++ anon_in_stmts(e.stmts, 0)
+    under = anon_in_kids(e.children, 0) + anon_in_stmts(e.stmts, 0)
 
-    is_anon_lit(e) ? [e] ++ under : under
+    is_anon_lit(e) ? [e] + under : under
 }
 
 anon_in_kids(cs: Expr[], i: int) -> Expr[] {
     if i >= cs.length() {
         []
     } else {
-        anon_in_expr(cs.get(i)) ++ anon_in_kids(cs, i + 1)
+        anon_in_expr(cs.get(i)) + anon_in_kids(cs, i + 1)
     }
 }
 
@@ -3491,8 +3511,8 @@ anon_decls(es: Expr[], i: int, seen: str[]) -> Stmt[] {
     } else if seen.index_of(es.get(i).text) >= 0 {
         anon_decls(es, i + 1, seen)
     } else {
-        [s_record(es.get(i).text, anon_fields(es.get(i).children, 0))]
-            ++ anon_decls(es, i + 1, seen ++ [es.get(i).text])
+        [s_record(es.get(i).text, anon_fields(es.get(i).children, 0))] +
+            anon_decls(es, i + 1, seen + [es.get(i).text])
     }
 }
 
@@ -3501,8 +3521,8 @@ anon_fields(fs: Expr[], i: int) -> Expr[] {
         []
     } else {
         [e_param(fs.get(i).children.get(0).text,
-                 fs.get(i).children.get(1).ty)]
-            ++ anon_fields(fs, i + 1)
+                 fs.get(i).children.get(1).ty)] +
+            anon_fields(fs, i + 1)
     }
 }
 
@@ -3545,7 +3565,7 @@ monomorphic(m: Module) -> Module {
                            Poly { gens, wants = [], done = [] })
         grown = expanded(checked_module(m), first.at, 0, [])
 
-        Module { items = first.stmts ++ grown.stmts, errors = m.errors }
+        Module { items = first.stmts + grown.stmts, errors = m.errors }
     }
 }
 
@@ -3553,7 +3573,7 @@ generic_items(items: Stmt[], i: int, acc: Stmt[]) -> Stmt[] {
     if i >= items.length() {
         acc
     } else if is_generic_fn(items.get(i)) {
-        generic_items(items, i + 1, acc ++ [items.get(i)])
+        generic_items(items, i + 1, acc + [items.get(i)])
     } else {
         generic_items(items, i + 1, acc)
     }
@@ -3615,7 +3635,7 @@ mono_items(items: Stmt[], i: int, acc: Stmt[], at: Poly) -> PolyBody {
     } else {
         one = mono_stmt(items.get(i), at)
 
-        mono_items(items, i + 1, acc ++ one.stmts, one.at)
+        mono_items(items, i + 1, acc + one.stmts, one.at)
     }
 }
 
@@ -3639,7 +3659,7 @@ mono_body(stmts: Stmt[], i: int, acc: Stmt[], at: Poly) -> PolyBody {
     } else {
         one = mono_stmt(stmts.get(i), at)
 
-        mono_body(stmts, i + 1, acc ++ one.stmts, one.at)
+        mono_body(stmts, i + 1, acc + one.stmts, one.at)
     }
 }
 
@@ -3661,7 +3681,7 @@ mono_all(cs: Expr[], i: int, acc: Expr[], at: Poly) -> PolyAll {
     } else {
         one = mono_expr(cs.get(i), at)
 
-        mono_all(cs, i + 1, acc ++ [one.node], one.at)
+        mono_all(cs, i + 1, acc + [one.node], one.at)
     }
 }
 
@@ -3683,7 +3703,7 @@ mono_call(e: Expr, g: Stmt, at: Poly) -> PolyNode {
 
     PolyNode { node = e with { text = mangled(want),
                                ty = specialised_ty(g, want.tys, g.ret) },
-               at = at with { wants = at.wants ++ [want] } }
+               at = at with { wants = at.wants + [want] } }
 }
 
 generic_at(gens: Stmt[], name: str, i: int) -> int {
@@ -3698,7 +3718,7 @@ arg_type_names(cs: Expr[], i: int, acc: str[]) -> str[] {
     if i >= cs.length() {
         acc
     } else {
-        arg_type_names(cs, i + 1, acc ++ [cs.get(i).ty])
+        arg_type_names(cs, i + 1, acc + [cs.get(i).ty])
     }
 }
 
@@ -3716,11 +3736,11 @@ type_tag(ty: str) -> str {
         "any"
     } else if ty.length() >= 2
             && ty.slice(ty.length() - 2, ty.length()) == "[]" {
-        "arr" ++ type_tag(ty.slice(0, ty.length() - 2))
+        "arr" + type_tag(ty.slice(0, ty.length() - 2))
     } else if map_type_val(ty) != "" {
-        type_tag(map_type_val(ty)) ++ "map"
+        type_tag(map_type_val(ty)) + "map"
     } else if ty.index_of(") -> ") >= 0 {
-        "fn" ++ type_tag(ty.slice(ty.index_of(") -> ") + 5, ty.length()))
+        "fn" + type_tag(ty.slice(ty.index_of(") -> ") + 5, ty.length()))
     } else if ty == "float" {
         "f64"
     } else {
@@ -3740,9 +3760,9 @@ expanded(env: Env, at: Poly, i: int, acc: Stmt[]) -> PolyBody {
         } else {
             g = at.gens.get(generic_at(at.gens, w.name, 0))
             one = mono_stmt(annotate_item(env, specialised(g, w, name)),
-                            at with { done = at.done ++ [name] })
+                            at with { done = at.done + [name] })
 
-            expanded(env, one.at, i + 1, acc ++ one.stmts)
+            expanded(env, one.at, i + 1, acc + one.stmts)
         }
     }
 }
@@ -3757,7 +3777,7 @@ ground_body(g: Stmt, tys: str[], ss: Stmt[], i: int) -> Stmt[] {
     if i >= ss.length() {
         []
     } else {
-        [ground_stmt(g, tys, ss.get(i))] ++ ground_body(g, tys, ss, i + 1)
+        [ground_stmt(g, tys, ss.get(i))] + ground_body(g, tys, ss, i + 1)
     }
 }
 
@@ -3774,7 +3794,7 @@ ground_kids(g: Stmt, tys: str[], cs: Expr[], i: int) -> Expr[] {
     if i >= cs.length() {
         []
     } else {
-        [ground_expr(g, tys, cs.get(i))] ++ ground_kids(g, tys, cs, i + 1)
+        [ground_expr(g, tys, cs.get(i))] + ground_kids(g, tys, cs, i + 1)
     }
 }
 
@@ -3782,8 +3802,8 @@ specialised_params(g: Stmt, ps: Expr[], tys: str[], i: int) -> Expr[] {
     if i >= ps.length() {
         []
     } else {
-        [specialised_param(g, ps.get(i), tys, i)]
-            ++ specialised_params(g, ps, tys, i + 1)
+        [specialised_param(g, ps.get(i), tys, i)] +
+            specialised_params(g, ps, tys, i + 1)
     }
 }
 
@@ -3802,10 +3822,10 @@ specialised_param(g: Stmt, p: Expr, tys: str[], i: int) -> Expr {
 
 specialised_ty(g: Stmt, tys: str[], ty: str) -> str {
     if is_array_name(ty) {
-        specialised_ty(g, tys, ty.slice(0, ty.length() - 2)) ++ "[]"
+        specialised_ty(g, tys, ty.slice(0, ty.length() - 2)) + "[]"
     } else if map_type_val(ty) != "" {
-        "Map {specialised_ty(g, tys, map_type_key(ty))}"
-            ++ " {specialised_ty(g, tys, map_type_val(ty))}"
+        "Map {specialised_ty(g, tys, map_type_key(ty))}" +
+            " {specialised_ty(g, tys, map_type_val(ty))}"
     } else if ty.index_of(") -> ") >= 0 {
         specialised_fn(g, tys, ty)
     } else if !has_type_var(ty) {
@@ -3818,8 +3838,8 @@ specialised_ty(g: Stmt, tys: str[], ty: str) -> str {
 specialised_fn(g: Stmt, tys: str[], ty: str) -> str {
     cut = ty.index_of(") -> ")
 
-    "({specialised_each(g, tys, ty.slice(1, cut))}) -> "
-        ++ specialised_ty(g, tys, ty.slice(cut + 5, ty.length()))
+    "({specialised_each(g, tys, ty.slice(1, cut))}) -> " +
+        specialised_ty(g, tys, ty.slice(cut + 5, ty.length()))
 }
 
 specialised_each(g: Stmt, tys: str[], list: str) -> str {
@@ -3830,8 +3850,8 @@ specialised_each(g: Stmt, tys: str[], list: str) -> str {
     } else if cut < 0 {
         specialised_ty(g, tys, list)
     } else {
-        "{specialised_ty(g, tys, list.slice(0, cut))}, "
-            ++ specialised_each(g, tys, list.slice(cut + 2, list.length()))
+        "{specialised_ty(g, tys, list.slice(0, cut))}, " +
+            specialised_each(g, tys, list.slice(cut + 2, list.length()))
     }
 }
 
@@ -3867,7 +3887,7 @@ variadic_errors(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
     } else {
-        variadic_errors(items, i + 1, acc ++ rest_misuse(items.get(i)))
+        variadic_errors(items, i + 1, acc + rest_misuse(items.get(i)))
     }
 }
 
@@ -3881,19 +3901,19 @@ rest_misuse_why(s: Stmt) -> str {
     if s.kind != SFn {
         ""
     } else if rest_before_the_end(s.params, 0) {
-        "type mismatch: `{s.name}`: a rest parameter must be last, so"
-            ++ " nothing says where the arguments it gathers stop"
+        "type mismatch: `{s.name}`: a rest parameter must be last, so" +
+            " nothing says where the arguments it gathers stop"
     } else if rest_taker(s).length() == 0 {
         ""
     } else if s.name == "main" {
-        "type mismatch: `main` takes no rest parameter, because the"
-            ++ " command line fills one `str[]`"
+        "type mismatch: `main` takes no rest parameter, because the" +
+            " command line fills one `str[]`"
     } else if s.params.get(s.params.length() - 1).ty == "[]" {
-        "type mismatch: `{s.name}` has a rest parameter with no type, so"
-            ++ " nothing says what the list it gathers holds"
+        "type mismatch: `{s.name}` has a rest parameter with no type, so" +
+            " nothing says what the list it gathers holds"
     } else if s.params.get(s.params.length() - 1).ty.index_of(") -> ") >= 0 {
-        "type mismatch: `{s.name}` declares a variadic of function type,"
-            ++ " so take a record with a function field instead"
+        "type mismatch: `{s.name}` declares a variadic of function type," +
+            " so take a record with a function field instead"
     } else {
         ""
     }
@@ -3915,7 +3935,7 @@ eff_has(set: str, name: str) -> bool =>
     set.index_of(" {name} ") >= 0
 
 eff_add(set: str, name: str) -> str =>
-    eff_has(set, name) ? set : set ++ "{name} "
+    eff_has(set, name) ? set : set + "{name} "
 
 eff_union(a: str, b: str) -> str =>
     eff_merge(a, eff_words(b), 0)
@@ -4097,8 +4117,8 @@ effect_pass(items: Stmt[], names: str[], sets: str[], i: int,
 
 /** What the target being built for cannot carry, from this module. */
 target_errors(m: Module, target: str) -> Diagnostic[] =>
-    effect_errors(m, target) ++ kept_borrow_errors(m, target)
-        ++ handler_errors(m, target) ++ nested_errors(m, target)
+    effect_errors(m, target) + kept_borrow_errors(m, target) +
+        handler_errors(m, target) + nested_errors(m, target)
 
 /** A nested definition is a closure over the scope that holds it, and these
  * targets carry no such thing.
@@ -4117,7 +4137,7 @@ nested_faults(items: Stmt[], target: str, i: int,
         acc
     } else {
         nested_faults(items, target, i + 1,
-                      acc ++ nested_in(items.get(i), items.get(i).body, target,
+                      acc + nested_in(items.get(i), items.get(i).body, target,
                                        0, []))
     }
 }
@@ -4132,15 +4152,15 @@ nested_in(s: Stmt, ss: Stmt[], target: str, i: int,
             : []
 
         nested_in(s, ss, target, i + 1,
-                  acc ++ here ++ nested_in(s, ss.get(i).body, target, 0, []))
+                  acc + here + nested_in(s, ss.get(i).body, target, 0, []))
     }
 }
 
 nested_said(s: Stmt, name: str, target: str) -> Diagnostic =>
     Diagnostic { code = "M0023", pos = s.pos, note = "",
-                 message = "`{name}` is defined inside another function, and"
-                     ++ " --target {target} has no closure to carry what it"
-                     ++ " reads from around it" }
+                 message = "`{name}` is defined inside another function, and" +
+                     " --target {target} has no closure to carry what it" +
+                     " reads from around it" }
 
 /** A handler is attached to a node, and a target that answers with markup has
  * no node to attach it to.
@@ -4160,8 +4180,8 @@ handler_faults(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
         s = items.get(i)
 
         handler_faults(items, i + 1,
-                       acc ++ handler_in(s, s.value, [])
-                           ++ handler_body(s, s.body, 0, []))
+                       acc + handler_in(s, s.value, []) +
+                           handler_body(s, s.body, 0, []))
     }
 }
 
@@ -4170,15 +4190,15 @@ handler_body(s: Stmt, ss: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
         acc
     } else {
         handler_body(s, ss, i + 1,
-                     acc ++ handler_in(s, ss.get(i).value, [])
-                         ++ handler_body(s, ss.get(i).body, 0, []))
+                     acc + handler_in(s, ss.get(i).value, []) +
+                         handler_body(s, ss.get(i).body, 0, []))
     }
 }
 
 handler_in(s: Stmt, e: Expr, acc: Diagnostic[]) -> Diagnostic[] {
     here = e.kind == EAttr && is_dom_handler(e) ? [handler_said(s, e.text)] : []
 
-    handler_kids(s, e.children, 0, handler_body(s, e.stmts, 0, acc ++ here))
+    handler_kids(s, e.children, 0, handler_body(s, e.stmts, 0, acc + here))
 }
 
 handler_kids(s: Stmt, xs: Expr[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
@@ -4216,9 +4236,9 @@ is_event_name(name: str) -> bool {
 
 handler_said(s: Stmt, name: str) -> Diagnostic =>
     Diagnostic { code = "M0022", pos = s.pos, note = "",
-                 message = "`{name}` is a handler, and markup is a string with"
-                     ++ " nowhere to attach one; build this with"
-                     ++ " `--target js`" }
+                 message = "`{name}` is a handler, and markup is a string with" +
+                     " nowhere to attach one; build this with" +
+                     " `--target js`" }
 
 /** A nested definition reads the scope that holds it, and the C back end has no
  * way to carry a write back out.
@@ -4236,7 +4256,7 @@ write_faults(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
         acc
     } else {
         write_faults(items, i + 1,
-                     acc ++ fn_write_faults(items.get(i), items.get(i).body,
+                     acc + fn_write_faults(items.get(i), items.get(i).body,
                                             0, [], []))
     }
 }
@@ -4251,7 +4271,7 @@ fn_write_faults(s: Stmt, ss: Stmt[], i: int, seen: str[],
             ? inner_write_faults(s, st.name, st.value, seen, 0, [])
             : []
 
-        fn_write_faults(s, ss, i + 1, seen ++ [st.name], acc ++ here)
+        fn_write_faults(s, ss, i + 1, seen + [st.name], acc + here)
     }
 }
 
@@ -4269,17 +4289,17 @@ body_write_faults(s: Stmt, who: str, ss: Stmt[], seen: str[], bound: str[],
         wrote = st.kind == SBind && bound.index_of(st.name) < 0
             && seen.index_of(st.name) >= 0
 
-        body_write_faults(s, who, ss, seen, bound ++ [st.name], i + 1,
-                          wrote ? acc ++ [outer_write_said(s, who, st.name)]
+        body_write_faults(s, who, ss, seen, bound + [st.name], i + 1,
+                          wrote ? acc + [outer_write_said(s, who, st.name)]
                                 : acc)
     }
 }
 
 outer_write_said(s: Stmt, who: str, name: str) -> Diagnostic =>
     Diagnostic { code = "M0021", pos = s.pos, note = "",
-                 message = "`{who}` writes `{name}`, which the function"
-                     ++ " around it declared, and a nested definition reads"
-                     ++ " that scope rather than writing it" }
+                 message = "`{who}` writes `{name}`, which the function" +
+                     " around it declared, and a nested definition reads" +
+                     " that scope rather than writing it" }
 
 /** What the rust target refuses about the borrows a method keeps, as plain
  * lines.
@@ -4308,7 +4328,7 @@ borrow_errors(items: Stmt[], own: str[], i: int,
         kept = kept_borrows(items.get(i), items.get(i).value.children, own, 0,
                             [])
 
-        borrow_errors(items, own, i + 1, acc ++ kept)
+        borrow_errors(items, own, i + 1, acc + kept)
     }
 }
 
@@ -4322,7 +4342,7 @@ kept_borrows(s: Stmt, fs: Expr[], own: str[], i: int,
         one = kept_params(s, fs.get(i).children.get(0).text, lam, ps, own, 0,
                           [])
 
-        kept_borrows(s, fs, own, i + 1, acc ++ one)
+        kept_borrows(s, fs, own, i + 1, acc + one)
     }
 }
 
@@ -4333,7 +4353,7 @@ kept_params(s: Stmt, method: str, lam: Expr, ps: Expr[], own: str[], i: int,
     } else if foreign_type(ps.get(i).ty, own)
             && escaping(lambda_body(lam), ps.get(i).text) {
         kept_params(s, method, lam, ps, own, i + 1,
-                    acc ++ [diag_at(s, "M0009",
+                    acc + [diag_at(s, "M0009",
                                     kept_message(ps.get(i).text, method))])
     } else {
         kept_params(s, method, lam, ps, own, i + 1, acc)
@@ -4341,9 +4361,9 @@ kept_params(s: Stmt, method: str, lam: Expr, ps: Expr[], own: str[], i: int,
 }
 
 kept_message(p: str, method: str) -> str =>
-    "`{p}` in method `{method}` is a borrowed foreign value: it can be read"
-        ++ " and passed on, but not returned or stored, because it belongs to"
-        ++ " the caller"
+    "`{p}` in method `{method}` is a borrowed foreign value: it can be read" +
+        " and passed on, but not returned or stored, because it belongs to" +
+        " the caller"
 
 /** A borrow leaves the method as its answer, or inside a record or a list that
  * outlives the call.
@@ -4439,7 +4459,7 @@ effect_refusals(items: Stmt[], sets: str[], allowed: str[], target: str,
         said = effect_refusal(items.get(i), sets.get(k), allowed, target)
 
         effect_refusals(items, sets, allowed, target, i + 1, k + 1,
-                        acc ++ said)
+                        acc + said)
     }
 }
 
@@ -4451,11 +4471,11 @@ effect_refusal(s: Stmt, set: str, allowed: str[],
 }
 
 effect_diag(s: Stmt, what: str, target: str) -> Diagnostic {
-    said = diag_at(s, "M0007", "`{s.name}` performs {what}, which"
-                                   ++ " {target_phrase(target)} cannot carry")
+    said = diag_at(s, "M0007", "`{s.name}` performs {what}, which" +
+                                   " {target_phrase(target)} cannot carry")
 
-    said with { note = "build for a target that can, or keep {what} out of"
-                           ++ " the code this target compiles" }
+    said with { note = "build for a target that can, or keep {what} out of" +
+                           " the code this target compiles" }
 }
 
 target_phrase(target: str) -> str =>
@@ -4465,7 +4485,7 @@ target_phrase(target: str) -> str =>
  * program does.
  */
 check_diagnostics_on(m: Module, target: str) -> Diagnostic[] =>
-    check_diagnostics(m) ++ target_errors(m, target)
+    check_diagnostics(m) + target_errors(m, target)
 
 check_errors_on(m: Module, target: str) -> str[] =>
     check_diagnostics_on(m, target).map(diag_message)

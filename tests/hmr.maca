@@ -41,8 +41,8 @@ waited(path: str, tries: int) -> bool {
 
 fetched(path: str) -> str {
     reply = fetch("127.0.0.1", Port,
-                  "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-                      ++ "Connection: close\r\n\r\n")
+                  "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
+                      "Connection: close\r\n\r\n")
     at = reply.index_of("\r\n\r\n")
 
     at < 0 ? "" : reply.slice(at + 4, reply.length())
@@ -74,7 +74,7 @@ key_values(parts: str[], i: int, acc: str[]) -> str[] {
         one = parts.get(i)
         end = one.index_of("\"")
 
-        key_values(parts, i + 1, end < 0 ? acc : acc ++ [one.slice(0, end)])
+        key_values(parts, i + 1, end < 0 ? acc : acc + [one.slice(0, end)])
     }
 }
 
@@ -180,7 +180,7 @@ script_bodies(parts: str[], i: int, acc: str[]) -> str[] {
         end = one.index_of("</script>")
 
         script_bodies(parts, i + 1,
-                      end < 0 ? acc : acc ++ [one.slice(0, end)])
+                      end < 0 ? acc : acc + [one.slice(0, end)])
     }
 }
 
@@ -224,8 +224,8 @@ test_the_pages_own_poller_names_the_generation_it_was_told() {
 
     assert(printed.contains(
                "\"/_maca/hmr\",\"/_maca/hmr?gen=20\",\"/_maca/hmr?gen=21\""),
-           "the first poll must name no generation and every later one the"
-               ++ " last it was told: {printed}")
+           "the first poll must name no generation and every later one the" +
+               " last it was told: {printed}")
     assert(printed.contains("\"key\":\"k\""),
            "the poller did not hand its ops to the patcher: {printed}")
     assert(printed.contains("\"reloaded\":true"),

@@ -359,7 +359,7 @@ test_a_name_with_a_quote_in_it_survives() {
 }
 
 test_a_backslash_before_a_letter_survives_the_round_trip() {
-    name = "win" ++ "\\" ++ "new"
+    name = "win" + "\\" + "new"
     after = from_json(to_json([sample(name, 1, 2, [1])]))
 
     assert_eq(after[0].name, name, "an escaped escape is not an escape")
@@ -367,7 +367,7 @@ test_a_backslash_before_a_letter_survives_the_round_trip() {
 }
 
 test_every_escape_the_writer_emits_comes_back() {
-    doubled = "one" ++ "\\" ++ "\\" ++ "two"
+    doubled = "one" + "\\" + "\\" + "two"
     for name in ["a\nb", "a\tb", "a\rb", "a\"b", doubled] {
         after = from_json(to_json([sample(name, 1, 2, [1])]))
         assert_eq(after[0].name, name, "a name of {name.length()} bytes")
@@ -784,7 +784,7 @@ test_run_length_coding_round_trips_text_with_digits_in_it() {
         assert_eq(run_length_decode(run_length_encode(text)), text,
                   "[{text}] survives encoding")
     }
-    slashed = "x" ++ "\\" ++ "y"
+    slashed = "x" + "\\" + "y"
     assert_eq(run_length_decode(run_length_encode(slashed)), slashed,
               "and so does the byte the escape is written with")
 }

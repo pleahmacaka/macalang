@@ -12,7 +12,7 @@ walk_entries(root: str, names: str[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         found = walk_one(join(root, names.get(i)))
-        walk_entries(root, names, i + 1, acc ++ found)
+        walk_entries(root, names, i + 1, acc + found)
     }
 }
 
@@ -33,13 +33,13 @@ dir_entries(root: str, names: str[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         found = dir_one(join(root, names.get(i)))
-        dir_entries(root, names, i + 1, acc ++ found)
+        dir_entries(root, names, i + 1, acc + found)
     }
 }
 
 dir_one(p: str) -> str[] {
     if is_dir(p) {
-        [p] ++ walk_dirs(p)
+        [p] + walk_dirs(p)
     } else {
         []
     }
@@ -73,7 +73,7 @@ force_write(p: str, text: str) -> bool {
 append_file(p: str, text: str) -> bool {
     existing = if file_exists(p) { read_file(p) } else { "" }
 
-    write_file(p, existing ++ text)
+    write_file(p, existing + text)
 }
 
 /** A byte-for-byte copy, not `write_file(to, read_file(from))`, which stops at

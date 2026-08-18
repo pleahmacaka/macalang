@@ -79,15 +79,15 @@ test_a_percent_escape_is_decoded() {
 
 test_headers_are_matched_however_they_are_spelled() {
     reply = fetch("127.0.0.1", Port,
-                  "GET /agent HTTP/1.1\r\nUSER-AGENT: probe\r\n"
-                  ++ "Connection: close\r\n\r\n")
+                  "GET /agent HTTP/1.1\r\nUSER-AGENT: probe\r\n" +
+                  "Connection: close\r\n\r\n")
     assert_eq(body_of(reply), "probe", "a header name is case-insensitive")
 }
 
 test_a_posted_form_reaches_the_handler() {
     reply = fetch("127.0.0.1", Port,
-                  "POST /posted HTTP/1.1\r\nContent-Length: 9\r\n"
-                  ++ "Connection: close\r\n\r\nname=maca")
+                  "POST /posted HTTP/1.1\r\nContent-Length: 9\r\n" +
+                  "Connection: close\r\n\r\nname=maca")
     assert_eq(body_of(reply), "maca", "the body was read in full")
 }
 

@@ -28,8 +28,8 @@ main(argv: str[]) -> int {
         err(bad(got.error))
         1
     } else if where.length() > 1 {
-        err(bad("build-site assembles one directory, got "
-                ++ where.join(", ")))
+        err(bad("build-site assembles one directory, got " +
+                where.join(", ")))
         1
     } else if !file_exists(maca()) {
         err(bad("no maca at {maca()}: cc -O1 -o bootstrap/maca bootstrap/maca.c"))
@@ -51,7 +51,7 @@ build(out: str) -> int {
 }
 
 announce(what: str) -> bool {
-    err(grey("==>") ++ " " ++ bold(what))
+    err(grey("==>") + " " + bold(what))
     true
 }
 
@@ -70,8 +70,8 @@ build_front_page() -> bool {
 }
 
 landing_pages() -> str[] =>
-    ["apps/tomo/site/index.html"]
-        ++ book_languages().map(c => "apps/tomo/site/" ++ c ++ "/home.html")
+    ["apps/tomo/site/index.html"] +
+        book_languages().map(c => "apps/tomo/site/" + c + "/home.html")
 
 book_languages() -> str[] {
     toml = read_file("apps/tomo/book.toml")
@@ -102,7 +102,7 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
         acc
     } else if ls.get(i).starts_with("| `std/") {
         name = between(ls.get(i), "| `std/", "`")
-        module_paths(ls, i + 1, acc.push("modules/std/" ++ name ++ ".maca"))
+        module_paths(ls, i + 1, acc.push("modules/std/" + name + ".maca"))
     } else {
         module_paths(ls, i + 1, acc)
     }
@@ -110,15 +110,15 @@ module_paths(ls: str[], i: int, acc: str[]) -> str[] {
 
 build_api_reference() -> bool {
     announce("api reference")
-    run(maca(), ["run", "apps/macadoc/macadoc.maca", "apps/tomo/site/api"]
-              ++ std_modules())
+    run(maca(), ["run", "apps/macadoc/macadoc.maca", "apps/tomo/site/api"] +
+              std_modules())
 }
 
 /** The compiler as `apps/playground` reaches it, which an absolute path already
  * is.
  */
 from_playground(bin: str) -> str =>
-    bin.starts_with("/") ? bin : "../../" ++ bin
+    bin.starts_with("/") ? bin : "../../" + bin
 
 build_playground() -> bool {
     announce("playground")
@@ -127,7 +127,7 @@ build_playground() -> bool {
 }
 
 assemble(out: str) -> bool {
-    announce("assembling " ++ dim(out))
+    announce("assembling " + dim(out))
     remove_dir(out)
     make_dir(out)
     copy_tree("apps/tomo/site", out)
@@ -156,8 +156,8 @@ check(out: str) -> int {
     require_llms_txt(out)
     require_live_css(out)
 
-    info(ok("{chapters} {default_lang} pages,"
-            ++ " {tree_size(out) / 1024} KiB total"))
+    info(ok("{chapters} {default_lang} pages," +
+            " {tree_size(out) / 1024} KiB total"))
     0
 }
 
@@ -178,7 +178,7 @@ dead_in_pages(pages: str[], i: int, acc: str[]) -> str[] {
     if i >= pages.length() {
         acc
     } else {
-        dead_in_pages(pages, i + 1, acc ++ dead_in_page(pages.get(i)))
+        dead_in_pages(pages, i + 1, acc + dead_in_page(pages.get(i)))
     }
 }
 
@@ -201,7 +201,7 @@ stylesheets(src: str, at: int, acc: str) -> str {
         acc
     } else {
         body = between(rest.slice(open, rest.length()), ">", "</style>")
-        stylesheets(src, at + open + 6, acc ++ body)
+        stylesheets(src, at + open + 6, acc + body)
     }
 }
 
@@ -216,10 +216,10 @@ unruled(cs: str[], i: int, sheet: str, acc: str[]) -> str[] {
 }
 
 has_rule(sheet: str, class: str) -> bool {
-    sel = "." ++ css_escape(class)
+    sel = "." + css_escape(class)
 
-    class.starts_with("language-") || sheet.contains(sel ++ " ")
-        || sheet.contains(sel ++ ":") || sheet.contains(sel ++ "[")
+    class.starts_with("language-") || sheet.contains(sel + " ")
+        || sheet.contains(sel + ":") || sheet.contains(sel + "[")
 }
 
 css_escape(class: str) -> str =>
@@ -229,9 +229,9 @@ escape_chars(cs: str[], i: int, out: str) -> str {
     if i >= cs.length() {
         out
     } else if needs_escape(cs.get(i)) {
-        escape_chars(cs, i + 1, out ++ "\\" ++ cs.get(i))
+        escape_chars(cs, i + 1, out + "\\" + cs.get(i))
     } else {
-        escape_chars(cs, i + 1, out ++ cs.get(i))
+        escape_chars(cs, i + 1, out + cs.get(i))
     }
 }
 
@@ -256,7 +256,7 @@ tag_classes(frags: str[], i: int, acc: str[]) -> str[] {
     if i >= frags.length() {
         acc
     } else {
-        tag_classes(frags, i + 1, acc ++ class_in_tag(frags.get(i)))
+        tag_classes(frags, i + 1, acc + class_in_tag(frags.get(i)))
     }
 }
 
@@ -287,16 +287,16 @@ drop_blocks(src: str, open: str, close: str, out: str) -> str {
     at = src.index_of(open)
 
     if at < 0 {
-        out ++ src
+        out + src
     } else {
         rest = src.slice(at, src.length())
         end = rest.index_of(close)
 
         if end < 0 {
-            out ++ src.slice(0, at)
+            out + src.slice(0, at)
         } else {
             drop_blocks(src.slice(at + end + close.length(), src.length()),
-                        open, close, out ++ src.slice(0, at))
+                        open, close, out + src.slice(0, at))
         }
     }
 }
@@ -304,13 +304,13 @@ drop_blocks(src: str, open: str, close: str, out: str) -> str {
 required_pages() -> str[] =>
     ["index.html", "en/index.html", "ko/index.html",
      "en/search-index.js", "ko/search-index.js", "play/index.html",
-     "api/index.html"] ++ api_pages(std_modules(), 0, [])
+     "api/index.html"] + api_pages(std_modules(), 0, [])
 
 api_pages(ms: str[], i: int, acc: str[]) -> str[] {
     if i >= ms.length() {
         acc
     } else {
-        api_pages(ms, i + 1, acc.push("api/" ++ stem(ms.get(i)) ++ ".html"))
+        api_pages(ms, i + 1, acc.push("api/" + stem(ms.get(i)) + ".html"))
     }
 }
 
@@ -363,11 +363,11 @@ require_fonts(out: str) -> bool {
     mono = join(dirname(sheet), between(css, "src: url(./jetbrains-mono/", ")"))
     prose = join(dirname(sheet), between(css, "src: url(./pretendard-gov/", ")"))
 
-    if file_size(join(dirname(sheet), "jetbrains-mono/"
-                      ++ between(css, "url(./jetbrains-mono/", ")"))) <= 0 {
+    if file_size(join(dirname(sheet), "jetbrains-mono/" +
+                      between(css, "url(./jetbrains-mono/", ")"))) <= 0 {
         fail "fonts.css names a mono file that is not there: {mono}"
-    } else if file_size(join(dirname(sheet), "pretendard-gov/"
-                             ++ between(css, "url(./pretendard-gov/", ")"))) <= 0 {
+    } else if file_size(join(dirname(sheet), "pretendard-gov/" +
+                             between(css, "url(./pretendard-gov/", ")"))) <= 0 {
         fail "fonts.css names a prose file that is not there: {prose}"
     } else {
         info(ok("both families are served, and the first file each names is there"))

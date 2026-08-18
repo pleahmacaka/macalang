@@ -20,8 +20,8 @@ built_c(src: str) -> str =>
 
 test_a_program_carries_only_the_runtime_blocks_it_calls() {
     plain = whole_c("main() -> int => 0")
-    threaded = whole_c("w(n: int) -> int => n * 2\n"
-                       ++ "main() -> int {{ a = spawn w(10)\n await a }}")
+    threaded = whole_c("w(n: int) -> int => n * 2\n" +
+                       "main() -> int {{ a = spawn w(10)\n await a }}")
     ran = whole_c("main() -> int => exec(\"true\", [])")
 
     assert(plain.index_of("pthread") < 0 && plain.index_of("sys/wait.h") < 0
@@ -36,10 +36,10 @@ test_a_program_carries_only_the_runtime_blocks_it_calls() {
 }
 
 test_a_helper_named_only_in_a_string_is_not_read_as_a_call() {
-    quoting = whole_c("main() -> int {{\n"
-                      ++ "    info(\"maca_exec maca_capture maca_spawn"
-                      ++ " MacaFuture maca_try_push http_listen\")\n"
-                      ++ "    0\n}}")
+    quoting = whole_c("main() -> int {{\n" +
+                      "    info(\"maca_exec maca_capture maca_spawn" +
+                      " MacaFuture maca_try_push http_listen\")\n" +
+                      "    0\n}}")
 
     assert(quoting.index_of("#include <sys/wait.h>") < 0,
            "printing `maca_exec` is not running another program")
@@ -48,9 +48,9 @@ test_a_helper_named_only_in_a_string_is_not_read_as_a_call() {
     assert(quoting.index_of("#include <setjmp.h>") < 0,
            "printing `maca_try_push` is not catching a failure")
 
-    escaped = whole_c("main() -> int {{\n"
-                      ++ "    info(\"say \\\"maca_exec\\\" now\")\n"
-                      ++ "    0\n}}")
+    escaped = whole_c("main() -> int {{\n" +
+                      "    info(\"say \\\"maca_exec\\\" now\")\n" +
+                      "    0\n}}")
 
     assert(escaped.index_of("#include <sys/wait.h>") < 0,
            "an escaped quote does not end the string a name is hiding in")
@@ -58,10 +58,10 @@ test_a_helper_named_only_in_a_string_is_not_read_as_a_call() {
 
 test_the_foreign_glue_arrives_only_with_the_call_that_declared_it() {
     plain = whole_c("main() -> int => 0")
-    db = whole_c("sqlite_open(path: str) -> int\n"
-                 ++ "main() -> int => sqlite_open(\":memory:\")")
-    py = whole_c("py_call(m: str, f: str) -> str\n"
-                 ++ "main() -> int => ord(py_call(\"os\", \"getcwd\"))")
+    db = whole_c("sqlite_open(path: str) -> int\n" +
+                 "main() -> int => sqlite_open(\":memory:\")")
+    py = whole_c("py_call(m: str, f: str) -> str\n" +
+                 "main() -> int => ord(py_call(\"os\", \"getcwd\"))")
 
     assert(plain.index_of("sqlite3.h") < 0 && plain.index_of("Python.h") < 0,
            "a program declaring no foreign call carries no foreign glue")
@@ -75,8 +75,8 @@ test_the_foreign_glue_arrives_only_with_the_call_that_declared_it() {
 
 test_setjmp_arrives_only_with_the_try_that_asked_for_it() {
     plain = whole_c("main() -> int => 0")
-    caught = whole_c("boom() -> int {{ fail \"kaboom\"\n 0 }}\n"
-                     ++ "main() -> int {{ try boom()\n 0 }}")
+    caught = whole_c("boom() -> int {{ fail \"kaboom\"\n 0 }}\n" +
+                     "main() -> int {{ try boom()\n 0 }}")
 
     assert(plain.index_of("setjmp") < 0 && plain.index_of("jmp_buf") < 0,
            "a program that catches nothing carries no setjmp, which wasi-libc refuses")
@@ -98,9 +98,9 @@ test_a_choice_in_value_position_is_a_ternary() {
 }
 
 test_a_variant_is_compared_by_tag_rather_than_bound() {
-    made = gate_c("Color = Red | Green | Blue\n"
-                  ++ "score(x: Color) -> int {{ match x {{"
-                  ++ " Red => 1 Green => 2 Blue => 3 }} }}")
+    made = gate_c("Color = Red | Green | Blue\n" +
+                  "score(x: Color) -> int {{ match x {{" +
+                  " Red => 1 Green => 2 Blue => 3 }} }}")
 
     assert(made.index_of("typedef enum {{ Red, Green, Blue }} Color;") >= 0,
            "a sum with no payload is a C enum")
@@ -113,9 +113,9 @@ test_a_variant_is_compared_by_tag_rather_than_bound() {
 }
 
 test_a_match_that_answers_a_record_ends_in_the_record() {
-    made = gate_c("P = {{ n: int }} C = A | B "
-                  ++ "pick(c: C) -> P {{ match c {{"
-                  ++ " A => P {{ n = 1 }} B => P {{ n = 2 }} }} }}")
+    made = gate_c("P = {{ n: int }} C = A | B " +
+                  "pick(c: C) -> P {{ match c {{" +
+                  " A => P {{ n = 1 }} B => P {{ n = 2 }} }} }}")
 
     assert(made.index_of(": 0)") < 0,
            "an int fallback beside a struct is C the compiler refuses")
@@ -142,8 +142,8 @@ test_an_interpolation_builds_a_string() {
 }
 
 test_a_reassignment_is_not_a_second_declaration() {
-    made = gate_c("sum_to(n: int) -> int {{ acc = 0 i = 1"
-                  ++ " while i <= n {{ acc = acc + i i = i + 1 }} acc }}")
+    made = gate_c("sum_to(n: int) -> int {{ acc = 0 i = 1" +
+                  " while i <= n {{ acc = acc + i i = i + 1 }} acc }}")
 
     assert(made.index_of("while ((i <= n))") >= 0, "the loop is a while")
     assert(made.index_of("acc = (acc + i);") >= 0
@@ -153,8 +153,8 @@ test_a_reassignment_is_not_a_second_declaration() {
 }
 
 test_break_and_continue_reach_the_loop() {
-    made = gate_c("f() -> int {{ i = 0"
-                  ++ " while i < 10 {{ i = i + 1 if i < 3 {{ continue }} break }} i }}")
+    made = gate_c("f() -> int {{ i = 0" +
+                  " while i < 10 {{ i = i + 1 if i < 3 {{ continue }} break }} i }}")
 
     assert(made.index_of("break;") >= 0, "a break is a break")
     assert(made.index_of("continue;") >= 0, "and a continue is a continue")
@@ -186,9 +186,9 @@ test_a_literal_pattern_is_compared_by_value() {
 }
 
 test_a_variant_carrying_a_payload_is_a_tagged_struct() {
-    made = gate_c("Shape = Circle(int) | Rect(int, int)\n"
-                  ++ "area(s: Shape) -> int {{ match s {{"
-                  ++ " Circle(r) => r * r Rect(w, h) => w * h }} }}")
+    made = gate_c("Shape = Circle(int) | Rect(int, int)\n" +
+                  "area(s: Shape) -> int {{ match s {{" +
+                  " Circle(r) => r * r Rect(w, h) => w * h }} }}")
 
     assert(made.index_of("Shape_tag tag;") >= 0, "the value carries which variant it is")
     assert(made.index_of("static inline Shape Circle(long long _0)") >= 0,
@@ -198,8 +198,8 @@ test_a_variant_carrying_a_payload_is_a_tagged_struct() {
 }
 
 test_an_element_and_a_field_are_both_places_to_write() {
-    made = gate_c("P = {{ x: int }}\n"
-                  ++ "f(xs: int[], p: P) -> int {{ xs[0] = 9 p.x = 5 0 }}")
+    made = gate_c("P = {{ x: int }}\n" +
+                  "f(xs: int[], p: P) -> int {{ xs[0] = 9 p.x = 5 0 }}")
 
     assert(made.index_of("xs.data[0] = (long long)(9);") >= 0,
            "an element assignment reaches the backing buffer")
@@ -231,9 +231,9 @@ test_a_coercion_is_a_cast_rather_than_a_call() {
 }
 
 test_the_string_library_lowers_to_runtime_calls() {
-    made = gate_c("main() -> int {{ s = \"a,b\" parts = s.split(\",\")"
-                  ++ " x = s.trim().upper() y = s.contains(\"a\")"
-                  ++ " z = s.replace(\"a\", \"b\") i = s.index_of(\"b\") 0 }}")
+    made = gate_c("main() -> int {{ s = \"a,b\" parts = s.split(\",\")" +
+                  " x = s.trim().upper() y = s.contains(\"a\")" +
+                  " z = s.replace(\"a\", \"b\") i = s.index_of(\"b\") 0 }}")
 
     assert(made.index_of("maca_split(s, \",\")") >= 0, "split")
     assert(made.index_of("maca_trim(s)") >= 0 && made.index_of("maca_upper(") >= 0,
@@ -244,9 +244,9 @@ test_the_string_library_lowers_to_runtime_calls() {
 }
 
 test_the_scan_primitives_lower() {
-    made = gate_c("scan(s: str) -> int {{ cs = s.chars() n = cs.length()"
-                  ++ " c = cs.get(0) ws = c.is_whitespace() d = c.is_ascii_digit()"
-                  ++ " a = c.is_alpha() l = s.length() sub = cs.slice(0, 2) n + l }}")
+    made = gate_c("scan(s: str) -> int {{ cs = s.chars() n = cs.length()" +
+                  " c = cs.get(0) ws = c.is_whitespace() d = c.is_ascii_digit()" +
+                  " a = c.is_alpha() l = s.length() sub = cs.slice(0, 2) n + l }}")
 
     assert(made.index_of("maca_chars(s)") >= 0, "chars")
     assert(made.index_of("isspace((unsigned char)(c)[0])") >= 0, "is_whitespace")
@@ -256,9 +256,9 @@ test_the_scan_primitives_lower() {
 }
 
 test_a_name_c_has_taken_is_escaped() {
-    made = gate_c("Config = {{ default: int }}\ndouble(n: int) -> int => n * 2\n"
-                  ++ "main() -> int {{ new = 5 c = Config {{ default = double(new) }}"
-                  ++ " info(\"{{c.default}}\") 0 }}")
+    made = gate_c("Config = {{ default: int }}\ndouble(n: int) -> int => n * 2\n" +
+                  "main() -> int {{ new = 5 c = Config {{ default = double(new) }}" +
+                  " info(\"{{c.default}}\") 0 }}")
 
     assert(made.index_of("double_mc(") >= 0 && made.index_of("long long double(") < 0,
            "a function named after a C keyword would not compile")
@@ -277,8 +277,8 @@ test_a_reified_failure_installs_a_handler() {
 }
 
 test_a_type_is_defined_before_the_type_that_holds_it() {
-    holder = gate_c("Shape = Dot | At(P)\nP = {{ x: int y: int }}\n"
-                    ++ "f(s: Shape) -> int {{ match s {{ At(p) => p.x Dot => 0 }} }}")
+    holder = gate_c("Shape = Dot | At(P)\nP = {{ x: int y: int }}\n" +
+                    "f(s: Shape) -> int {{ match s {{ At(p) => p.x Dot => 0 }} }}")
 
     assert(holder.index_of("}} P;") < holder.index_of("}} Shape;"),
            "a record a variant carries is defined first, whatever order it was written in")
@@ -292,8 +292,8 @@ test_a_type_is_defined_before_the_type_that_holds_it() {
 }
 
 test_a_negation_and_a_forward_reference_both_resolve() {
-    made = gate_c("A = {{ b: B }}\nB = {{ v: int }}\nf(x: bool) -> bool => !x\n"
-                  ++ "main() -> int {{ a = A {{ b = B {{ v = 1 }} }} 0 }}")
+    made = gate_c("A = {{ b: B }}\nB = {{ v: int }}\nf(x: bool) -> bool => !x\n" +
+                  "main() -> int {{ a = A {{ b = B {{ v = 1 }} }} 0 }}")
 
     assert(made.index_of("(!x)") >= 0, "a not is a not")
     assert(made.index_of("B b;") >= 0,
@@ -308,25 +308,25 @@ test_a_record_that_holds_a_list_of_itself_still_defines() {
 }
 
 test_a_return_in_a_tail_position_is_a_statement_and_not_a_ternary() {
-    tail_if = gate_c("pick(n: int) -> str \{\n    if n == 1 \{\n"
-                     ++ "        return \"one\"\n    \} else \{\n"
-                     ++ "        \"many\"\n    \}\n\}")
-    tail_match = gate_c("pick(n: int) -> str \{\n    match n \{\n"
-                        ++ "        1 => \{\n            return \"one\"\n"
-                        ++ "        \}\n        _ => \"many\"\n    \}\n\}")
+    tail_if = gate_c("pick(n: int) -> str \{\n    if n == 1 \{\n" +
+                     "        return \"one\"\n    \} else \{\n" +
+                     "        \"many\"\n    \}\n\}")
+    tail_match = gate_c("pick(n: int) -> str \{\n    match n \{\n" +
+                        "        1 => \{\n            return \"one\"\n" +
+                        "        \}\n        _ => \"many\"\n    \}\n\}")
 
     assert(tail_if.index_of("? return") < 0
                && tail_match.index_of("? return") < 0,
-           "a `return` is a statement, and no ternary may hold one:\n"
-               ++ "{tail_if}{tail_match}")
-    assert(tail_if.index_of("if ((n == 1)) {{ return \"one\"; }}"
-                                ++ " else {{ return \"many\"; }}") >= 0,
-           "the branch that leaves and the branch that answers are both "
-               ++ "statements:\n{tail_if}")
-    assert(tail_match.index_of("if (n == 1) {{ return \"one\"; }}"
-                                   ++ " else {{ return \"many\"; }}") >= 0,
-           "and so are the arm that leaves and the arm that answers:\n"
-               ++ "{tail_match}")
+           "a `return` is a statement, and no ternary may hold one:\n" +
+               "{tail_if}{tail_match}")
+    assert(tail_if.index_of("if ((n == 1)) {{ return \"one\"; }}" +
+                                " else {{ return \"many\"; }}") >= 0,
+           "the branch that leaves and the branch that answers are both " +
+               "statements:\n{tail_if}")
+    assert(tail_match.index_of("if (n == 1) {{ return \"one\"; }}" +
+                                   " else {{ return \"many\"; }}") >= 0,
+           "and so are the arm that leaves and the arm that answers:\n" +
+               "{tail_match}")
 }
 
 test_a_shift_lowers_to_the_c_shift() {
@@ -341,33 +341,33 @@ test_a_shift_lowers_to_the_c_shift() {
 }
 
 test_a_local_that_holds_a_function_is_declared_as_a_closure() {
-    made = built_c("main() -> int {{\n    inc = n => n + 1\n"
-                   ++ "    info(\"{{inc(41)}}\")\n    0\n}}")
+    made = built_c("main() -> int {{\n    inc = n => n + 1\n" +
+                   "    info(\"{{inc(41)}}\")\n    0\n}}")
 
-    assert(made.index_of("MacaFn inc = (MacaFn){{ (void*)maca_lambda_0,"
-                             ++ " (MacaList){{0, 0}} }}") >= 0,
-           "the lifted function is wrapped with an empty"
-               ++ " environment: {made}")
+    assert(made.index_of("MacaFn inc = (MacaFn){{ (void*)maca_lambda_0," +
+                             " (MacaList){{0, 0}} }}") >= 0,
+           "the lifted function is wrapped with an empty" +
+               " environment: {made}")
     assert(made.index_of("MacaFn _c = inc; long long _a0 = 41;") >= 0,
            "and the call binds the value and its argument once: {made}")
 }
 
 test_a_parameter_nothing_declared_is_what_its_callers_pass() {
-    made = built_c("greet(n) => \"hi \" ++ n\n"
-                   ++ "main() -> int {{\n    info(greet(\"bob\"))\n"
-                   ++ "    0\n}}")
+    made = built_c("greet(n) => \"hi \" + n\n" +
+                   "main() -> int {{\n    info(greet(\"bob\"))\n" +
+                   "    0\n}}")
 
     assert(made.index_of("const char* greet(const char* n)") >= 0,
            "`++` constrains nothing, so the call site is what says it: {made}")
 }
 
 test_a_variant_that_carries_its_own_sum_carries_a_pointer_to_it() {
-    made = built_c("Tree = Leaf(int) | Node(Tree, Tree)\n"
-                   ++ "total(t: Tree) -> int {{\n    match t {{\n"
-                   ++ "        Leaf(n) => n\n"
-                   ++ "        Node(l, r) => total(l) + total(r)\n"
-                   ++ "    }}\n}}\n"
-                   ++ "main() -> int => total(Node(Leaf(1), Leaf(2)))")
+    made = built_c("Tree = Leaf(int) | Node(Tree, Tree)\n" +
+                   "total(t: Tree) -> int {{\n    match t {{\n" +
+                   "        Leaf(n) => n\n" +
+                   "        Node(l, r) => total(l) + total(r)\n" +
+                   "    }}\n}}\n" +
+                   "main() -> int => total(Node(Leaf(1), Leaf(2)))")
 
     assert(made.index_of("static inline Tree Node(Tree _0, Tree _1)") >= 0,
            "the constructor takes what the variant declared: {made}")
@@ -378,11 +378,11 @@ test_a_variant_that_carries_its_own_sum_carries_a_pointer_to_it() {
 }
 
 test_a_function_kept_in_a_field_is_called_through_the_field() {
-    made = built_c("Route = {{ path: str, handle: (str) -> str }}\n"
-                   ++ "home(q: str) -> str => q\n"
-                   ++ "main() -> int {{\n"
-                   ++ "    r = Route {{ path = \"/\", handle = home }}\n"
-                   ++ "    r.handle(\"x\") == \"x\" ? 0 : 1\n}}")
+    made = built_c("Route = {{ path: str, handle: (str) -> str }}\n" +
+                   "home(q: str) -> str => q\n" +
+                   "main() -> int {{\n" +
+                   "    r = Route {{ path = \"/\", handle = home }}\n" +
+                   "    r.handle(\"x\") == \"x\" ? 0 : 1\n}}")
 
     assert(made.index_of("MacaFn handle; }} Route;") >= 0,
            "the field is a function and what it captured: {made}")
@@ -393,13 +393,13 @@ test_a_function_kept_in_a_field_is_called_through_the_field() {
 }
 
 test_a_record_literal_with_no_name_gets_a_struct_of_its_shape() {
-    made = built_c("main() -> int {{\n"
-                   ++ "    c = {{ host = \"h\", port = 8080 }}\n"
-                   ++ "    d = {{ port = 80, host = \"e\" }}\n"
-                   ++ "    c = d\n    c.port\n}}")
+    made = built_c("main() -> int {{\n" +
+                   "    c = {{ host = \"h\", port = 8080 }}\n" +
+                   "    d = {{ port = 80, host = \"e\" }}\n" +
+                   "    c = d\n    c.port\n}}")
 
-    assert(made.index_of("typedef struct {{ const char* host; long long port; }}"
-                             ++ " MacaAnon_host_str_port_int;") >= 0,
+    assert(made.index_of("typedef struct {{ const char* host; long long port; }}" +
+                             " MacaAnon_host_str_port_int;") >= 0,
            "the shape became a struct named for its sorted fields: {made}")
     assert(made.index_of("MacaAnon_host_str_port_int c = ") >= 0
                && made.index_of("MacaAnon_host_str_port_int d = ") >= 0,
@@ -407,26 +407,26 @@ test_a_record_literal_with_no_name_gets_a_struct_of_its_shape() {
 }
 
 test_a_generic_calling_a_generic_passes_on_its_element_type() {
-    made = built_c("Row = {{ name: str }}\n"
-                   ++ "head_of(xs: a[], k: (a) -> str) -> a"
-                   ++ " => at_of(xs, k, 0)\n"
-                   ++ "at_of(xs: a[], k: (a) -> str, i: int) -> a"
-                   ++ " => xs.get(i)\n"
-                   ++ "name_of(r: Row) -> str => r.name\n"
-                   ++ "main() -> int {{\n"
-                   ++ "    head_of([Row {{ name = \"a\" }}], name_of).name"
-                   ++ " == \"a\" ? 0 : 1\n}}")
+    made = built_c("Row = {{ name: str }}\n" +
+                   "head_of(xs: a[], k: (a) -> str) -> a" +
+                   " => at_of(xs, k, 0)\n" +
+                   "at_of(xs: a[], k: (a) -> str, i: int) -> a" +
+                   " => xs.get(i)\n" +
+                   "name_of(r: Row) -> str => r.name\n" +
+                   "main() -> int {{\n" +
+                   "    head_of([Row {{ name = \"a\" }}], name_of).name" +
+                   " == \"a\" ? 0 : 1\n}}")
 
-    assert(made.index_of("Row at_of__arrRow_fnstr_int(MacaList xs,"
-                             ++ " MacaFn k, long long i)") >= 0,
+    assert(made.index_of("Row at_of__arrRow_fnstr_int(MacaList xs," +
+                             " MacaFn k, long long i)") >= 0,
            "the inner call was specialised at the outer element type: {made}")
     assert(made.index_of("arrany") < 0,
            "not at the variable the generic body still spells: {made}")
 }
 
 test_a_named_argument_carries_its_value_to_a_plain_function() {
-    made = gate_c("tagged(class: str, inner: str) -> str => class ++ inner\n"
-        ++ "main() -> int {{ info(tagged(class=\"a\", inner=\"b\")) 0 }}")
+    made = gate_c("tagged(class: str, inner: str) -> str => class + inner\n" +
+        "main() -> int {{ info(tagged(class=\"a\", inner=\"b\")) 0 }}")
 
     assert(made.index_of("tagged(\"a\", \"b\")") >= 0,
            "a named argument is the value it names: {made}")
@@ -435,26 +435,26 @@ test_a_named_argument_carries_its_value_to_a_plain_function() {
 }
 
 test_a_return_ending_a_branch_is_a_statement_and_not_a_ternary() {
-    made = gate_c(""
-        ++ "scan(xs: int[]) -> int {{\n"
-        ++ "    j = 0\n"
-        ++ "\n"
-        ++ "    while j < xs.length() {{\n"
-        ++ "        if xs.get(j) == 1 {{\n"
-        ++ "            j = j + 2\n"
-        ++ "        }} else if xs.get(j) == 2 {{\n"
-        ++ "            j = j + 1\n"
-        ++ "\n"
-        ++ "            if j < 0 {{\n"
-        ++ "                return 0 - 1\n"
-        ++ "            }}\n"
-        ++ "        }} else {{\n"
-        ++ "            j = j + 1\n"
-        ++ "        }}\n"
-        ++ "    }}\n"
-        ++ "\n"
-        ++ "    j\n"
-        ++ "}}\n")
+    made = gate_c("" +
+        "scan(xs: int[]) -> int {{\n" +
+        "    j = 0\n" +
+        "\n" +
+        "    while j < xs.length() {{\n" +
+        "        if xs.get(j) == 1 {{\n" +
+        "            j = j + 2\n" +
+        "        }} else if xs.get(j) == 2 {{\n" +
+        "            j = j + 1\n" +
+        "\n" +
+        "            if j < 0 {{\n" +
+        "                return 0 - 1\n" +
+        "            }}\n" +
+        "        }} else {{\n" +
+        "            j = j + 1\n" +
+        "        }}\n" +
+        "    }}\n" +
+        "\n" +
+        "    j\n" +
+        "}}\n")
 
     assert(made.index_of("? return") < 0,
            "C has no ternary a `return` can sit inside: {made}")

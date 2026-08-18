@@ -2,25 +2,25 @@ import std/path
 import std/proc
 
 root() -> str =>
-    env_or("TMPDIR", "/tmp") ++ "/maca-cli-module-entry"
+    env_or("TMPDIR", "/tmp") + "/maca-cli-module-entry"
 
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 project(tag: str) -> str {
-    dir = root() ++ "/" ++ tag
+    dir = root() + "/" + tag
     remove_dir(dir)
     make_dir(dir)
-    write_file(dir ++ "/maca.toml", "[package]\nname = \"p\"\n")
+    write_file(dir + "/maca.toml", "[package]\nname = \"p\"\n")
 
     dir
 }
 
 put(dir: str, rel: str, body: str) -> bool {
-    at = dir ++ "/" ++ rel
+    at = dir + "/" + rel
     make_dir(dirname(at))
 
     write_file(at, body)
@@ -61,8 +61,8 @@ test_a_package_function_runs_from_the_command_line() {
     put(dir, "modules/http/server.maca",
         "listen(port: int) -> str =>\n    \"listening on {{port}}\"\n")
     put(dir, "modules/http/serve.maca",
-        "import {{ listen }} from http/server\n\nserve() -> int {{\n"
-            ++ "    info(listen(8080))\n    0\n}}\n")
+        "import {{ listen }} from http/server\n\nserve() -> int {{\n" +
+            "    info(listen(8080))\n    0\n}}\n")
 
     for spec in ["http.serve", "http/serve"] {
         assert_eq(said_out(dir, ["-m", spec]).trim(), "listening on 8080",
@@ -91,8 +91,8 @@ test_a_module_without_a_main_runs_its_namesake() {
 test_the_leftover_command_line_reaches_the_function() {
     dir = project("args")
     put(dir, "modules/echo.maca",
-        "say(args: str[]) -> int {{\n    joined = args.join(\" \")\n"
-            ++ "    info(\"got {{args.length()}}: {{joined}}\")\n    0\n}}\n")
+        "say(args: str[]) -> int {{\n    joined = args.join(\" \")\n" +
+            "    info(\"got {{args.length()}}: {{joined}}\")\n    0\n}}\n")
 
     assert_eq(said_out(dir, ["-m", "echo.say", "alpha", "beta"]).trim(),
               "got 2: alpha beta", "what is left of the line is the argument")
@@ -101,8 +101,8 @@ test_the_leftover_command_line_reaches_the_function() {
 test_the_return_type_becomes_the_exit_status() {
     dir = project("status")
     put(dir, "modules/status.maca",
-        "code() -> int => 3\n\nok() -> bool => false\n\n"
-            ++ "note() -> str => \"nothing to report\"\n")
+        "code() -> int => 3\n\nok() -> bool => false\n\n" +
+            "note() -> str => \"nothing to report\"\n")
 
     assert_eq(str(exit_code(dir, ["-m", "status.code"])), "3",
               "an int is the code")
@@ -140,6 +140,6 @@ test_the_generated_entry_leaves_nothing_behind() {
     assert_eq(str(exit_code(dir, ["-m", "http.serve"])), "0", "the module runs")
     assert_eq(list_dir(dir).join(" "), ".maca maca.toml modules",
               "the run left no source and no binary in the project")
-    assert_eq(str(list_dir(dir ++ "/.maca").length()), "0",
+    assert_eq(str(list_dir(dir + "/.maca").length()), "0",
               "and the generated entry did not survive the run")
 }

@@ -58,19 +58,19 @@ test_a_bracket_holds_what_css_takes_and_an_underscore_is_a_space() {
               ".text-\\[0\\.9rem\\] {{ font-size:0.9rem; }}",
               "the brackets and the dot are escaped in the selector")
     assert_eq(tw_rule("grid-cols-[11rem_1fr]"),
-              ".grid-cols-\\[11rem_1fr\\] "
-                  ++ "{{ grid-template-columns:11rem 1fr; }}",
+              ".grid-cols-\\[11rem_1fr\\] " +
+                  "{{ grid-template-columns:11rem 1fr; }}",
               "an underscore stands in for the space a class cannot hold")
     assert_eq(tw_rule("border-b-[3px]"),
-              ".border-b-\\[3px\\] "
-                  ++ "{{ border-bottom-width:3px;border-bottom-style:solid; }}",
+              ".border-b-\\[3px\\] " +
+                  "{{ border-bottom-width:3px;border-bottom-style:solid; }}",
               "an edge takes a bracket too")
 }
 
 test_a_grid_cell_says_how_many_tracks_it_covers() {
     assert_eq(tw_rule("grid-cols-3"),
-              ".grid-cols-3 "
-                  ++ "{{ grid-template-columns:repeat(3,minmax(0,1fr)); }}",
+              ".grid-cols-3 " +
+                  "{{ grid-template-columns:repeat(3,minmax(0,1fr)); }}",
               "three even columns")
     assert_eq(tw_rule("col-span-4"),
               ".col-span-4 {{ grid-column:span 4 / span 4; }}", "four across")
@@ -83,17 +83,17 @@ test_a_variant_becomes_a_selector_or_a_query() {
               ".hover\\:underline:hover {{ text-decoration-line:underline; }}",
               "a pseudo class hangs off the selector")
     assert_eq(tw_rule("dark:text-white"),
-              "@media(prefers-color-scheme:dark) "
-                  ++ "{{ .dark\\:text-white {{ color:#ffffff; }} }}",
+              "@media(prefers-color-scheme:dark) " +
+                  "{{ .dark\\:text-white {{ color:#ffffff; }} }}",
               "a scheme is a query around the rule")
     assert_eq(tw_rule("md:px-8"),
-              "@media(min-width:48rem) {{ .md\\:px-8 "
-                  ++ "{{ padding-left:2rem;padding-right:2rem; }} }}",
+              "@media(min-width:48rem) {{ .md\\:px-8 " +
+                  "{{ padding-left:2rem;padding-right:2rem; }} }}",
               "a breakpoint is a width")
     assert_eq(tw_rule("dark:hover:bg-zinc-900"),
-              "@media(prefers-color-scheme:dark) {{ "
-                  ++ ".dark\\:hover\\:bg-zinc-900:hover "
-                  ++ "{{ background-color:#18181b; }} }}",
+              "@media(prefers-color-scheme:dark) {{ " +
+                  ".dark\\:hover\\:bg-zinc-900:hover " +
+                  "{{ background-color:#18181b; }} }}",
               "two variants stack, each in its own place")
 }
 
@@ -119,11 +119,11 @@ test_the_sheet_holds_the_reset_and_then_every_class_once() {
 
 test_the_sheet_writes_the_narrower_rules_after_the_plain_ones() {
     assert_eq(says("md:flex hover:underline flex"),
-              ".flex {{ display:flex; }}\\n"
-                  ++ ".hover\\\\:underline:hover "
-                  ++ "{{ text-decoration-line:underline; }}\\n"
-                  ++ "@media(min-width:48rem) {{ .md\\\\:flex "
-                  ++ "{{ display:flex; }} }}\\n",
+              ".flex {{ display:flex; }}\\n" +
+                  ".hover\\\\:underline:hover " +
+                  "{{ text-decoration-line:underline; }}\\n" +
+                  "@media(min-width:48rem) {{ .md\\\\:flex " +
+                  "{{ display:flex; }} }}\\n",
               "plain, then pseudo, then the breakpoint, whatever the order")
 }
 
@@ -135,10 +135,10 @@ test_a_word_that_is_no_utility_is_left_out_of_the_sheet() {
 }
 
 test_a_tag_and_an_attribute_name_are_not_classes() {
-    lowered = "main() -> str => maca_element(\"table\", "
-        ++ "maca_attr(\"hidden\", \"flex\"), \"\")"
+    lowered = "main() -> str => maca_element(\"table\", " +
+        "maca_attr(\"hidden\", \"flex\"), \"\")"
 
     assert_eq(rules(lowered), ".flex {{ display:flex; }}\\n",
-        "`table` and `hidden` name the element and its attribute, and only "
-            ++ "the attribute's value carries classes")
+        "`table` and `hidden` name the element and its attribute, and only " +
+            "the attribute's value carries classes")
 }

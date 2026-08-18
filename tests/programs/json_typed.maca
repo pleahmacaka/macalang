@@ -56,8 +56,8 @@ test_encoding_what_was_decoded_gives_the_same_text() {
 }
 
 test_a_field_of_the_wrong_type_names_the_field() {
-    why = try read_config("\{\"columns\":\"three\",\"layout\":\"grid\","
-                              ++ "\"links\":[],\"scale\":1.0\}")
+    why = try read_config("\{\"columns\":\"three\",\"layout\":\"grid\"," +
+                              "\"links\":[],\"scale\":1.0\}")
 
     assert(why.contains("`columns`"), "names the field: {why}")
     assert(why.contains("expected a number"), "says what it needed: {why}")
@@ -72,8 +72,8 @@ test_a_missing_field_names_the_field() {
 }
 
 test_a_variant_the_sum_does_not_have_names_the_field() {
-    why = try read_config("\{\"columns\":1,\"layout\":\"table\","
-                              ++ "\"links\":[],\"scale\":1.0\}")
+    why = try read_config("\{\"columns\":1,\"layout\":\"table\"," +
+                              "\"links\":[],\"scale\":1.0\}")
 
     assert(why.contains("`layout`"), "names the field: {why}")
     assert(why.contains("\"table\""), "quotes what it was given: {why}")
@@ -81,8 +81,8 @@ test_a_variant_the_sum_does_not_have_names_the_field() {
 }
 
 test_a_bad_field_inside_a_nested_record_names_that_field() {
-    why = try read_config("\{\"columns\":1,\"layout\":\"grid\",\"scale\":1.0,"
-                              ++ "\"links\":[\{\"title\":\"a\",\"url\":\"/a\"\}]\}")
+    why = try read_config("\{\"columns\":1,\"layout\":\"grid\",\"scale\":1.0," +
+                              "\"links\":[\{\"title\":\"a\",\"url\":\"/a\"\}]\}")
 
     assert(why.contains("`pinned`"), "the field the element is missing: {why}")
 }

@@ -22,7 +22,7 @@ recursion_kernels() -> str[] => ["fib", "tak", "ackermann"]
 compute_kernels() -> str[] => ["sieve", "mandel", "matmul"]
 
 kernels() -> str[] =>
-    recursion_kernels() ++ compute_kernels()
+    recursion_kernels() + compute_kernels()
 
 expected(algo: str) -> int {
     if algo == "fib" {
@@ -60,7 +60,7 @@ langs() -> str[] =>
     ["Maca", "C", "Rust", "Go", "JS (node)", "Python"]
 
 case_name(algo: str, lang: str) -> str =>
-    algo ++ "/" ++ lang
+    algo + "/" + lang
 
 time_cmd(algo: str, lang: str, cmd: str, args: str[], runs: int) -> Result {
     capture(cmd, args)
@@ -88,21 +88,21 @@ runners(algo: str) -> Runner[] {
              build_native("Rust", "rustc", "-O", algo, "_rs"),
              build_go(algo)]
 
-    built ++ [interpreted("JS (node)", "node",
+    built + [interpreted("JS (node)", "node",
                           ["--stack-size=8000", ref(algo, ".js")]),
               interpreted("Python", "python3", [ref(algo, ".py")])]
 }
 
 ref(algo: str, ext: str) -> str =>
-    join("apps/bench/ref", algo ++ ext)
+    join("apps/bench/ref", algo + ext)
 
 no_runner(lang: str) -> Runner =>
     Runner { lang = lang, cmd = "", args = [] }
 
 build_maca(algo: str) -> Runner {
-    out = join(Tmp, algo ++ "_maca")
+    out = join(Tmp, algo + "_maca")
     built = try_run("target/release/maca",
-                    ["build", join("apps/bench", algo ++ ".maca"), "-o", out])
+                    ["build", join("apps/bench", algo + ".maca"), "-o", out])
 
     if !built {
         fail "maca build {algo} failed"
@@ -115,7 +115,7 @@ build_native(lang: str, tool: str, opt: str, algo: str, suffix: str) -> Runner {
     if !have(tool) {
         no_runner(lang)
     } else {
-        out = join(Tmp, algo ++ suffix)
+        out = join(Tmp, algo + suffix)
         ext = if tool == "cc" { ".c" } else { ".rs" }
 
         if !try_run(tool, [opt, ref(algo, ext), "-o", out]) {
@@ -130,7 +130,7 @@ build_go(algo: str) -> Runner {
     if !have("go") {
         no_runner("Go")
     } else {
-        out = join(Tmp, algo ++ "_go")
+        out = join(Tmp, algo + "_go")
 
         if !try_run("go", ["build", "-o", out, ref(algo, ".go")]) {
             fail "go build {algo} failed"
@@ -200,7 +200,7 @@ run_kernels(algos: str[], i: int, runs: int, acc: Result[]) -> Result[] {
     } else {
         info(rule("{algos.get(i)}: {params(algos.get(i))}"))
         here = time_runners(runners(algos.get(i)), 0, algos.get(i), runs, [])
-        run_kernels(algos, i + 1, runs, acc ++ here)
+        run_kernels(algos, i + 1, runs, acc + here)
     }
 }
 
@@ -213,7 +213,7 @@ time_runners(rs: Runner[], i: int, algo: str, runs: int,
     } else {
         r = time_cmd(algo, rs.get(i).lang, rs.get(i).cmd, rs.get(i).args, runs)
         report(algo, rs.get(i).lang, r)
-        time_runners(rs, i + 1, algo, runs, acc ++ [r])
+        time_runners(rs, i + 1, algo, runs, acc + [r])
     }
 }
 
@@ -223,7 +223,7 @@ report(algo: str, lang: str, r: Result) {
         ? note("ok")
         : bad("got {grouped(r.checksum)}, want {grouped(expected(algo))}")
 
-    info(line ++ mark)
+    info(line + mark)
 }
 
 against(before: Result[], now: Result[]) {
@@ -243,7 +243,7 @@ record(algos: str[], now: Result[]) {
     } else {
         save(Baseline, now)
         write_file(Report, results_md(now))
-        info(ok("wrote " ++ dim(Baseline) ++ " and " ++ dim(Report)))
+        info(ok("wrote " + dim(Baseline) + " and " + dim(Report)))
     }
 }
 
@@ -265,48 +265,48 @@ md_row(rs: Result[], algo: str) -> str {
     base = if at < 0 { 0.0 } else { median_ms(rs.get(at)) }
     cells = langs().map(l => cell(rs, algo, l, base))
 
-    "| " ++ algo ++ " | " ++ params(algo) ++ " | " ++ cells.join(" | ") ++ " |\n"
+    "| " + algo + " | " + params(algo) + " | " + cells.join(" | ") + " |\n"
 }
 
 md_table(rs: Result[], algos: str[], title: str, blurb: str) -> str =>
-    "### " ++ title ++ "\n\n" ++ blurb ++ "\n\n"
-        ++ "| kernel | params | " ++ langs().join(" | ") ++ " |\n"
-        ++ "|" ++ "---|".repeat(langs().length() + 2) ++ "\n"
-        ++ md_rows(rs, algos, 0)
-        ++ "\n"
+    "### " + title + "\n\n" + blurb + "\n\n" +
+        "| kernel | params | " + langs().join(" | ") + " |\n" +
+        "|" + "---|".repeat(langs().length() + 2) + "\n" +
+        md_rows(rs, algos, 0) +
+        "\n"
 
 md_rows(rs: Result[], algos: str[], i: int) -> str {
     if i >= algos.length() {
         ""
     } else {
-        md_row(rs, algos.get(i)) ++ md_rows(rs, algos, i + 1)
+        md_row(rs, algos.get(i)) + md_rows(rs, algos, i + 1)
     }
 }
 
 results_md(rs: Result[]) -> str =>
-    preamble()
-        ++ md_table(rs, recursion_kernels(),
+    preamble() +
+        md_table(rs, recursion_kernels(),
                     "Recursion-bound (call overhead)",
-                    "Tree/nested recursion, dominated by function-call cost.")
-        ++ md_table(rs, compute_kernels(),
+                    "Tree/nested recursion, dominated by function-call cost.") +
+        md_table(rs, compute_kernels(),
                     "Compute-bound (loops, arrays, float)",
-                    "Tight loops over arrays and floating point, dominated by"
-                        ++ " the inner loop.")
-        ++ closing()
+                    "Tight loops over arrays and floating point, dominated by" +
+                        " the inner loop.") +
+        closing()
 
 preamble() -> str =>
-    "# Benchmarks: Maca vs C / Rust / Go / JS / Python\n\n"
-        ++ "Median execution time in **ms** (lower is better); `×N` is the"
-        ++ " slowdown\nvs C. Maca is `maca build` (Maca → C → `cc -O2`); C is"
-        ++ " `cc -O2`; Rust is\n`rustc -O`; Go is `go build`; JS is Node;"
-        ++ " Python is CPython 3. Every\ncolumn computes the same verified"
-        ++ " result. Reproduce with\n`maca run apps/bench/run.maca`.\n\n"
+    "# Benchmarks: Maca vs C / Rust / Go / JS / Python\n\n" +
+        "Median execution time in **ms** (lower is better); `×N` is the" +
+        " slowdown\nvs C. Maca is `maca build` (Maca → C → `cc -O2`); C is" +
+        " `cc -O2`; Rust is\n`rustc -O`; Go is `go build`; JS is Node;" +
+        " Python is CPython 3. Every\ncolumn computes the same verified" +
+        " result. Reproduce with\n`maca run apps/bench/run.maca`.\n\n"
 
 closing() -> str =>
-    "On recursion and float/loop work Maca lands right on C (it *is* C, at\n"
-        ++ "`-O2`). `sieve` is the widest gap: Maca's only array type is 64-bit"
-        ++ " `int[]`,\nso a sieve over 10⁷ touches ~80 MB where C's `char`"
-        ++ " array touches ~10 MB.\nIt's memory-bound, not a codegen deficit"
-        ++ " (a compact byte array would close\nit).\n\n"
-        ++ "_Host: " ++ output("uname", ["-srm"]) ++ ". Times are wall-clock"
-        ++ " medians including process startup._\n"
+    "On recursion and float/loop work Maca lands right on C (it *is* C, at\n" +
+        "`-O2`). `sieve` is the widest gap: Maca's only array type is 64-bit" +
+        " `int[]`,\nso a sieve over 10⁷ touches ~80 MB where C's `char`" +
+        " array touches ~10 MB.\nIt's memory-bound, not a codegen deficit" +
+        " (a compact byte array would close\nit).\n\n" +
+        "_Host: " + output("uname", ["-srm"]) + ". Times are wall-clock" +
+        " medians including process startup._\n"

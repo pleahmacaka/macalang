@@ -126,7 +126,7 @@ test_an_unterminated_string_is_reported() {
     assert_eq(bad.get(0), "unterminated string", "said plainly")
 }
 
-Unclosed = "unterminated interpolation: a literal `{{` in a" ++
+Unclosed = "unterminated interpolation: a literal `{{` in a" +
     " string is written `{{{{`"
 
 test_an_unclosed_interpolation_says_how_to_write_a_literal_brace() {
@@ -137,9 +137,9 @@ test_an_unclosed_interpolation_says_how_to_write_a_literal_brace() {
 
 test_a_string_far_longer_than_a_stack_run_still_lexes() {
     body = widened("ab", 16)
-    assert_eq(count_of("\"" ++ body ++ "\""), "5",
+    assert_eq(count_of("\"" + body + "\""), "5",
               "131072 characters inside one literal, still one token")
-    assert_eq(count_of("\"{{n}}" ++ body ++ "\""), "5",
+    assert_eq(count_of("\"{{n}}" + body + "\""), "5",
               "and the same run behind an interpolation")
 }
 
@@ -147,7 +147,7 @@ widened(s: str, n: int) -> str {
     if n <= 0 {
         s
     } else {
-        widened(s ++ s, n - 1)
+        widened(s + s, n - 1)
     }
 }
 
@@ -165,12 +165,12 @@ test_the_tokens_still_come_back_beside_the_errors() {
 
 Quote = "\""
 
-Raw = Quote ++ Quote ++ Quote
+Raw = Quote + Quote + Quote
 
 OpenBrace = "{{"
 
 test_a_raw_string_takes_its_body_verbatim() {
-    src = Raw ++ "a" ++ Quote ++ "b" ++ Raw
+    src = Raw + "a" + Quote + "b" + Raw
 
     assert_eq(count_of(src), "5", "one string token and the Eof run")
     assert_eq(text_at(src, 0), "a\\\"b",
@@ -178,14 +178,14 @@ test_a_raw_string_takes_its_body_verbatim() {
 }
 
 test_a_raw_string_doubles_the_braces_it_holds() {
-    src = Raw ++ "h" ++ OpenBrace ++ "c" ++ "}}" ++ Raw
+    src = Raw + "h" + OpenBrace + "c" + "}}" + Raw
 
-    assert_eq(text_at(src, 0), "h" ++ OpenBrace ++ OpenBrace ++ "c}}}}",
+    assert_eq(text_at(src, 0), "h" + OpenBrace + OpenBrace + "c}}}}",
               "a brace is doubled, so the parser reads it as a literal one")
 }
 
 test_a_raw_string_that_never_closes_is_still_an_error() {
-    both = lex_all(Raw ++ "a b c")
+    both = lex_all(Raw + "a b c")
 
     assert_eq(str(both.errors.length()), "1", "the run to EOF is reported")
     assert_eq(both.errors.get(0), "unterminated string",
@@ -193,8 +193,8 @@ test_a_raw_string_that_never_closes_is_still_an_error() {
 }
 
 test_an_ordinary_string_is_not_a_raw_one() {
-    assert_eq(count_of(Quote ++ "ab" ++ Quote), "5", "one string and the run")
-    assert_eq(count_of("(" ++ Quote ++ Quote ++ ")"), "7",
+    assert_eq(count_of(Quote + "ab" + Quote), "5", "one string and the run")
+    assert_eq(count_of("(" + Quote + Quote + ")"), "7",
               "an empty string beside a paren is not three quotes")
 }
 

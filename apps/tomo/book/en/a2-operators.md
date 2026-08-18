@@ -29,7 +29,7 @@ fine = a > 0
 ```
 
 A long condition can break either way. Six operators may *begin* a line (`&&`,
-`||`, `++`, `.`, `?` and `:`), because none can begin an expression; `+`, `*`
+`||`, `.`, `?` and `:`), because none can begin an expression; `+`, `*`
 and the comparisons cannot, so a line starting with one is a parse error. `-` is
 the trap: it can begin an expression, so a leading `-` starts a new statement and
 nothing warns. [Syntax](a5-syntax.md) has the whole rule.
@@ -44,7 +44,7 @@ nothing warns. [Syntax](a5-syntax.md) has the whole rule.
 
 | Operator | Meaning |
 |---|---|
-| `++` | joins two strings, or two lists |
+| `+` | adds two numbers, or joins two strings or two lists |
 
 ## Control
 
@@ -118,7 +118,6 @@ and an attached one is part of a name, so `data-id` is one identifier.
 2. `\|\|`
 3. `&&`
 4. `==` `!=` `<` `>` `<=` `>=`
-5. `++`
 6. `<<` `>>`
 7. `+` `-`
 8. `*` `/` `%`

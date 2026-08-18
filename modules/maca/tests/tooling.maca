@@ -2,25 +2,25 @@ import std/proc
 import std/text
 
 scratch() -> str =>
-    env_or("TMPDIR", "/tmp") ++ "/maca-cli-tooling"
+    env_or("TMPDIR", "/tmp") + "/maca-cli-tooling"
 
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 fixture(name: str, src: str) -> str {
     dir = scratch()
     make_dir(dir)
-    at = dir ++ "/" ++ name
+    at = dir + "/" + name
     write_file(at, src)
 
     at
 }
 
 package_dir(tag: str) -> str {
-    dir = scratch() ++ "/" ++ tag
+    dir = scratch() + "/" + tag
     remove_dir(dir)
     make_dir(dir)
 
@@ -72,7 +72,7 @@ lint_rc(name: str, src: str) -> int =>
     exec(maca_bin(), ["lint", fixture(name, src)])
 
 test_lint_flags_a_line_past_eighty_columns() {
-    src = "total = " ++ repeated("value", 20, []).join(" + ") ++ "\n"
+    src = "total = " + repeated("value", 20, []).join(" + ") + "\n"
 
     said = lint_says("wide.maca", src)
     assert(said.contains("80 columns"), "the rule names the width: {said}")
@@ -81,33 +81,33 @@ test_lint_flags_a_line_past_eighty_columns() {
 }
 
 test_lint_does_not_flag_a_long_string_literal() {
-    src = "x = \"" ++ repeated("a", 200, []).join("") ++ "\"\n"
+    src = "x = \"" + repeated("a", 200, []).join("") + "\"\n"
 
     assert_eq(str(lint_rc("literal.maca", src)), "0",
               "a long string literal is not a long line")
 }
 
 test_lint_does_not_flag_an_else_if_chain() {
-    src = "pick(n: int) -> str {{\n    if n > 1 {{\n        \"many\"\n"
-        ++ "    }} else if n == 1 {{\n        \"one\"\n"
-        ++ "    }} else {{\n        \"none\"\n    }}\n}}\n"
+    src = "pick(n: int) -> str {{\n    if n > 1 {{\n        \"many\"\n" +
+        "    }} else if n == 1 {{\n        \"one\"\n" +
+        "    }} else {{\n        \"none\"\n    }}\n}}\n"
 
     assert_eq(str(lint_rc("chain.maca", src)), "0",
               "an else-if chain is the house style, not a violation")
 }
 
 test_lint_resolves_imports_before_calling_a_name_undefined() {
-    src = "import std/path\n\nmain() -> int {{\n"
-        ++ "    info(join(\"a\", \"b\"))\n    0\n}}\n"
+    src = "import std/path\n\nmain() -> int {{\n" +
+        "    info(join(\"a\", \"b\"))\n    0\n}}\n"
 
     said = lint_says("import.maca", src)
     assert(!said.contains("UndefinedName"), "join comes from std/path: {said}")
 }
 
 test_lint_names_the_rule_and_the_line_of_everything_it_flags() {
-    src = "main() -> int {{\n    if x > 0 {{ x = 2 }}\n\ty = 3\n"
-        ++ "    z = 4   \n    w = "
-        ++ repeated("value", 20, []).join(" + ") ++ "\n    0\n}}\n"
+    src = "main() -> int {{\n    if x > 0 {{ x = 2 }}\n\ty = 3\n" +
+        "    z = 4   \n    w = " +
+        repeated("value", 20, []).join(" + ") + "\n    0\n}}\n"
 
     said = lint_says("rules.maca", src)
     assert(said.contains("rules.maca:2: single-line `if` block"),
@@ -132,17 +132,17 @@ test_lint_calls_a_file_that_nothing_fires_on_clean() {
 }
 
 test_the_single_line_if_rule_reads_code_and_not_prose() {
-    src = "// a comment naming `if x {{ y }}` inline\n"
-        ++ "pick(c: bool) -> int => c ? 1 : 2\n"
-        ++ "has(s: str) -> bool => s.contains(\"if \")\n"
+    src = "// a comment naming `if x {{ y }}` inline\n" +
+        "pick(c: bool) -> int => c ? 1 : 2\n" +
+        "has(s: str) -> bool => s.contains(\"if \")\n"
 
     assert_eq(str(lint_rc("exempt.maca", src)), "0",
               "a ternary, a comment and a string are none of them a block")
 }
 
 test_the_width_rule_measures_code_once_the_strings_are_gone() {
-    wide = "main() -> int {{\n    a = 1" ++ repeated(" ", 70, []).join("")
-        ++ "+ 2 + 3 + 4 + \"s\"\n    0\n}}\n"
+    wide = "main() -> int {{\n    a = 1" + repeated(" ", 70, []).join("") +
+        "+ 2 + 3 + 4 + \"s\"\n    0\n}}\n"
 
     assert_eq(str(lint_rc("widecode.maca", wide)), "1",
               "the code alone is past eighty columns")
@@ -184,8 +184,8 @@ test_fix_deletes_a_keyword_maca_has_no_word_for() {
 }
 
 test_fix_leaves_a_field_that_is_spelled_like_one_alone() {
-    src = "Row = {{ type: str }}\n\nname(r: Row) -> str {{\n"
-        ++ "    who = r.type\n    who\n}}\n"
+    src = "Row = {{ type: str }}\n\nname(r: Row) -> str {{\n" +
+        "    who = r.type\n    who\n}}\n"
 
     assert_eq(fixed("field.maca", src), src,
               "`type` after a dot is a field, not a keyword from elsewhere")
@@ -208,7 +208,7 @@ test_fix_says_what_it_would_do_without_doing_it() {
 
 test_a_script_alias_runs_the_line_that_table_gives_it() {
     dir = package_dir("script")
-    write_file(dir ++ "/maca.toml", "[scripts]\ngo = \"echo maca-script-ok\"\n")
+    write_file(dir + "/maca.toml", "[scripts]\ngo = \"echo maca-script-ok\"\n")
 
     assert_eq(out_in(dir, ["go"]).trim(), "maca-script-ok",
               "a [scripts] name is a command of its own")
@@ -216,8 +216,8 @@ test_a_script_alias_runs_the_line_that_table_gives_it() {
 
 test_a_library_with_no_bin_is_told_so_rather_than_building_the_roots() {
     dir = package_dir("library")
-    write_file(dir ++ "/maca.toml", "[package]\nname = \"greet\"\n")
-    write_file(dir ++ "/say.maca", "greeting(who: str) -> str => \"hi \" ++ who\n")
+    write_file(dir + "/maca.toml", "[package]\nname = \"greet\"\n")
+    write_file(dir + "/say.maca", "greeting(who: str) -> str => \"hi \" + who\n")
 
     said = err_in(dir, ["build"])
     assert(said.contains("greet"), "the message names the package: {said}")
@@ -227,12 +227,12 @@ test_a_library_with_no_bin_is_told_so_rather_than_building_the_roots() {
 
 two_binaries(tag: str, declared: str) -> str {
     dir = package_dir(tag)
-    write_file(dir ++ "/main.maca", "main() -> int => 0\n")
-    write_file(dir ++ "/other.maca", "main() -> int => 3\n")
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"hello\"\n\n" ++ declared
-            ++ "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n\n"
-            ++ "[[bin]]\nname = \"other\"\npath = \"other.maca\"\n")
+    write_file(dir + "/main.maca", "main() -> int => 0\n")
+    write_file(dir + "/other.maca", "main() -> int => 3\n")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"hello\"\n\n" + declared +
+            "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n\n" +
+            "[[bin]]\nname = \"other\"\npath = \"other.maca\"\n")
 
     dir
 }
@@ -250,8 +250,8 @@ test_the_binary_a_package_builds_by_default_can_be_declared() {
     dir = two_binaries("default-bin", "[build]\nbin = \"other\"\n\n")
 
     assert_eq(str(rc_in(dir, ["build"])), "0", "a declared bin needs no flag")
-    assert(file_exists(dir ++ "/other"), "the declared binary is the one built")
-    assert(!file_exists(dir ++ "/main"), "and the one it did not name was not")
+    assert(file_exists(dir + "/other"), "the declared binary is the one built")
+    assert(!file_exists(dir + "/main"), "and the one it did not name was not")
 }
 
 test_the_version_the_binary_reports_is_the_one_the_manifest_declares() {
@@ -262,12 +262,12 @@ test_the_version_the_binary_reports_is_the_one_the_manifest_declares() {
 }
 
 test_dev_without_a_dev_file_shows_the_starter_it_wants() {
-    dir = scratch() ++ "/starter"
+    dir = scratch() + "/starter"
 
     make_dir(dir)
     here = cwd()
     chdir(dir)
-    said = capture_err(maca_bin(), ["dev"]) ++ capture(maca_bin(), ["dev"])
+    said = capture_err(maca_bin(), ["dev"]) + capture(maca_bin(), ["dev"])
     code = exec(maca_bin(), ["dev"])
 
     chdir(here)
@@ -283,12 +283,12 @@ jdk_here() -> bool =>
  * it.
  */
 jvm_stub(dir: str) -> bool {
-    make_dir(dir ++ "/net/fabricmc/api")
-    write_file(dir ++ "/net/fabricmc/api/ModInitializer.java",
-        "package net.fabricmc.api;\n"
-            ++ "public interface ModInitializer {{ void onInitialize(); }}\n")
+    make_dir(dir + "/net/fabricmc/api")
+    write_file(dir + "/net/fabricmc/api/ModInitializer.java",
+        "package net.fabricmc.api;\n" +
+            "public interface ModInitializer {{ void onInitialize(); }}\n")
 
-    exec("javac", [dir ++ "/net/fabricmc/api/ModInitializer.java",
+    exec("javac", [dir + "/net/fabricmc/api/ModInitializer.java",
                    "-d", dir]) == 0
 }
 
@@ -296,21 +296,21 @@ jvm_stub(dir: str) -> bool {
  * like.
  */
 mcmod_source() -> str =>
-    read_file(cwd() ++ "/apps/mcmod/mod.maca")
+    read_file(cwd() + "/apps/mcmod/mod.maca")
 
 test_the_jvm_target_compiles_the_java_it_emits() {
     if jdk_here() {
         dir = package_dir("jvm-classes")
 
-        write_file(dir ++ "/fibj.maca",
-            "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n"
-                ++ "\nmain() -> int {{\n    info(\"{{fib(20)}}\")\n    0\n}}\n")
+        write_file(dir + "/fibj.maca",
+            "fib(n: int) -> int =>\n    n < 2 ? n : fib(n - 1) + fib(n - 2)\n" +
+                "\nmain() -> int {{\n    info(\"{{fib(20)}}\")\n    0\n}}\n")
 
         assert_eq(str(rc_in(dir, ["build", "--target", "jvm", "fibj.maca",
                                   "-o", "out"])), "0", "the build ran")
-        assert(file_exists(dir ++ "/out/Fibj.class"),
+        assert(file_exists(dir + "/out/Fibj.class"),
                "javac wrote the class the JVM loads, not only the Java")
-        assert(capture("java", ["-cp", dir ++ "/out", "Fibj"]).contains("6765"),
+        assert(capture("java", ["-cp", dir + "/out", "Fibj"]).contains("6765"),
                "and the class the source stem named is the one that runs")
     }
 }
@@ -320,17 +320,17 @@ test_the_jvm_target_compiles_the_java_it_emits() {
  */
 test_a_declared_classpath_reaches_the_java_compiler() {
     if jdk_here() {
-        at = monorepo("ws-classpath") ++ "/apps/hello"
+        at = monorepo("ws-classpath") + "/apps/hello"
 
-        assert(jvm_stub(at ++ "/stub"), "the interface the mod implements")
-        write_file(at ++ "/maca.toml",
-            "[package]\nname = \"hello\"\n\n[build]\ntarget = \"jvm\"\n"
-                ++ "classpath = \"stub\"\nout = \"classes\"\n\n"
-                ++ "[[bin]]\nname = \"hello\"\npath = \"mod.maca\"\n")
-        write_file(at ++ "/mod.maca", mcmod_source())
+        assert(jvm_stub(at + "/stub"), "the interface the mod implements")
+        write_file(at + "/maca.toml",
+            "[package]\nname = \"hello\"\n\n[build]\ntarget = \"jvm\"\n" +
+                "classpath = \"stub\"\nout = \"classes\"\n\n" +
+                "[[bin]]\nname = \"hello\"\npath = \"mod.maca\"\n")
+        write_file(at + "/mod.maca", mcmod_source())
 
         assert_eq(str(rc_in(at, ["build"])), "0", "the declared build ran")
-        assert(file_exists(at ++ "/classes/Mod.class"),
+        assert(file_exists(at + "/classes/Mod.class"),
                "javac needs the declared jars to resolve the interface")
     }
 }
@@ -339,21 +339,21 @@ test_a_classpath_flag_names_the_jars_a_manifest_did_not() {
     if jdk_here() {
         dir = package_dir("jvm-cp-flag")
 
-        src = cwd() ++ "/apps/mcmod/mod.maca"
+        src = cwd() + "/apps/mcmod/mod.maca"
 
-        assert(jvm_stub(dir ++ "/stub"), "the interface the mod implements")
+        assert(jvm_stub(dir + "/stub"), "the interface the mod implements")
         assert_eq(str(rc_in(dir, ["build", "--target", "jvm", src,
                                   "-o", "out", "--cp", "stub"])), "0",
                   "the flag carried the jars")
-        write_file(dir ++ "/out/Runner.java",
-            "public class Runner {{ public static void main(String[] a) {{\n"
-                ++ "  net.fabricmc.api.ModInitializer m ="
-                ++ " new Mod.ExampleMod();\n  m.onInitialize();\n}} }}\n")
+        write_file(dir + "/out/Runner.java",
+            "public class Runner {{ public static void main(String[] a) {{\n" +
+                "  net.fabricmc.api.ModInitializer m =" +
+                " new Mod.ExampleMod();\n  m.onInitialize();\n}} }}\n")
 
-        cp = dir ++ "/stub:" ++ dir ++ "/out"
+        cp = dir + "/stub:" + dir + "/out"
 
-        assert_eq(str(exec("javac", ["-cp", cp, "-d", dir ++ "/out",
-                                     dir ++ "/out/Runner.java"])), "0",
+        assert_eq(str(exec("javac", ["-cp", cp, "-d", dir + "/out",
+                                     dir + "/out/Runner.java"])), "0",
                   "the emitted class is a ModInitializer to javac")
         assert(capture("java", ["-cp", cp, "Runner"])
                    .contains("Maca-authored Fabric mod"),
@@ -367,42 +367,42 @@ test_a_classpath_flag_names_the_jars_a_manifest_did_not() {
 monorepo(tag: str) -> str {
     dir = package_dir(tag)
 
-    make_dir(dir ++ "/modules/greet")
-    make_dir(dir ++ "/apps/hello")
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"repo\"\nversion = \"9.9.9\"\n\n"
-            ++ "[workspace]\nmembers = [\n"
-            ++ "    \"modules/greet\",\n    \"apps/hello\",\n]\n\n"
-            ++ "[scripts]\ngo = \"echo workspace-script-ok\"\n")
-    write_file(dir ++ "/modules/greet/maca.toml",
+    make_dir(dir + "/modules/greet")
+    make_dir(dir + "/apps/hello")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"repo\"\nversion = \"9.9.9\"\n\n" +
+            "[workspace]\nmembers = [\n" +
+            "    \"modules/greet\",\n    \"apps/hello\",\n]\n\n" +
+            "[scripts]\ngo = \"echo workspace-script-ok\"\n")
+    write_file(dir + "/modules/greet/maca.toml",
                "[package]\nname = \"greet\"\n")
-    write_file(dir ++ "/modules/greet/say.maca",
-               "greeting(who: str) -> str => \"hi \" ++ who\n")
-    make_dir(dir ++ "/modules/greet/tests")
-    write_file(dir ++ "/modules/greet/tests/say.maca",
-        "import greet/say\n\ntest_the_name_is_the_one_greeted() {{\n"
-            ++ "    assert_eq(greeting(\"ana\"), \"hi ana\", \"named\")\n}}\n")
-    write_file(dir ++ "/apps/hello/maca.toml",
-        "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n"
-            ++ "path = \"main.maca\"\n")
-    write_file(dir ++ "/apps/hello/main.maca",
-        "import greet/say\n\nmain() -> int {{\n"
-            ++ "    info(greeting(\"world\"))\n    0\n}}\n")
+    write_file(dir + "/modules/greet/say.maca",
+               "greeting(who: str) -> str => \"hi \" + who\n")
+    make_dir(dir + "/modules/greet/tests")
+    write_file(dir + "/modules/greet/tests/say.maca",
+        "import greet/say\n\ntest_the_name_is_the_one_greeted() {{\n" +
+            "    assert_eq(greeting(\"ana\"), \"hi ana\", \"named\")\n}}\n")
+    write_file(dir + "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n" +
+            "path = \"main.maca\"\n")
+    write_file(dir + "/apps/hello/main.maca",
+        "import greet/say\n\nmain() -> int {{\n" +
+            "    info(greeting(\"world\"))\n    0\n}}\n")
 
     dir
 }
 
 test_a_package_builds_and_runs_from_its_own_directory() {
-    at = monorepo("ws-run") ++ "/apps/hello"
+    at = monorepo("ws-run") + "/apps/hello"
 
     assert_eq(str(rc_in(at, ["build"])), "0", "a bare build inside a member")
-    assert(file_exists(at ++ "/main"), "the [[bin]] it declares was built")
+    assert(file_exists(at + "/main"), "the [[bin]] it declares was built")
     assert_eq(out_in(at, ["run"]).trim(), "hi world",
               "and its imports still reach the roots above its own manifest")
 }
 
 test_a_root_key_the_member_is_silent_about_is_inherited() {
-    at = monorepo("ws-script") ++ "/apps/hello"
+    at = monorepo("ws-script") + "/apps/hello"
 
     assert_eq(out_in(at, ["go"]).trim(), "workspace-script-ok",
               "the nearest manifest that states a key answers for it")
@@ -411,19 +411,19 @@ test_a_root_key_the_member_is_silent_about_is_inherited() {
 test_a_root_format_key_reaches_a_member_that_states_none() {
     dir = monorepo("ws-format-inherit")
 
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"repo\"\n\n[workspace]\n"
-            ++ "members = [\"modules/greet\", \"apps/hello\"]\n\n"
-            ++ "[format]\nindent_style = \"space\"\nindent_size = 8\n")
-    write_file(dir ++ "/apps/hello/wide.maca", "main() -> int {{\n  0\n}}\n")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n" +
+            "members = [\"modules/greet\", \"apps/hello\"]\n\n" +
+            "[format]\nindent_style = \"space\"\nindent_size = 8\n")
+    write_file(dir + "/apps/hello/wide.maca", "main() -> int {{\n  0\n}}\n")
 
     assert_eq(str(rc_in(dir, ["fmt", "apps/hello/wide.maca"])), "0", "fmt ran")
-    assert(read_file(dir ++ "/apps/hello/wide.maca").contains("\n        0\n"),
+    assert(read_file(dir + "/apps/hello/wide.maca").contains("\n        0\n"),
            "the eight the root declared reached a member that states none")
 }
 
 test_a_bare_test_runs_the_packages_own_suites() {
-    at = monorepo("ws-bare-test") ++ "/modules/greet"
+    at = monorepo("ws-bare-test") + "/modules/greet"
 
     said = out_in(at, ["test"])
     assert(said.contains("greet 9.9.9"),
@@ -436,10 +436,10 @@ test_a_bare_test_runs_the_packages_own_suites() {
 test_a_member_that_is_listed_but_absent_is_named() {
     dir = monorepo("ws-ghost")
 
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"repo\"\n\n[workspace]\n"
-            ++ "members = [\"modules/greet\", \"apps/ghost\"]\n")
-    said = err_in(dir ++ "/apps/hello", ["build"])
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n" +
+            "members = [\"modules/greet\", \"apps/ghost\"]\n")
+    said = err_in(dir + "/apps/hello", ["build"])
 
     assert(said.contains("apps/ghost"), "a listed member exists: {said}")
 }
@@ -447,7 +447,7 @@ test_a_member_that_is_listed_but_absent_is_named() {
 test_a_member_without_a_package_name_is_named() {
     dir = monorepo("ws-nameless")
 
-    write_file(dir ++ "/apps/hello/maca.toml",
+    write_file(dir + "/apps/hello/maca.toml",
                "[[bin]]\npath = \"main.maca\"\n")
     said = err_in(dir, ["build", "apps/hello/main.maca"])
 
@@ -458,20 +458,20 @@ test_a_member_without_a_package_name_is_named() {
 test_a_stray_directory_does_not_become_a_package() {
     dir = monorepo("ws-stray")
 
-    make_dir(dir ++ "/apps/notes")
-    write_file(dir ++ "/apps/notes/jot.maca", "main() -> int => 0\n")
+    make_dir(dir + "/apps/notes")
+    write_file(dir + "/apps/notes/jot.maca", "main() -> int => 0\n")
 
-    assert_eq(str(rc_in(dir ++ "/apps/hello", ["build"])), "0",
+    assert_eq(str(rc_in(dir + "/apps/hello", ["build"])), "0",
               "a directory with no maca.toml is not a member")
 }
 
 test_a_package_the_workspace_does_not_list_is_named() {
     dir = monorepo("ws-undeclared")
 
-    make_dir(dir ++ "/apps/scratch")
-    write_file(dir ++ "/apps/scratch/maca.toml",
+    make_dir(dir + "/apps/scratch")
+    write_file(dir + "/apps/scratch/maca.toml",
                "[package]\nname = \"scratch\"\n")
-    said = err_in(dir ++ "/apps/hello", ["build"])
+    said = err_in(dir + "/apps/hello", ["build"])
 
     assert(said.contains("apps/scratch"),
            "the list and the tree must agree: {said}")
@@ -481,27 +481,27 @@ test_a_package_the_workspace_does_not_list_is_named() {
 cross_target(tag: str) -> str {
     dir = package_dir(tag)
 
-    make_dir(dir ++ "/modules/beamy")
-    make_dir(dir ++ "/apps/tool")
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"repo\"\n\n[workspace]\n"
-            ++ "members = [\"modules/beamy\", \"apps/tool\"]\n")
-    write_file(dir ++ "/modules/beamy/maca.toml",
+    make_dir(dir + "/modules/beamy")
+    make_dir(dir + "/apps/tool")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n" +
+            "members = [\"modules/beamy\", \"apps/tool\"]\n")
+    write_file(dir + "/modules/beamy/maca.toml",
         "[package]\nname = \"beamy\"\n\n[build]\ntarget = \"elixir\"\n")
-    write_file(dir ++ "/modules/beamy/num.maca",
+    write_file(dir + "/modules/beamy/num.maca",
                "doubled(n: int) -> int => n * 2\n")
-    write_file(dir ++ "/apps/tool/maca.toml",
-        "[package]\nname = \"tool\"\n\n[[bin]]\nname = \"tool\"\n"
-            ++ "path = \"main.maca\"\n")
-    write_file(dir ++ "/apps/tool/main.maca",
-        "import beamy/num\n\nmain() -> int {{\n"
-            ++ "    info(str(doubled(21)))\n    doubled(21)\n}}\n")
+    write_file(dir + "/apps/tool/maca.toml",
+        "[package]\nname = \"tool\"\n\n[[bin]]\nname = \"tool\"\n" +
+            "path = \"main.maca\"\n")
+    write_file(dir + "/apps/tool/main.maca",
+        "import beamy/num\n\nmain() -> int {{\n" +
+            "    info(str(doubled(21)))\n    doubled(21)\n}}\n")
 
     dir
 }
 
 test_a_packages_target_is_its_own_default_and_not_a_rule_for_its_callers() {
-    at = cross_target("cross-target") ++ "/apps/tool"
+    at = cross_target("cross-target") + "/apps/tool"
 
     assert_eq(str(rc_in(at, ["build", "main.maca", "-o", "t"])), "0",
               "a module whose manifest names elixir still builds natively")
@@ -513,7 +513,7 @@ test_a_packages_target_is_its_own_default_and_not_a_rule_for_its_callers() {
 }
 
 test_a_bare_filename_still_reaches_what_its_own_directory_reaches() {
-    at = monorepo("bare-name") ++ "/apps/hello"
+    at = monorepo("bare-name") + "/apps/hello"
     said = err_in(at, ["check", "main.maca"])
 
     assert_eq(str(rc_in(at, ["check", "main.maca"])), "0",
@@ -522,8 +522,8 @@ test_a_bare_filename_still_reaches_what_its_own_directory_reaches() {
 
 test_a_write_into_a_directory_that_is_not_there_makes_it_first() {
     dir = package_dir("write-deep")
-    write_file(dir ++ "/hello.maca", "main() -> int => 0\n")
-    at = dir ++ "/out/deep/hello.c"
+    write_file(dir + "/hello.maca", "main() -> int => 0\n")
+    at = dir + "/out/deep/hello.c"
 
     assert_eq(str(rc_in(dir, ["hello.maca", "out/deep/hello.c"])), "0",
               "a missing directory is made rather than silently skipped")
@@ -537,21 +537,21 @@ test_a_write_into_a_directory_that_is_not_there_makes_it_first() {
 nested_monorepo(tag: str) -> str {
     dir = monorepo(tag)
 
-    write_file(dir ++ "/modules/greet/maca.toml",
+    write_file(dir + "/modules/greet/maca.toml",
         "[package]\nname = \"greet\"\n\n[workspace]\nmembers = [\"fmt\"]\n")
-    make_dir(dir ++ "/modules/greet/fmt")
-    write_file(dir ++ "/modules/greet/fmt/maca.toml",
-        "[package]\nname = \"fmt\"\n\n[[bin]]\nname = \"fmt\"\n"
-            ++ "path = \"main.maca\"\n")
-    write_file(dir ++ "/modules/greet/fmt/main.maca",
-        "import greet/say\n\nmain() -> int {{\n"
-            ++ "    info(greeting(\"ana\"))\n    0\n}}\n")
+    make_dir(dir + "/modules/greet/fmt")
+    write_file(dir + "/modules/greet/fmt/maca.toml",
+        "[package]\nname = \"fmt\"\n\n[[bin]]\nname = \"fmt\"\n" +
+            "path = \"main.maca\"\n")
+    write_file(dir + "/modules/greet/fmt/main.maca",
+        "import greet/say\n\nmain() -> int {{\n" +
+            "    info(greeting(\"ana\"))\n    0\n}}\n")
 
     dir
 }
 
 test_a_member_may_declare_a_workspace_of_its_own() {
-    at = nested_monorepo("ws-nested") ++ "/modules/greet/fmt"
+    at = nested_monorepo("ws-nested") + "/modules/greet/fmt"
 
     assert_eq(str(rc_in(at, ["build"])), "0", "a monorepo may hold a monorepo")
     assert_eq(out_in(at, ["run"]).trim(), "hi ana",
@@ -561,10 +561,10 @@ test_a_member_may_declare_a_workspace_of_its_own() {
 test_the_workspace_nearest_the_fault_is_the_one_that_names_it() {
     dir = nested_monorepo("ws-inner-member")
 
-    write_file(dir ++ "/modules/greet/maca.toml",
-        "[package]\nname = \"greet\"\n\n[workspace]\n"
-            ++ "members = [\"fmt\", \"absent\"]\n")
-    said = err_in(dir ++ "/modules/greet/fmt", ["build"])
+    write_file(dir + "/modules/greet/maca.toml",
+        "[package]\nname = \"greet\"\n\n[workspace]\n" +
+            "members = [\"fmt\", \"absent\"]\n")
+    said = err_in(dir + "/modules/greet/fmt", ["build"])
 
     assert(said.contains("absent"),
            "an inner workspace answers for its own members: {said}")
@@ -572,10 +572,10 @@ test_the_workspace_nearest_the_fault_is_the_one_that_names_it() {
 
 declared_build(tag: str, build: str) -> str {
     dir = package_dir(tag)
-    write_file(dir ++ "/main.maca", "main() -> int => 0\n")
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n"
-            ++ "path = \"main.maca\"\n\n[build]\n" ++ build)
+    write_file(dir + "/main.maca", "main() -> int => 0\n")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\n" +
+            "path = \"main.maca\"\n\n[build]\n" + build)
 
     dir
 }
@@ -584,9 +584,9 @@ test_the_target_a_package_builds_for_can_be_declared() {
     dir = declared_build("build-target", "target = \"js\"\n")
 
     assert_eq(str(rc_in(dir, ["build"])), "0", "a declared target needs no flag")
-    assert(read_file(dir ++ "/main-web/app.js").contains("function"),
+    assert(read_file(dir + "/main-web/app.js").contains("function"),
            "what landed is the JavaScript the manifest asked for")
-    assert(file_exists(dir ++ "/main-web/index.html"),
+    assert(file_exists(dir + "/main-web/index.html"),
            "and the page that carries it")
 }
 
@@ -595,7 +595,7 @@ test_a_declared_rust_target_names_its_source_for_what_it_holds() {
 
     assert_eq(str(rc_in(dir, ["build"])), have("rustc") ? "0" : "2",
               "a declared target needs no flag")
-    assert(read_file(dir ++ "/main.rs").starts_with("use std::rc::Rc;"),
+    assert(read_file(dir + "/main.rs").starts_with("use std::rc::Rc;"),
            "the rust back end writes rust, under a name that says so")
 }
 
@@ -603,16 +603,16 @@ test_where_a_build_lands_can_be_declared() {
     dir = declared_build("build-out", "out = \"app\"\n")
 
     assert_eq(str(rc_in(dir, ["build"])), "0", "a declared out needs no flag")
-    assert(file_exists(dir ++ "/app"), "the build landed where [build] out said")
-    assert(!file_exists(dir ++ "/main"), "and not under the file's own stem")
+    assert(file_exists(dir + "/app"), "the build landed where [build] out said")
+    assert(!file_exists(dir + "/main"), "and not under the file's own stem")
 }
 
 test_a_flag_on_the_line_beats_what_the_manifest_declared() {
     dir = declared_build("build-flag", "out = \"app\"\n")
 
     assert_eq(str(rc_in(dir, ["build", "-o", "other"])), "0", "the flag ran")
-    assert(file_exists(dir ++ "/other"), "the flag chose where it landed")
-    assert(!file_exists(dir ++ "/app"), "so the declared name was not used")
+    assert(file_exists(dir + "/other"), "the flag chose where it landed")
+    assert(!file_exists(dir + "/app"), "so the declared name was not used")
 }
 
 test_a_misspelled_build_key_is_named_rather_than_ignored() {
@@ -627,11 +627,11 @@ test_a_misspelled_build_key_is_named_rather_than_ignored() {
 
 package_of_suites(tag: str, second: str) -> str {
     dir = package_dir(tag)
-    make_dir(dir ++ "/tests")
-    write_file(dir ++ "/maca.toml", "[package]\nname = \"suited\"\n")
-    write_file(dir ++ "/tests/a.maca",
+    make_dir(dir + "/tests")
+    write_file(dir + "/maca.toml", "[package]\nname = \"suited\"\n")
+    write_file(dir + "/tests/a.maca",
                "test_one() \{\n    assert_eq(1, 1, \"one\")\n\}\n")
-    write_file(dir ++ "/tests/b.maca", second)
+    write_file(dir + "/tests/b.maca", second)
 
     dir
 }
@@ -662,7 +662,7 @@ test_a_failing_suite_is_counted_among_the_ones_that_ran() {
 
 test_a_package_with_no_test_directory_is_told_so() {
     dir = package_dir("suites-none")
-    write_file(dir ++ "/maca.toml", "[package]\nname = \"bare\"\n")
+    write_file(dir + "/maca.toml", "[package]\nname = \"bare\"\n")
 
     said = err_in(dir, ["test"])
     assert(said.contains("no .maca suite"), "there is nothing to run: {said}")
@@ -671,7 +671,7 @@ test_a_package_with_no_test_directory_is_told_so() {
 }
 
 unformatted(dir: str, name: str) -> str {
-    at = dir ++ "/" ++ name
+    at = dir + "/" + name
     write_file(at, "main() -> int \{\n  info(\"x\")\n  0\n\}\n")
 
     at
@@ -700,8 +700,8 @@ test_a_named_binary_is_the_one_that_gets_built() {
     dir = two_binaries("ws-bin-flag", "")
 
     assert_eq(str(rc_in(dir, ["build", "--bin", "other"])), "0", "--bin ran")
-    assert(file_exists(dir ++ "/other"), "the named binary is the one built")
-    assert(!file_exists(dir ++ "/main"), "and the other was left alone")
+    assert(file_exists(dir + "/other"), "the named binary is the one built")
+    assert(!file_exists(dir + "/main"), "and the other was left alone")
 }
 
 listed_members() -> str[] {
@@ -727,11 +727,11 @@ test_every_member_this_repository_lists_is_a_package() {
     members = listed_members()
 
     assert(members.length() >= 21,
-           "only {str(members.length())} members were read out of the root "
-               ++ "manifest, so the reading above went wrong")
+           "only {str(members.length())} members were read out of the root " +
+               "manifest, so the reading above went wrong")
 
     for m in members {
-        said = read_file(m ++ "/maca.toml")
+        said = read_file(m + "/maca.toml")
 
         assert(said.contains("[package]") && said.contains("name ="),
                "{m} does not say what it is")
@@ -740,7 +740,7 @@ test_every_member_this_repository_lists_is_a_package() {
 
         for line in lines(said) {
             if line.trim().starts_with("path =") {
-                assert(file_exists(m ++ "/" ++ between(line, "\"", "\"")),
+                assert(file_exists(m + "/" + between(line, "\"", "\"")),
                        "{m}: a [[bin]] path names no file")
             }
         }
@@ -749,9 +749,9 @@ test_every_member_this_repository_lists_is_a_package() {
 
 declared_web(tag: str, build: str) -> str {
     dir = monorepo(tag)
-    write_file(dir ++ "/apps/hello/maca.toml",
-        "[package]\nname = \"hello\"\n\n[build]\n" ++ build
-            ++ "\n[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
+    write_file(dir + "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[build]\n" + build +
+            "\n[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
 
     dir
 }
@@ -759,18 +759,18 @@ declared_web(tag: str, build: str) -> str {
 test_a_member_key_beats_the_root_key_it_repeats() {
     dir = monorepo("ws-format")
 
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"repo\"\n\n[workspace]\n"
-            ++ "members = [\"modules/greet\", \"apps/hello\"]\n\n"
-            ++ "[format]\nindent_style = \"space\"\nindent_size = 8\n")
-    write_file(dir ++ "/apps/hello/maca.toml",
-        "[package]\nname = \"hello\"\n\n[format]\nindent_size = 2\n\n"
-            ++ "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
-    write_file(dir ++ "/apps/hello/wide.maca",
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"repo\"\n\n[workspace]\n" +
+            "members = [\"modules/greet\", \"apps/hello\"]\n\n" +
+            "[format]\nindent_style = \"space\"\nindent_size = 8\n")
+    write_file(dir + "/apps/hello/maca.toml",
+        "[package]\nname = \"hello\"\n\n[format]\nindent_size = 2\n\n" +
+            "[[bin]]\nname = \"hello\"\npath = \"main.maca\"\n")
+    write_file(dir + "/apps/hello/wide.maca",
                "main() -> int {{\n        0\n}}\n")
 
     assert_eq(str(rc_in(dir, ["fmt", "apps/hello/wide.maca"])), "0", "fmt ran")
-    assert(read_file(dir ++ "/apps/hello/wide.maca").contains("\n  0\n"),
+    assert(read_file(dir + "/apps/hello/wide.maca").contains("\n  0\n"),
            "the member's indent_size beats the eight the root declared")
 }
 
@@ -779,25 +779,25 @@ test_a_declared_output_directory_is_relative_to_its_own_manifest() {
 
     assert_eq(str(rc_in(dir, ["build", "apps/hello/main.maca"])), "0",
               "a build run from the root of the workspace")
-    assert(file_exists(dir ++ "/apps/hello/build/index.html"),
+    assert(file_exists(dir + "/apps/hello/build/index.html"),
            "the page belongs beside the manifest that named the directory")
-    assert(!file_exists(dir ++ "/build"),
+    assert(!file_exists(dir + "/build"),
            "and not beside the directory the command was run in")
 }
 
 test_a_flag_beats_the_target_the_manifest_declared() {
-    at = declared_web("ws-target-flag", "target = \"js\"\n") ++ "/apps/hello"
+    at = declared_web("ws-target-flag", "target = \"js\"\n") + "/apps/hello"
 
     assert_eq(str(rc_in(at, ["build", "--target", "rust"])),
               have("rustc") ? "0" : "2", "the flag on the line ran")
-    assert(read_file(at ++ "/main.rs").starts_with("use std::rc::Rc;"),
+    assert(read_file(at + "/main.rs").starts_with("use std::rc::Rc;"),
            "the back end the flag named is the one that wrote the source")
-    assert(!file_exists(at ++ "/main-web"),
+    assert(!file_exists(at + "/main-web"),
            "and the declared one did not run at all")
 }
 
 scaffolded(tag: str) -> str {
-    dir = package_dir("init-" ++ tag) ++ "/fresh"
+    dir = package_dir("init-" + tag) + "/fresh"
 
     assert_eq(str(exec(maca_bin(), ["init", dir])), "0", "init wrote a project")
 
@@ -806,7 +806,7 @@ scaffolded(tag: str) -> str {
 
 test_init_writes_what_the_project_builds_and_no_key_beyond_it() {
     dir = scaffolded("shape")
-    toml = read_file(dir ++ "/maca.toml")
+    toml = read_file(dir + "/maca.toml")
 
     assert(toml.contains("[package]") && toml.contains("name = \"fresh\""),
            "the project says what it is called:\n{toml}")
@@ -814,13 +814,13 @@ test_init_writes_what_the_project_builds_and_no_key_beyond_it() {
            "and what it builds:\n{toml}")
 
     for key in ["[dependencies]", "[format]", "[scripts]", "[page]", "version"] {
-        assert(!toml.contains(key), "{key} is a key a fresh project does not "
-                                        ++ "need:\n{toml}")
+        assert(!toml.contains(key), "{key} is a key a fresh project does not " +
+                                        "need:\n{toml}")
     }
 
-    assert(!file_exists(dir ++ "/.gitignore"),
+    assert(!file_exists(dir + "/.gitignore"),
            "a scaffold writes the project, not an opinion about version control")
-    assert_eq(str(exec(maca_bin(), ["check", dir ++ "/main.maca"])), "0",
+    assert_eq(str(exec(maca_bin(), ["check", dir + "/main.maca"])), "0",
               "and what it wrote typechecks")
 }
 
@@ -828,7 +828,7 @@ test_what_init_writes_carries_no_commentary() {
     dir = scaffolded("comments")
 
     for rel in ["maca.toml", "main.maca"] {
-        for line in read_file(dir ++ "/" ++ rel).split("\n") {
+        for line in read_file(dir + "/" + rel).split("\n") {
             head = line.trim()
 
             assert(!head.starts_with("#") && !head.starts_with("//"),
@@ -849,11 +849,11 @@ test_a_scaffolded_project_builds_runs_and_tests_with_no_edits() {
            "which says there is none yet rather than inventing one")
 }
 
-Header = "/* sample */\n#include <stddef.h>\nint mylib_open(const char* path);\n"
-    ++ "void mylib_close(int handle);\nconst char* mylib_version(void);\n"
-    ++ "double mylib_scale(double x, int factor);\n"
-    ++ "int mylib_exec(int db, const char* sql, size_t len);\n"
-    ++ "typedef struct mylib_ctx mylib_ctx;\nstruct mylib_ctx {{ int x; }};\n"
+Header = "/* sample */\n#include <stddef.h>\nint mylib_open(const char* path);\n" +
+    "void mylib_close(int handle);\nconst char* mylib_version(void);\n" +
+    "double mylib_scale(double x, int factor);\n" +
+    "int mylib_exec(int db, const char* sql, size_t len);\n" +
+    "typedef struct mylib_ctx mylib_ctx;\nstruct mylib_ctx {{ int x; }};\n"
 
 bound(tag: str) -> str =>
     capture(maca_bin(), ["bindgen", fixture("{tag}.h", Header)])
@@ -873,9 +873,9 @@ test_bindgen_writes_the_declarations_the_header_states() {
 }
 
 test_what_bindgen_writes_typechecks_where_it_is_used() {
-    at = fixture("bound.maca", bound("mylib") ++ "\nmain() -> int {{\n"
-                                   ++ "    info(mylib_version())\n"
-                                   ++ "    mylib_close(0)\n    0\n}}\n")
+    at = fixture("bound.maca", bound("mylib") + "\nmain() -> int {{\n" +
+                                   "    info(mylib_version())\n" +
+                                   "    mylib_close(0)\n    0\n}}\n")
 
     assert_eq(str(exec(maca_bin(), ["check", at])), "0",
               "a header nobody wrote Maca for is still a program that checks")
@@ -926,8 +926,8 @@ test_the_golden_examples_are_already_formatted() {
 }
 
 test_fmt_keeps_a_comment_where_the_writer_put_it() {
-    src = "// a leading comment\nfoo(x: int) -> int =>\n    x > 0\n"
-              ++ "        ? x   // inline note\n        : 0\n"
+    src = "// a leading comment\nfoo(x: int) -> int =>\n    x > 0\n" +
+              "        ? x   // inline note\n        : 0\n"
     once = formatted("comments.maca", src)
     at = fixture("comments.maca", once)
 
@@ -939,13 +939,13 @@ test_fmt_keeps_a_comment_where_the_writer_put_it() {
 }
 
 test_an_aligned_continuation_does_not_double_the_indent() {
-    src = "f(t: int) -> str =>\n    pair([\"id\", \"name\"],\n"
-              ++ "         [str(t), \"x\"])\n\ng() -> int {{\n    n = 1\n"
-              ++ "    n + 1\n}}\n"
+    src = "f(t: int) -> str =>\n    pair([\"id\", \"name\"],\n" +
+              "         [str(t), \"x\"])\n\ng() -> int {{\n    n = 1\n" +
+              "    n + 1\n}}\n"
 
     assert_eq(formatted("gcd.maca", src), src,
-              "the indent step is read off the file, and one line aligned "
-                  ++ "under an open paren is not a step")
+              "the indent step is read off the file, and one line aligned " +
+                  "under an open paren is not a step")
 }
 
 test_an_aligned_argument_stays_under_the_paren_it_was_written_under() {
@@ -955,8 +955,8 @@ test_an_aligned_argument_stays_under_the_paren_it_was_written_under() {
 }
 
 test_a_raw_block_is_neither_measured_nor_reindented() {
-    src = "Css = \"\"\"\nbody {{\n  color: red;\n}}\n\"\"\"\n\n"
-              ++ "go() -> int {{\n    n = 1\n    n\n}}\n"
+    src = "Css = \"\"\"\nbody {{\n  color: red;\n}}\n\"\"\"\n\n" +
+              "go() -> int {{\n    n = 1\n    n\n}}\n"
     out = formatted("raw.maca", src)
 
     assert_eq(out, src, "a raw block changed the file's indentation")

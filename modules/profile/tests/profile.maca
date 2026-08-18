@@ -389,7 +389,7 @@ test_replay_visits_every_event_in_order() {
 }
 
 note_event(i: int) -> int {
-    write_file(ReplayLog, read_file(ReplayLog) ++ "{i},")
+    write_file(ReplayLog, read_file(ReplayLog) + "{i},")
     0
 }
 

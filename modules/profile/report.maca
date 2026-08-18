@@ -62,7 +62,7 @@ bump(acc: Stat[], at: int, ms: int, own: int) -> Stat[] {
         own = was.own + own,
     }
 
-    acc.slice(0, at).push(now) ++ acc.slice(at + 1, acc.length())
+    acc.slice(0, at).push(now) + acc.slice(at + 1, acc.length())
 }
 
 index_named(stats: Stat[], name: str, i: int) -> int {
@@ -97,7 +97,7 @@ insert_by_self(acc: Stat[], s: Stat) -> Stat[] {
     at = rank_of(acc, s.own, 0)
     head = acc.slice(0, at).push(s)
 
-    head ++ acc.slice(at, acc.length())
+    head + acc.slice(at, acc.length())
 }
 
 rank_of(acc: Stat[], own: int, i: int) -> int {
@@ -121,7 +121,7 @@ stats_table(stats: Stat[]) -> str {
         w = name_column(stats, 0, 4)
         rows = body(stats, w, 0, [])
 
-        header(w) ++ rows.join("\n")
+        header(w) + rows.join("\n")
     }
 }
 
@@ -130,7 +130,7 @@ header(w: int) -> str {
     under = row_text("─".repeat(w), "─────", "────────", "────────",
                      "───────", w)
 
-    bold(labels) ++ "\n" ++ grey(under) ++ "\n"
+    bold(labels) + "\n" + grey(under) + "\n"
 }
 
 body(stats: Stat[], w: int, i: int, acc: str[]) -> str[] {
@@ -147,10 +147,10 @@ stat_row(s: Stat, w: int) -> str =>
 
 row_text(name: str, calls: str, total: str, own: str, share: str,
          w: int) -> str {
-    left = pad(name, w) ++ "  " ++ pad_left(calls, 5)
-    mid = "  " ++ pad_left(total, 8) ++ "  " ++ pad_left(own, 8)
+    left = pad(name, w) + "  " + pad_left(calls, 5)
+    mid = "  " + pad_left(total, 8) + "  " + pad_left(own, 8)
 
-    left ++ mid ++ "  " ++ pad_left(share, 7)
+    left + mid + "  " + pad_left(share, 7)
 }
 
 name_column(stats: Stat[], i: int, best: int) -> int {

@@ -62,7 +62,7 @@ insert_by_time(acc: Event[], e: Event) -> Event[] {
     at = first_later(acc, e.at, 0)
     head = acc.slice(0, at).push(e)
 
-    head ++ acc.slice(at, acc.length())
+    head + acc.slice(at, acc.length())
 }
 
 first_later(acc: Event[], at: int, i: int) -> int {
@@ -112,7 +112,7 @@ narrate_line(e: Event) -> str {
     arrow = e.enter ? "→" : "←"
     stamp = "{e.at:>6}ms  "
 
-    stamp ++ "  ".repeat(e.depth) ++ arrow ++ " " ++ e.name
+    stamp + "  ".repeat(e.depth) + arrow + " " + e.name
 }
 
 /** The whole trace as lines, one per event, in the order they happened. */

@@ -29,7 +29,7 @@ adv_names() -> str[] =>
 
 /** Every case, in the order the groups are meant to be read. */
 case_names() -> str[] =>
-    prim_names() ++ algo_names() ++ inter_names() ++ adv_names()
+    prim_names() + algo_names() + inter_names() + adv_names()
 
 /** Which group `name` belongs to, or "" for a name that is not a case. */
 group_of(name: str) -> str {

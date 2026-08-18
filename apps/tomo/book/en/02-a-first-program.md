@@ -44,7 +44,7 @@ bump(ts: Tally[], w: str) -> Tally[] {
 
 A **block body**, because it needs a local binding first. The last expression in
 the block is the value. `at = find(...)` binds a local; there is no `let`.
-`c ? a : b` is the ternary, and it is an expression. `++` concatenates.
+`c ? a : b` is the ternary, and it is an expression. `+` concatenates.
 
 The two helpers:
 

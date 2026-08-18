@@ -536,7 +536,7 @@ json_sample(n: int) -> str {
     } else {
         unit = "\{\"id\":1,\"name\":\"a row\",\"ok\":true\},"
         body = unit.repeat(n)
-        "[" ++ body.slice(0, body.length() - 1) ++ "]"
+        "[" + body.slice(0, body.length() - 1) + "]"
     }
 }
 

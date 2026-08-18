@@ -238,7 +238,7 @@ report(x: int) -> str {
     } else {
         "negative"
     }
-    seen ++ "/" ++ word
+    seen + "/" + word
 }
 
 sign_word(x: int) -> str {
@@ -257,7 +257,7 @@ roman(x: int) -> str {
         2 => "ii"
         _ => "many"
     }
-    word ++ "!"
+    word + "!"
 }
 
 test_break_leaves_the_loop_from_inside_an_if() {

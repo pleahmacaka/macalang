@@ -1,4 +1,4 @@
-render(i: int) -> str => "<li>" ++ str(i) ++ "</li>"
+render(i: int) -> str => "<li>" + str(i) + "</li>"
 
 main() -> int {
     total = 0

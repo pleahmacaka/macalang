@@ -6,13 +6,13 @@ Shape = Circle(float) | Square(int)
 
 lent(s: str) -> str => s
 
-built(n: int) -> str => "row-" ++ str(n)
+built(n: int) -> str => "row-" + str(n)
 
 pick(a: str, b: str, first: bool) -> str => first ? a : b
 
 maybe_bang(s: str, yes: bool) -> str {
     if yes {
-        s = s ++ "!"
+        s = s + "!"
     }
     s
 }
@@ -29,7 +29,7 @@ show(s: Shape) -> str {
 page(n: int) -> str {
     out = ""
     for i in 1..n + 1 {
-        out = out ++ built(i) ++ ";"
+        out = out + built(i) + ";"
     }
     out
 }
@@ -41,7 +41,7 @@ check_an_accumulator_survives_the_loop_that_built_it() {
 }
 
 check_a_lent_string_is_not_released_by_the_borrower() {
-    mine = "kept-" ++ "value"
+    mine = "kept-" + "value"
     copy = lent(mine)
 
     assert_eq(copy, "kept-value", "the borrower sees it")
@@ -49,8 +49,8 @@ check_a_lent_string_is_not_released_by_the_borrower() {
 }
 
 check_a_returned_parameter_is_not_released_twice() {
-    x = "x-" ++ "one"
-    y = "y-" ++ "two"
+    x = "x-" + "one"
+    y = "y-" + "two"
     got = pick(x, y, true)
 
     assert_eq(got, "x-one", "the chosen one")
@@ -70,14 +70,14 @@ check_a_string_put_in_a_list_outlives_the_block_that_built_it() {
 }
 
 check_a_record_keeps_its_fields() {
-    r = Row { label = "a" ++ "b", note = built(7) }
+    r = Row { label = "a" + "b", note = built(7) }
 
     assert_eq(r.label, "ab", "the field built in place")
     assert_eq(r.note, "row-7", "the field built by a call")
 }
 
 check_an_alias_keeps_both_names_alive() {
-    a = "one-" ++ "two"
+    a = "one-" + "two"
     b = a
 
     assert_eq(a, "one-two", "the original")
@@ -85,10 +85,10 @@ check_an_alias_keeps_both_names_alive() {
 }
 
 check_a_string_survives_a_nested_block_that_builds_its_own() {
-    outer = "outer-" ++ "value"
+    outer = "outer-" + "value"
     n = 0
     for i in 1..11 {
-        inner = "inner-" ++ str(i)
+        inner = "inner-" + str(i)
         n = n + inner.length()
     }
 
@@ -106,7 +106,7 @@ check_a_method_result_is_the_callers_and_the_receiver_is_not() {
 
 check_a_conditional_string_belongs_to_whichever_branch_made_it() {
     hot = true
-    label = hot ? "hot-" ++ "path" : "cold-" ++ "path"
+    label = hot ? "hot-" + "path" : "cold-" + "path"
 
     assert_eq(label, "hot-path", "the chosen branch")
 }
@@ -125,10 +125,10 @@ check_rows_are_reused_without_losing_the_one_kept() {
     for round in 1..201 {
         row = ""
         for i in 1..9 {
-            row = row ++ "{i}."
+            row = row + "{i}."
         }
         if round == 100 {
-            kept = row ++ "!"
+            kept = row + "!"
         }
     }
 
@@ -136,9 +136,9 @@ check_rows_are_reused_without_losing_the_one_kept() {
 }
 
 check_rendering_a_string_does_not_take_it_from_its_owner() {
-    s = "hello" ++ "-world"
-    shown = "[" ++ str(s) ++ "]"
-    other = "AAAAA" ++ "AAAAAA"
+    s = "hello" + "-world"
+    shown = "[" + str(s) + "]"
+    other = "AAAAA" + "AAAAAA"
 
     assert_eq(shown, "[hello-world]", "the rendering")
     assert_eq(other, "AAAAAAAAAAA", "the string built afterwards")
@@ -146,7 +146,7 @@ check_rendering_a_string_does_not_take_it_from_its_owner() {
 }
 
 check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
-    a = "hi" ++ " there"
+    a = "hi" + " there"
     for i in 1..4 {
         untouched = maybe_bang(a, false)
         assert_eq(untouched, "hi there", "the path that changed nothing")
@@ -161,10 +161,10 @@ check_a_conditionally_rewritten_parameter_belongs_to_the_caller() {
 check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
     held = Holder { s = "" }
     for i in 1..4 {
-        s = "payload-" ++ "abc"
+        s = "payload-" + "abc"
         held = s.wrap()
     }
-    filler = "zzzzzzzzzz" ++ "yyy"
+    filler = "zzzzzzzzzz" + "yyy"
 
     assert_eq(held.s, "payload-abc", "what the receiver was")
     assert_eq(filler, "zzzzzzzzzzyyy", "the string built afterwards")
@@ -173,11 +173,11 @@ check_a_receiver_is_kept_by_whatever_keeps_an_argument() {
 check_a_shorthand_field_keeps_its_string() {
     held = Holder { s = "" }
     for i in 1..4 {
-        s = "payload-" ++ "abc"
+        s = "payload-" + "abc"
         boxed = [Holder { s }]
         held = boxed.get(0)
     }
-    filler = "zzzzzzzzzz" ++ "yyy"
+    filler = "zzzzzzzzzz" + "yyy"
 
     assert_eq(held.s, "payload-abc", "what the shorthand named")
     assert_eq(filler, "zzzzzzzzzzyyy", "the string built afterwards")
@@ -186,7 +186,7 @@ check_a_shorthand_field_keeps_its_string() {
 check_splitting_on_nothing_answers_with_its_own_string() {
     parts: str[] = []
     for i in 1..3 {
-        s = "abc" ++ "def"
+        s = "abc" + "def"
         parts = s.split("")
     }
 

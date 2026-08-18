@@ -34,7 +34,7 @@ line_of(r: Result) -> str {
     if resolved(r) {
         head
     } else {
-        head ++ "  " ++ grey("(under the clock)")
+        head + "  " + grey("(under the clock)")
     }
 }
 
@@ -46,14 +46,14 @@ footnote(rs: Result[]) -> str {
     calls = summed_ops(rs, 0, 0)
     ms = summed_ms(rs, 0, 0)
     shaky = unresolved_count(rs, 0, 0)
-    body = "{counted(rs.length(), "case")}, {grouped(calls)} calls,"
-        ++ " {grouped(ms)} ms measured. Times are wall-clock; ns/op is the"
-        ++ " total divided by the call count."
+    body = "{counted(rs.length(), "case")}, {grouped(calls)} calls," +
+        " {grouped(ms)} ms measured. Times are wall-clock; ns/op is the" +
+        " total divided by the call count."
 
     if shaky == 0 {
         grey(body)
     } else {
-        grey(body ++ " {counted(shaky, "case")} stayed under the clock.")
+        grey(body + " {counted(shaky, "case")} stayed under the clock.")
     }
 }
 
@@ -94,7 +94,7 @@ unresolved_count(rs: Result[], i: int, acc: int) -> int {
 /** `1234567` as `1,234,567`. */
 grouped(n: int) -> str {
     if n < 0 {
-        "-" ++ grouped(0 - n)
+        "-" + grouped(0 - n)
     } else {
         digits = str(n)
         insert_commas(digits, 0, "")
@@ -107,6 +107,6 @@ insert_commas(digits: str, i: int, acc: str) -> str {
     } else {
         left = digits.length() - i
         sep = i > 0 && left % 3 == 0 ? "," : ""
-        insert_commas(digits, i + 1, acc ++ sep ++ digits.at(i))
+        insert_commas(digits, i + 1, acc + sep + digits.at(i))
     }
 }

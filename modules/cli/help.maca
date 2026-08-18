@@ -3,22 +3,22 @@ import { bold, dim, grey, pad, width } from cli/style
 
 /** The whole help page for `c`. */
 help(c: Cmd) -> str {
-    out = bold(c.name) ++ (c.about == "" ? "" : ": " ++ c.about) ++ "\n\n"
-    out = out ++ bold("Usage") ++ "\n  " ++ usage(c) ++ "\n"
+    out = bold(c.name) + (c.about == "" ? "" : ": " + c.about) + "\n\n"
+    out = out + bold("Usage") + "\n  " + usage(c) + "\n"
 
     if c.args.length() > 0 {
-        out = out ++ "\n" ++ bold("Arguments") ++ "\n" ++ arg_lines(c, 0, "")
+        out = out + "\n" + bold("Arguments") + "\n" + arg_lines(c, 0, "")
     }
-    out ++ "\n" ++ bold("Options") ++ "\n" ++ opt_lines(c, 0, "") ++ help_line(c)
+    out + "\n" + bold("Options") + "\n" + opt_lines(c, 0, "") + help_line(c)
 }
 
 /** The one line that shows how the command is invoked. */
 usage(c: Cmd) -> str {
     line = c.name
     if c.opts.length() > 0 {
-        line = line ++ " [options]"
+        line = line + " [options]"
     }
-    line ++ arg_usage(c, 0, "")
+    line + arg_usage(c, 0, "")
 }
 
 arg_usage(c: Cmd, i: int, acc: str) -> str {
@@ -26,7 +26,7 @@ arg_usage(c: Cmd, i: int, acc: str) -> str {
         acc
     } else {
         a = c.args.get(i)
-        arg_usage(c, i + 1, acc ++ (a.many ? " <{a.name}>..." : " <{a.name}>"))
+        arg_usage(c, i + 1, acc + (a.many ? " <{a.name}>..." : " <{a.name}>"))
     }
 }
 
@@ -55,7 +55,7 @@ arg_lines(c: Cmd, i: int, acc: str) -> str {
         acc
     } else {
         a = c.args.get(i)
-        arg_lines(c, i + 1, acc ++ "  " ++ pad("<{a.name}>", column(c)) ++ a.help ++ "\n")
+        arg_lines(c, i + 1, acc + "  " + pad("<{a.name}>", column(c)) + a.help + "\n")
     }
 }
 
@@ -65,10 +65,10 @@ opt_lines(c: Cmd, i: int, acc: str) -> str {
     } else {
         o = c.opts.get(i)
         tail = o.takes && o.fallback != "" ? grey("  (default: {o.fallback})") : ""
-        line = "  " ++ pad(left_of(o), column(c)) ++ o.help ++ tail
-        opt_lines(c, i + 1, acc ++ line ++ "\n")
+        line = "  " + pad(left_of(o), column(c)) + o.help + tail
+        opt_lines(c, i + 1, acc + line + "\n")
     }
 }
 
 help_line(c: Cmd) -> str =>
-    "  " ++ pad("-h, --help", column(c)) ++ dim("show this and exit") ++ "\n"
+    "  " + pad("-h, --help", column(c)) + dim("show this and exit") + "\n"

@@ -229,7 +229,7 @@ pack_from(xs: str[], i: int, acc: str) -> str {
     if i >= xs.length() {
         acc
     } else {
-        pack_from(xs, i + 1, acc ++ escaped(xs.get(i)) ++ Sep)
+        pack_from(xs, i + 1, acc + escaped(xs.get(i)) + Sep)
     }
 }
 
@@ -242,10 +242,10 @@ unpack_from(s: str, i: int, cur: str, acc: str[]) -> str[] {
         cur == "" ? acc : acc.push(cur)
     } else if s.at(i) == "\\" && i + 1 < s.length() {
         c = s.at(i + 1)
-        unpack_from(s, i + 2, cur ++ (c == "n" ? Sep : c), acc)
+        unpack_from(s, i + 2, cur + (c == "n" ? Sep : c), acc)
     } else if s.at(i) == Sep {
         unpack_from(s, i + 1, "", acc.push(cur))
     } else {
-        unpack_from(s, i + 1, cur ++ s.at(i), acc)
+        unpack_from(s, i + 1, cur + s.at(i), acc)
     }
 }

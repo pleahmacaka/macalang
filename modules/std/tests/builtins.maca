@@ -81,8 +81,8 @@ test_slice_clamps_rather_than_failing() {
 test_file_size_and_is_dir_describe_what_is_there() {
     root = "/tmp/maca-test-builtins"
     remove_dir(root)
-    make_dir(root ++ "/nested")
-    path = root ++ "/f.txt"
+    make_dir(root + "/nested")
+    path = root + "/f.txt"
     write_file(path, "hello")
 
     assert_eq(str(file_size(path)), "5", "five bytes")
@@ -101,11 +101,11 @@ test_reading_a_directory_answers_nothing_rather_than_dying() {
     root = "/tmp/maca-test-builtins-dir"
     remove_dir(root)
     make_dir(root)
-    write_file(root ++ "/f.txt", "hello")
+    write_file(root + "/f.txt", "hello")
 
     assert_eq(read_file(root), "", "a directory reads as empty")
-    assert_eq(read_file(root ++ "/f.txt"), "hello", "the file in it still reads")
-    assert_eq(read_file(root ++ "/none"), "", "and so does an absent file")
+    assert_eq(read_file(root + "/f.txt"), "hello", "the file in it still reads")
+    assert_eq(read_file(root + "/none"), "", "and so does an absent file")
 
     remove_dir(root)
 }
@@ -113,7 +113,7 @@ test_reading_a_directory_answers_nothing_rather_than_dying() {
 test_remove_file_removes_one_file() {
     root = "/tmp/maca-test-builtins-rm"
     make_dir(root)
-    path = root ++ "/f.txt"
+    path = root + "/f.txt"
     write_file(path, "hello")
 
     remove_file(path)
@@ -126,8 +126,8 @@ test_remove_file_removes_one_file() {
 
 test_remove_dir_is_recursive() {
     root = "/tmp/maca-test-builtins-rmdir"
-    make_dir(root ++ "/nested")
-    write_file(root ++ "/nested/f.txt", "hello")
+    make_dir(root + "/nested")
+    write_file(root + "/nested/f.txt", "hello")
 
     remove_dir(root)
 

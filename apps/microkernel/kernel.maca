@@ -127,7 +127,7 @@ pct(part: int, whole: int) -> int {
 bar(n: int) -> str {
     s = ""
     for _ in 0..n {
-        s = s ++ "#"
+        s = s + "#"
     }
     s
 }

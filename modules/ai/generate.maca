@@ -60,7 +60,7 @@ generate_using(c: Chat, ts: Turn[], tools: Tool[]) -> Said {
 
 /** The tools as the JSON array the wire format wants. */
 tools_json(tools: Tool[]) -> str =>
-    "[" ++ tools.map(t => one_tool(t)).join(",") ++ "]"
+    "[" + tools.map(t => one_tool(t)).join(",") + "]"
 
 one_tool(t: Tool) -> str =>
     object_of(["type", "function"],

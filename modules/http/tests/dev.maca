@@ -11,16 +11,16 @@ fresh() -> Feed {
     feed(Root)
 }
 
-counter_file() -> str => Root ++ "/generation"
+counter_file() -> str => Root + "/generation"
 
-patch_at(gen: int) -> str => Root ++ "/" ++ str(gen) ++ ".json"
+patch_at(gen: int) -> str => Root + "/" + str(gen) + ".json"
 
 poll_for(gen: int) -> Request =>
     parse_request("GET /_maca/hmr?gen={gen} HTTP/1.1\r\n\r\n")
 
 one(key: str, value: str) -> str => "\{\"key\":\"{key}\",\"value\":\"{value}\"\}"
 
-op(key: str, value: str) -> str => "[" ++ one(key, value) ++ "]"
+op(key: str, value: str) -> str => "[" + one(key, value) + "]"
 
 test_a_feed_starts_at_generation_zero() {
     f = fresh()
@@ -92,7 +92,7 @@ test_a_client_one_behind_is_sent_that_generations_ops() {
     f = fresh()
     publish(f, 1, op("a", "1"))
 
-    assert_eq(message(f, 0, 1), "\{\"gen\":1,\"ops\":" ++ op("a", "1") ++ "\}",
+    assert_eq(message(f, 0, 1), "\{\"gen\":1,\"ops\":" + op("a", "1") + "\}",
               "the delta it missed")
 }
 
@@ -103,8 +103,8 @@ test_a_client_several_behind_is_sent_every_delta_in_order() {
     publish(f, 3, op("b", "9"))
 
     assert_eq(ops_since(f, 0, 3),
-              "[" ++ one("a", "1") ++ "," ++ one("a", "2") ++ ","
-                  ++ one("b", "9") ++ "]",
+              "[" + one("a", "1") + "," + one("a", "2") + "," +
+                  one("b", "9") + "]",
               "one array, the older write first so the newer one wins")
 }
 
@@ -170,7 +170,7 @@ test_a_generation_nobody_could_have_reads_as_the_beginning() {
     req = parse_request("GET /_maca/hmr?gen=-1 HTTP/1.1\r\n\r\n")
 
     assert_eq(answer(f, req, 0).body,
-              "\{\"gen\":1,\"ops\":" ++ op("a", "1") ++ "\}",
+              "\{\"gen\":1,\"ops\":" + op("a", "1") + "\}",
               "answered as a client that has seen nothing")
 }
 

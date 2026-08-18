@@ -16,7 +16,7 @@ url_join(base: str, path: str) -> str {
 
     left = base.ends_with("/") ? base.slice(0, base.length() - 1) : base
 
-    path.starts_with("/") ? left ++ path : "{left}/{path}"
+    path.starts_with("/") ? left + path : "{left}/{path}"
 }
 
 /** The percent-encoding a query value needs, over the bytes the text is made
@@ -29,7 +29,7 @@ url_encode(s: str) -> str {
 
     while i < cs.length() {
         c = cs.get(i)
-        out = out ++ (url_plain(c) ? c : url_escaped(c))
+        out = out + (url_plain(c) ? c : url_escaped(c))
         i = i + 1
     }
 
@@ -43,7 +43,7 @@ url_plain(c: str) -> bool =>
 url_escaped(c: str) -> str {
     b = ord(c)
 
-    "%" ++ UrlHex.at(b / 16) ++ UrlHex.at(b % 16)
+    "%" + UrlHex.at(b / 16) + UrlHex.at(b % 16)
 }
 
 /** `a=1&b=2` from parallel key and value lists, each side escaped. */

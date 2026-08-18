@@ -98,12 +98,12 @@ decode_from(s: str, i: int, acc: str) -> str {
         code = hex_pair(s.at(i + 1), s.at(i + 2))
 
         if code < 0 {
-            decode_from(s, i + 1, acc ++ s.at(i))
+            decode_from(s, i + 1, acc + s.at(i))
         } else {
-            decode_from(s, i + 3, acc ++ chr(code))
+            decode_from(s, i + 3, acc + chr(code))
         }
     } else {
-        decode_from(s, i + 1, acc ++ s.at(i))
+        decode_from(s, i + 1, acc + s.at(i))
     }
 }
 

@@ -137,11 +137,11 @@ chat_body_with(c: Chat, ts: Turn[], more_keys: str[],
         vs = vs.push(str(c.ceiling))
     }
 
-    object_of(ks ++ more_keys, vs ++ more_values)
+    object_of(ks + more_keys, vs + more_values)
 }
 
 turns_json(ts: Turn[]) -> str =>
-    "[" ++ ts.map(t => turn_json(t)).join(",") ++ "]"
+    "[" + ts.map(t => turn_json(t)).join(",") + "]"
 
 /** A turn that answers a tool call says which one, or the model cannot pair
  * them.

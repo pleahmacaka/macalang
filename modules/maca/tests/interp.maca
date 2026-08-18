@@ -54,9 +54,9 @@ test_comparison_and_logic_answer_bools() {
 test_a_ternary_and_an_if_both_answer_a_value() {
     assert_eq(shown("1 < 2 ? 10 : 20"), "10", "the ternary takes a side")
     assert_eq(shown("2 < 1 ? 10 : 20"), "20", "and the other side")
-    assert_eq(said("main() -> int \{\n"
-                       ++ "    b = if 1 < 2 \{ 100 \} else \{ 200 \}\n"
-                       ++ "    info(str(b))\n    0\n\}\n"),
+    assert_eq(said("main() -> int \{\n" +
+                       "    b = if 1 < 2 \{ 100 \} else \{ 200 \}\n" +
+                       "    info(str(b))\n    0\n\}\n"),
               "100", "an if answers in value position")
 }
 
@@ -68,14 +68,14 @@ test_a_binding_is_read_back_and_written_over() {
 }
 
 test_a_function_is_called_and_recursion_terminates() {
-    assert_eq(said("double(n: int) -> int => n * 2\n"
-                       ++ "main() -> int \{\n    info(str(double(21)))\n"
-                       ++ "    0\n\}\n"),
+    assert_eq(said("double(n: int) -> int => n * 2\n" +
+                       "main() -> int \{\n    info(str(double(21)))\n" +
+                       "    0\n\}\n"),
               "42", "a user function is reached")
-    assert_eq(said("fib(n: int) -> int =>\n"
-                       ++ "    n < 2 ? n : fib(n - 1) + fib(n - 2)\n"
-                       ++ "main() -> int \{\n    info(str(fib(10)))\n"
-                       ++ "    0\n\}\n"),
+    assert_eq(said("fib(n: int) -> int =>\n" +
+                       "    n < 2 ? n : fib(n - 1) + fib(n - 2)\n" +
+                       "main() -> int \{\n    info(str(fib(10)))\n" +
+                       "    0\n\}\n"),
               "55", "recursion answers 55 for fib(10)")
 }
 
@@ -99,100 +99,100 @@ test_the_exit_code_is_what_main_answered() {
 }
 
 test_a_record_is_built_read_and_replaced() {
-    src = "Point = \{\n    x: int\n    y: int\n\}\n"
-              ++ "main() -> int \{\n"
-              ++ "    p = Point \{ x = 1, y = 2 \}\n"
-              ++ "    q = p with \{ y = 9 \}\n"
-              ++ "    info(\"\{p.x\} \{p.y\} \{q.x\} \{q.y\}\")\n    0\n\}\n"
+    src = "Point = \{\n    x: int\n    y: int\n\}\n" +
+              "main() -> int \{\n" +
+              "    p = Point \{ x = 1, y = 2 \}\n" +
+              "    q = p with \{ y = 9 \}\n" +
+              "    info(\"\{p.x\} \{p.y\} \{q.x\} \{q.y\}\")\n    0\n\}\n"
 
     assert_eq(said(src), "1 2 1 9", "a field is read and `with` replaces one")
 }
 
 test_a_field_is_written_in_place() {
-    src = "Point = \{\n    x: int\n\}\n"
-              ++ "main() -> int \{\n"
-              ++ "    p = Point \{ x = 1 \}\n    p.x = 8\n"
-              ++ "    info(str(p.x))\n    0\n\}\n"
+    src = "Point = \{\n    x: int\n\}\n" +
+              "main() -> int \{\n" +
+              "    p = Point \{ x = 1 \}\n    p.x = 8\n" +
+              "    info(str(p.x))\n    0\n\}\n"
 
     assert_eq(said(src), "8", "the write is seen by the next read")
 }
 
 test_a_nullary_sum_is_matched_by_its_tag() {
-    src = "Color = Red | Green | Blue\n"
-              ++ "shade(c: Color) -> int =>\n    match c \{\n"
-              ++ "        Red => 1\n        Green => 2\n        _ => 3\n"
-              ++ "    \}\n"
-              ++ "main() -> int \{\n"
-              ++ "    info(\"\{shade(Red)\} \{shade(Green)\} \{shade(Blue)\}\")\n"
-              ++ "    0\n\}\n"
+    src = "Color = Red | Green | Blue\n" +
+              "shade(c: Color) -> int =>\n    match c \{\n" +
+              "        Red => 1\n        Green => 2\n        _ => 3\n" +
+              "    \}\n" +
+              "main() -> int \{\n" +
+              "    info(\"\{shade(Red)\} \{shade(Green)\} \{shade(Blue)\}\")\n" +
+              "    0\n\}\n"
 
     assert_eq(said(src), "1 2 3", "each variant takes its own arm")
 }
 
 test_a_sum_with_a_payload_binds_what_it_carries() {
-    src = "Shape = Circle(int) | Square(int)\n"
-              ++ "area(s: Shape) -> int \{\n    match s \{\n"
-              ++ "        Circle(r) => r * r\n        Square(w) => w * w\n"
-              ++ "    \}\n\}\n"
-              ++ "main() -> int \{\n    info(str(area(Square(5))))\n"
-              ++ "    0\n\}\n"
+    src = "Shape = Circle(int) | Square(int)\n" +
+              "area(s: Shape) -> int \{\n    match s \{\n" +
+              "        Circle(r) => r * r\n        Square(w) => w * w\n" +
+              "    \}\n\}\n" +
+              "main() -> int \{\n    info(str(area(Square(5))))\n" +
+              "    0\n\}\n"
 
     assert_eq(said(src), "25", "the binder carries the payload")
 }
 
 test_a_recursive_sum_is_walked_to_the_bottom() {
-    src = "Tree = Leaf(int) | Node(Tree, Tree)\n"
-              ++ "total(t: Tree) -> int \{\n    match t \{\n"
-              ++ "        Leaf(n) => n\n"
-              ++ "        Node(l, r) => total(l) + total(r)\n    \}\n\}\n"
-              ++ "main() -> int \{\n"
-              ++ "    info(str(total(Node(Leaf(1), Node(Leaf(2), Leaf(3))))))\n"
-              ++ "    0\n\}\n"
+    src = "Tree = Leaf(int) | Node(Tree, Tree)\n" +
+              "total(t: Tree) -> int \{\n    match t \{\n" +
+              "        Leaf(n) => n\n" +
+              "        Node(l, r) => total(l) + total(r)\n    \}\n\}\n" +
+              "main() -> int \{\n" +
+              "    info(str(total(Node(Leaf(1), Node(Leaf(2), Leaf(3))))))\n" +
+              "    0\n\}\n"
 
     assert_eq(said(src), "6", "the whole tree is summed")
 }
 
 test_a_match_arm_takes_a_guard_and_a_literal() {
-    src = "size(n: int) -> str =>\n    match n \{\n"
-              ++ "        0 => \"none\"\n        m if m > 10 => \"many\"\n"
-              ++ "        _ => \"some\"\n    \}\n"
-              ++ "main() -> int \{\n"
-              ++ "    info(\"\{size(0)\} \{size(5)\} \{size(50)\}\")\n"
-              ++ "    0\n\}\n"
+    src = "size(n: int) -> str =>\n    match n \{\n" +
+              "        0 => \"none\"\n        m if m > 10 => \"many\"\n" +
+              "        _ => \"some\"\n    \}\n" +
+              "main() -> int \{\n" +
+              "    info(\"\{size(0)\} \{size(5)\} \{size(50)\}\")\n" +
+              "    0\n\}\n"
 
     assert_eq(said(src), "none some many",
               "a literal arm, a guarded arm and a wildcard")
 }
 
 test_a_range_a_for_loop_and_a_while_loop_all_run() {
-    assert_eq(said(in_main("    sum = 0\n    for i in 1..10 \{\n"
-                               ++ "        sum = sum + i\n    \}\n"
-                               ++ "    info(str(sum))")),
+    assert_eq(said(in_main("    sum = 0\n    for i in 1..10 \{\n" +
+                               "        sum = sum + i\n    \}\n" +
+                               "    info(str(sum))")),
               "55", "a range is inclusive at both ends")
-    assert_eq(said(in_main("    n = 0\n    while n < 5 \{\n"
-                               ++ "        n = n + 1\n    \}\n"
-                               ++ "    info(str(n))")),
+    assert_eq(said(in_main("    n = 0\n    while n < 5 \{\n" +
+                               "        n = n + 1\n    \}\n" +
+                               "    info(str(n))")),
               "5", "a while loop stops on its condition")
 }
 
 test_break_and_continue_steer_a_loop() {
-    assert_eq(said(in_main("    sum = 0\n    for i in 1..10 \{\n"
-                               ++ "        if i > 3 \{ break \}\n"
-                               ++ "        sum = sum + i\n    \}\n"
-                               ++ "    info(str(sum))")),
+    assert_eq(said(in_main("    sum = 0\n    for i in 1..10 \{\n" +
+                               "        if i > 3 \{ break \}\n" +
+                               "        sum = sum + i\n    \}\n" +
+                               "    info(str(sum))")),
               "6", "break leaves the loop with 1 + 2 + 3")
-    assert_eq(said(in_main("    sum = 0\n    for i in 1..5 \{\n"
-                               ++ "        if i % 2 == 0 \{ continue \}\n"
-                               ++ "        sum = sum + i\n    \}\n"
-                               ++ "    info(str(sum))")),
+    assert_eq(said(in_main("    sum = 0\n    for i in 1..5 \{\n" +
+                               "        if i % 2 == 0 \{ continue \}\n" +
+                               "        sum = sum + i\n    \}\n" +
+                               "    info(str(sum))")),
               "9", "continue skips the even cells")
 }
 
 test_a_return_leaves_the_function_early() {
-    src = "pick(n: int) -> int \{\n"
-              ++ "    if n > 0 \{\n        return 1\n    \}\n    0\n\}\n"
-              ++ "main() -> int \{\n"
-              ++ "    info(\"\{pick(5)\} \{pick(0)\}\")\n    0\n\}\n"
+    src = "pick(n: int) -> int \{\n" +
+              "    if n > 0 \{\n        return 1\n    \}\n    0\n\}\n" +
+              "main() -> int \{\n" +
+              "    info(\"\{pick(5)\} \{pick(0)\}\")\n    0\n\}\n"
 
     assert_eq(said(src), "1 0", "the early answer wins, the fall-through does")
 }
@@ -203,22 +203,22 @@ test_interpolation_stringifies_every_shape() {
 }
 
 test_a_list_is_indexed_and_written() {
-    assert_eq(said(in_main("    xs = [10, 20, 30]\n    xs[0] = 99\n"
-                               ++ "    info(\"\{xs[0]\} \{len(xs)\}\")")),
+    assert_eq(said(in_main("    xs = [10, 20, 30]\n    xs[0] = 99\n" +
+                               "    info(\"\{xs[0]\} \{len(xs)\}\")")),
               "99 3", "the cell write is seen by the next read")
 }
 
 test_chr_and_ord_match_the_native_domain() {
-    assert_eq(said(in_main("    info(\"\{ord(chr(200))\} \{ord(chr(65))\}"
-                               ++ " \{len(chr(256))\} \{len(chr(0))\}"
-                               ++ " \{ord(\\\"\\\")\}\")")),
+    assert_eq(said(in_main("    info(\"\{ord(chr(200))\} \{ord(chr(65))\}" +
+                               " \{len(chr(256))\} \{len(chr(0))\}" +
+                               " \{ord(\\\"\\\")\}\")")),
               "200 65 0 0 -1", "the interpreter's domain is the native one")
 }
 
 test_the_math_prelude_answers_what_the_native_backend_answers() {
-    assert_eq(said(in_main("    info(\"\{abs(0 - 7)\} \{min(4, 9)\}"
-                               ++ " \{max(4, 9)\} \{gcd(54, 24)\}"
-                               ++ " \{clamp(42, 0, 10)\} \{sign(0 - 2)\}\")")),
+    assert_eq(said(in_main("    info(\"\{abs(0 - 7)\} \{min(4, 9)\}" +
+                               " \{max(4, 9)\} \{gcd(54, 24)\}" +
+                               " \{clamp(42, 0, 10)\} \{sign(0 - 2)\}\")")),
               "7 4 9 6 10 -1", "abs, min, max, gcd, clamp and sign")
 }
 
@@ -286,76 +286,76 @@ test_every_list_walk_method_answers_what_the_native_backend_answers() {
     assert_eq(shown("[4, 7, 9].index_of_by(v => v > 5)"), "1", "index_of_by")
     assert_eq(shown("[4, 7, 9].index_of_by(v => v > 90)"), "-1",
               "index_of_by misses")
-    assert_eq(shown("[\"a\", \"b\"].enumerate()"
-                        ++ ".map(e => \"\{e.index\}\{e.value\}\").join(\"|\")"),
+    assert_eq(shown("[\"a\", \"b\"].enumerate()" +
+                        ".map(e => \"\{e.index\}\{e.value\}\").join(\"|\")"),
               "0a|1b", "enumerate")
-    assert_eq(shown("[\"bbb\", \"a\", \"cc\"].sort_by(v => v.length())"
-                        ++ ".join(\"|\")"),
+    assert_eq(shown("[\"bbb\", \"a\", \"cc\"].sort_by(v => v.length())" +
+                        ".join(\"|\")"),
               "a|cc|bbb", "sort_by")
 }
 
 test_map_and_parallel_agree() {
-    assert_eq(said(in_main("    a = [1, 2, 3].map(v => v + 1).sum()\n"
-                               ++ "    b = [1, 2, 3].parallel(v => v + 1).sum()\n"
-                               ++ "    info(\"\{a\}|\{b\}\")")),
+    assert_eq(said(in_main("    a = [1, 2, 3].map(v => v + 1).sum()\n" +
+                               "    b = [1, 2, 3].parallel(v => v + 1).sum()\n" +
+                               "    info(\"\{a\}|\{b\}\")")),
               "9|9", "parallel maps rather than answering unit")
 }
 
 test_a_closure_sees_the_binding_beside_it() {
-    assert_eq(said(in_main("    k = 10\n"
-                               ++ "    xs = [1, 2, 3].map(v => v + k)\n"
-                               ++ "    inc = n => n + 1\n"
-                               ++ "    info(\"\{xs.get(0)\} \{inc(41)\}\")")),
+    assert_eq(said(in_main("    k = 10\n" +
+                               "    xs = [1, 2, 3].map(v => v + k)\n" +
+                               "    inc = n => n + 1\n" +
+                               "    info(\"\{xs.get(0)\} \{inc(41)\}\")")),
               "11 42", "the lambda reads k, and a bound lambda is callable")
 }
 
 test_a_function_passed_by_name_is_applied() {
-    src = "even(n: int) -> bool => n % 2 == 0\n"
-              ++ "count_if(xs: int[], i: int, pred) -> int =>\n"
-              ++ "    i >= xs.length() ? 0"
-              ++ " : (pred(xs.get(i)) ? 1 : 0) + count_if(xs, i + 1, pred)\n"
-              ++ "main() -> int \{\n    xs = [1, 2, 3, 4, 5, 6]\n"
-              ++ "    info(str(count_if(xs, 0, even)))\n    0\n\}\n"
+    src = "even(n: int) -> bool => n % 2 == 0\n" +
+              "count_if(xs: int[], i: int, pred) -> int =>\n" +
+              "    i >= xs.length() ? 0" +
+              " : (pred(xs.get(i)) ? 1 : 0) + count_if(xs, i + 1, pred)\n" +
+              "main() -> int \{\n    xs = [1, 2, 3, 4, 5, 6]\n" +
+              "    info(str(count_if(xs, 0, even)))\n    0\n\}\n"
 
     assert_eq(said(src), "3", "three of the six are even")
 }
 
 test_a_record_that_holds_its_own_kind_is_walked() {
-    src = "Tree = \{\n    label: str\n    kids: Tree[]\n\}\n"
-              ++ "leaf(l: str) -> Tree => Tree \{ label = l, kids = [] \}\n"
-              ++ "size(t: Tree) -> int => 1 + ks(t.kids, 0)\n"
-              ++ "ks(xs: Tree[], i: int) -> int =>\n"
-              ++ "    i >= xs.length() ? 0 : size(xs.get(i)) + ks(xs, i + 1)\n"
-              ++ "main() -> int \{\n"
-              ++ "    r = Tree \{ label = \"r\", kids = [leaf(\"a\"),"
-              ++ " leaf(\"b\")] \}\n    info(str(size(r)))\n    0\n\}\n"
+    src = "Tree = \{\n    label: str\n    kids: Tree[]\n\}\n" +
+              "leaf(l: str) -> Tree => Tree \{ label = l, kids = [] \}\n" +
+              "size(t: Tree) -> int => 1 + ks(t.kids, 0)\n" +
+              "ks(xs: Tree[], i: int) -> int =>\n" +
+              "    i >= xs.length() ? 0 : size(xs.get(i)) + ks(xs, i + 1)\n" +
+              "main() -> int \{\n" +
+              "    r = Tree \{ label = \"r\", kids = [leaf(\"a\")," +
+              " leaf(\"b\")] \}\n    info(str(size(r)))\n    0\n\}\n"
 
     assert_eq(said(src), "3", "a root and two leaves")
 }
 
 test_the_scan_primitives_match_the_native_ones() {
-    src = in_main("    s = \"a1 b\"\n    cs = s.chars()\n"
-                      ++ "    info(\"\{s.length()\} \{cs.length()\}"
-                      ++ " \{cs.get(0)\} \{cs.get(1)\}\")\n"
-                      ++ "    info(\"\{cs.get(0).is_alpha()\}"
-                      ++ " \{cs.get(1).is_ascii_digit()\}"
-                      ++ " \{cs.get(2).is_whitespace()\}\")\n"
-                      ++ "    info(cs.slice(0, 2).join(\"\"))")
+    src = in_main("    s = \"a1 b\"\n    cs = s.chars()\n" +
+                      "    info(\"\{s.length()\} \{cs.length()\}" +
+                      " \{cs.get(0)\} \{cs.get(1)\}\")\n" +
+                      "    info(\"\{cs.get(0).is_alpha()\}" +
+                      " \{cs.get(1).is_ascii_digit()\}" +
+                      " \{cs.get(2).is_whitespace()\}\")\n" +
+                      "    info(cs.slice(0, 2).join(\"\"))")
 
     assert_eq(said(src), "4 4 a 1\ntrue true true\na1",
               "lengths, access, char classes and slice+join")
 }
 
 test_a_runaway_loop_is_stopped_rather_than_hanging() {
-    out = ran(in_main("    n = 0\n    while true \{\n"
-                          ++ "        n = n + 1\n    \}"))
+    out = ran(in_main("    n = 0\n    while true \{\n" +
+                          "        n = n + 1\n    \}"))
 
     assert(out.fault != "", "the guard tripped: {out.fault}")
 }
 
 test_a_call_that_never_bottoms_out_is_stopped() {
-    out = ran("down(n: int) -> int => down(n + 1)\n"
-                  ++ "main() -> int \{\n    info(str(down(1)))\n    0\n\}\n")
+    out = ran("down(n: int) -> int => down(n + 1)\n" +
+                  "main() -> int \{\n    info(str(down(1)))\n    0\n\}\n")
 
     assert_eq(out.fault, "maximum recursion depth reached",
               "the depth guard names itself")

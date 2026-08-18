@@ -32,7 +32,7 @@ matching(xs: str[], query: str, i: int, acc: str[]) -> str[] {
     if i >= xs.length() {
         acc
     } else if query == "" || xs.get(i).contains(query) {
-        matching(xs, query, i + 1, acc ++ [xs.get(i)])
+        matching(xs, query, i + 1, acc + [xs.get(i)])
     } else {
         matching(xs, query, i + 1, acc)
     }
@@ -42,7 +42,7 @@ starting(xs: str[], prefix: str, i: int, acc: str[]) -> str[] {
     if i >= xs.length() {
         acc
     } else if xs.get(i).starts_with(prefix) {
-        starting(xs, prefix, i + 1, acc ++ [xs.get(i)])
+        starting(xs, prefix, i + 1, acc + [xs.get(i)])
     } else {
         starting(xs, prefix, i + 1, acc)
     }
@@ -50,22 +50,22 @@ starting(xs: str[], prefix: str, i: int, acc: str[]) -> str[] {
 
 spec_for(section: str) -> str {
     if section == "syntax" || section == "grammar" {
-        "No `fn`/`type`/`Result`/`<>`. Field `:` = type, `=` = value,"
-            ++ " `Name \{ = \}` = ctor.\nFunctions: `f(x: T) -> R \{ body \}`"
-            ++ " or `=> expr`. Variadic `...rest: T`.\nTernary is spaced"
-            ++ " `c ? x : y`; error-propagate is attached `x?`. `fail e`"
-            ++ " raises.\nBracketless comma lists; significant newlines;"
-            ++ " records newline/comma separated.\nGenerics: lowercase type"
-            ++ " vars, applied by juxtaposition; postfix `T[]` / `T?`."
+        "No `fn`/`type`/`Result`/`<>`. Field `:` = type, `=` = value," +
+            " `Name \{ = \}` = ctor.\nFunctions: `f(x: T) -> R \{ body \}`" +
+            " or `=> expr`. Variadic `...rest: T`.\nTernary is spaced" +
+            " `c ? x : y`; error-propagate is attached `x?`. `fail e`" +
+            " raises.\nBracketless comma lists; significant newlines;" +
+            " records newline/comma separated.\nGenerics: lowercase type" +
+            " vars, applied by juxtaposition; postfix `T[]` / `T?`."
     } else if section == "effects" {
-        "Koka-style, inferred: io, net, os, async, exn."
-            ++ " Config mode forces `<>`."
+        "Koka-style, inferred: io, net, os, async, exn." +
+            " Config mode forces `<>`."
     } else if section == "modes" {
-        "General mode -> native/JS (`main`)."
-            ++ " Config mode -> Nix (root module, pure `<>`)."
+        "General mode -> native/JS (`main`)." +
+            " Config mode -> Nix (root module, pure `<>`)."
     } else if section == "types" {
-        "Gradual, structural, row-polymorphic. HM + `any` boundary."
-            ++ " Sums nominal, exhaustive."
+        "Gradual, structural, row-polymorphic. HM + `any` boundary." +
+            " Sums nominal, exhaustive."
     } else {
         Sections
     }
@@ -81,7 +81,7 @@ through_toolchain(code: str, kind: str, extra: str[]) -> str {
     path = scratch_file(kind)
 
     write_file(path, code)
-    out = capture("maca", [kind] ++ extra ++ [path])
+    out = capture("maca", [kind] + extra + [path])
     back = read_file(path)
 
     remove_file(path)
@@ -131,8 +131,8 @@ result_of(id: str, body: str) -> str =>
     "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{body}\}"
 
 initialize_body() -> str =>
-    "\{\"protocolVersion\":{quote(Protocol)},\"capabilities\":\{\"tools\":\{\}\},"
-        ++ "\"serverInfo\":\{\"name\":{quote(Server)},\"version\":\"0.1.0\"\}\}"
+    "\{\"protocolVersion\":{quote(Protocol)},\"capabilities\":\{\"tools\":\{\}\}," +
+        "\"serverInfo\":\{\"name\":{quote(Server)},\"version\":\"0.1.0\"\}\}"
 
 text_body(said: str) -> str =>
     "\{\"content\":[\{\"type\":\"text\",\"text\":{quote(said)}\}]\}"
@@ -150,8 +150,8 @@ answer(line: str) -> str {
     } else if method == "tools/call" {
         result_of(id, text_body(tool_reply(get(line, "params"))))
     } else {
-        "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":"
-            ++ "\{\"code\":-32601,\"message\":\"method not found\"\}\}"
+        "\{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":" +
+            "\{\"code\":-32601,\"message\":\"method not found\"\}\}"
     }
 }
 

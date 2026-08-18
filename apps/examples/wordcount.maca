@@ -10,7 +10,7 @@ bump(ts: Tally[], w: str) -> Tally[] {
     at = find(ts, w, 0)
 
     if at < 0 {
-        ts ++ [Tally { word = w, count = 1 }]
+        ts + [Tally { word = w, count = 1 }]
     } else {
         replace_at(ts, at, Tally { word = w, count = ts.get(at).count + 1 })
     }

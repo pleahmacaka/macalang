@@ -104,7 +104,7 @@ flatten_from(xss: int[][], i: int, acc: int[]) -> int[] {
     if i >= xss.length() {
         acc
     } else {
-        flatten_from(xss, i + 1, acc ++ xss.get(i))
+        flatten_from(xss, i + 1, acc + xss.get(i))
     }
 }
 
@@ -183,6 +183,6 @@ str_flatten_from(xss: str[][], i: int, acc: str[]) -> str[] {
     if i >= xss.length() {
         acc
     } else {
-        str_flatten_from(xss, i + 1, acc ++ xss.get(i))
+        str_flatten_from(xss, i + 1, acc + xss.get(i))
     }
 }

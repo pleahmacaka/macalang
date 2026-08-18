@@ -24,7 +24,7 @@ span(p: Point) -> int =>
     p.x * p.y
 
 louder(s: str) -> str =>
-    s.upper() ++ "!"
+    s.upper() + "!"
 
 picked(xs: int[]) -> int =>
     xs.filter(n => n % 2 == 1).sum()

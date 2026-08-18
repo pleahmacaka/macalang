@@ -34,26 +34,26 @@ odd_spans(parts: str[], i: int, acc: str[]) -> str[] {
     if i >= parts.length() {
         acc
     } else if plain_name(parts.get(i)) {
-        odd_spans(parts, i + 2, acc ++ [parts.get(i)])
+        odd_spans(parts, i + 2, acc + [parts.get(i)])
     } else {
         odd_spans(parts, i + 2, acc)
     }
 }
 
 defines(src: str, name: str) -> bool =>
-    lines(src).filter(l => l.starts_with(name ++ "(")).length() > 0
+    lines(src).filter(l => l.starts_with(name + "(")).length() > 0
 
 test_the_readme_names_functions_that_exist() {
     checked = 0
 
     for row in readme_rows() {
         module = module_of(row)
-        src = read_file("modules/std/" ++ module ++ ".maca")
+        src = read_file("modules/std/" + module + ".maca")
 
         for name in backticked(body_of(row)) {
             assert(defines(src, name),
-                   "the README lists {name} under std/{module}, which does "
-                       ++ "not define it")
+                   "the README lists {name} under std/{module}, which does " +
+                       "not define it")
             checked = checked + 1
         }
     }
@@ -65,7 +65,7 @@ test_every_module_the_readme_lists_has_a_source_file() {
     assert(readme_rows().length() > 5, "the table lists the modules")
 
     for row in readme_rows() {
-        assert(file_exists("modules/std/" ++ module_of(row) ++ ".maca"),
+        assert(file_exists("modules/std/" + module_of(row) + ".maca"),
                "the README lists std/{module_of(row)}, which has no source")
     }
 }

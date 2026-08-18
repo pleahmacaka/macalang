@@ -3,7 +3,7 @@ import std/proc
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 /** A scratch project of its own, so one case cannot read what another wrote. */
@@ -17,20 +17,20 @@ project(name: str) -> str {
 }
 
 put(dir: str, rel: str, text: str) {
-    make_dir(dir ++ "/" ++ dirname(rel))
+    make_dir(dir + "/" + dirname(rel))
     write_file("{dir}/{rel}", text)
 }
 
 /** The UI every case below builds. */
 app(dir: str, imports: str) {
     put(dir, "home.maca",
-        imports ++ "\nmain() -> Element =>\n"
-            ++ "    div(class=\"card\" \"hello\")\n")
+        imports + "\nmain() -> Element =>\n" +
+            "    div(class=\"card\" \"hello\")\n")
 }
 
 built(dir: str) -> str =>
-    capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target js home.maca "
-                       ++ "-o out 2>&1", dir, maca_bin()])
+    capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target js home.maca " +
+                       "-o out 2>&1", dir, maca_bin()])
 
 page_of(dir: str) -> str {
     said = built(dir)
@@ -93,8 +93,8 @@ test_without_a_page_section_the_title_is_the_file_stem() {
 test_the_language_and_the_description_come_from_the_manifest() {
     dir = project("meta")
     put(dir, "maca.toml",
-        "[page]\ntitle = \"탭페인\"\nlang = \"ko\"\n"
-            ++ "description = \"a browser start page\"\n")
+        "[page]\ntitle = \"탭페인\"\nlang = \"ko\"\n" +
+            "description = \"a browser start page\"\n")
     app(dir, "")
 
     page = page_of(dir)
@@ -133,8 +133,8 @@ vendor(dir: str) {
 test_a_declared_stylesheet_and_script_are_inlined_into_the_page() {
     dir = project("assets")
     vendor(dir)
-    app(dir, "import \"vendor/daisyui.css\"\n"
-                 ++ "import \"vendor/iconify-icon.js\"\n")
+    app(dir, "import \"vendor/daisyui.css\"\n" +
+                 "import \"vendor/iconify-icon.js\"\n")
 
     page = page_of(dir)
 
@@ -208,8 +208,8 @@ test_a_selective_import_binds_every_spelling_the_script_may_use() {
 
     page = page_of(dir)
 
-    carries(page, "const pick_text = globalThis[\"pick_text\"] ?? "
-                      ++ "globalThis[\"pickText\"] ?? globalThis[\"pick-text\"]",
+    carries(page, "const pick_text = globalThis[\"pick_text\"] ?? " +
+                      "globalThis[\"pickText\"] ?? globalThis[\"pick-text\"]",
             "a name is tried as written, then camelCase, then kebab-case")
     carries(page, "globalThis.pickText = () =>",
             "and the script it came from is on the page")
@@ -221,8 +221,8 @@ install(dir: str, name: str, manifest: str) {
 
 daisyui(dir: str) {
     install(dir, "daisyui",
-            "\{ \"name\": \"daisyui\", \"version\": \"4.0.0\", "
-                ++ "\"main\": \"lib/index.js\", \"style\": \"dist/full.css\" \}")
+            "\{ \"name\": \"daisyui\", \"version\": \"4.0.0\", " +
+                "\"main\": \"lib/index.js\", \"style\": \"dist/full.css\" \}")
     put(dir, "maca_modules/daisyui/dist/full.css",
         ".daisy-marker \{ color: rebeccapurple \}\n")
     put(dir, "maca_modules/daisyui/lib/index.js", "globalThis.daisyMarker = 1;\n")
@@ -280,8 +280,8 @@ test_a_package_with_no_entry_of_that_kind_fails_the_build_naming_it() {
 test_a_package_that_states_several_entries_answers_with_the_first_listed() {
     dir = project("several")
     install(dir, "many",
-            "\{ \"name\": \"many\", \"main\": \"main.js\", "
-                ++ "\"module\": \"module.js\", \"browser\": \"browser.js\" \}")
+            "\{ \"name\": \"many\", \"main\": \"main.js\", " +
+                "\"module\": \"module.js\", \"browser\": \"browser.js\" \}")
     put(dir, "maca_modules/many/main.js", "globalThis.pick = 'main';\n")
     put(dir, "maca_modules/many/module.js", "globalThis.pick = 'module';\n")
     put(dir, "maca_modules/many/browser.js", "globalThis.pick = 'browser';\n")
@@ -324,8 +324,8 @@ test_a_file_a_package_does_not_hold_fails_the_build_naming_it() {
 test_a_scoped_package_is_reached_under_the_name_it_was_installed_as() {
     dir = project("scoped")
     install(dir, "starry-night",
-            "\{ \"name\": \"@wooorm/starry-night\", "
-                ++ "\"style\": \"style/core.css\" \}")
+            "\{ \"name\": \"@wooorm/starry-night\", " +
+                "\"style\": \"style/core.css\" \}")
     put(dir, "maca_modules/starry-night/style/core.css",
         ".starry-marker \{ color: navy \}\n")
     app(dir, "import \"npm:@wooorm/starry-night\"\n")
@@ -351,12 +351,12 @@ test_a_package_at_the_project_root_is_found_from_a_source_below_it() {
     dir = project("nested")
     daisyui(dir)
     put(dir, "pages/home.maca",
-        "import \"npm:daisyui\"\n\nmain() -> Element =>\n"
-            ++ "    div(\"hello\")\n")
+        "import \"npm:daisyui\"\n\nmain() -> Element =>\n" +
+            "    div(\"hello\")\n")
 
     said = capture("sh",
-                   ["-c", "cd \"$0\" && \"$1\" build --target js "
-                        ++ "pages/home.maca -o out 2>&1", dir, maca_bin()])
+                   ["-c", "cd \"$0\" && \"$1\" build --target js " +
+                        "pages/home.maca -o out 2>&1", dir, maca_bin()])
 
     assert(file_exists("{dir}/out/index.html"), "no page was built: {said}")
     carries(read_file("{dir}/out/index.html"), ".daisy-marker",
@@ -365,8 +365,8 @@ test_a_package_at_the_project_root_is_found_from_a_source_below_it() {
 
 test_a_block_written_in_the_program_is_carried_as_written() {
     dir = project("inline")
-    app(dir, "import \"page.css\" \"\"\"\n.inline-marker \{ color: teal \}\n\"\"\"\n"
-                 ++ "import \"page.js\" \"\"\"\nglobalThis.inlineMarker = 1;\n\"\"\"\n")
+    app(dir, "import \"page.css\" \"\"\"\n.inline-marker \{ color: teal \}\n\"\"\"\n" +
+                 "import \"page.js\" \"\"\"\nglobalThis.inlineMarker = 1;\n\"\"\"\n")
 
     page = page_of(dir)
 
@@ -383,10 +383,10 @@ test_both_forms_survive_the_formatter_and_the_module_inliner() {
 
     vendor(dir)
     put(dir, "lib/style.maca",
-        "import \"page.css\" \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
-            ++ "label_of(n: str) -> str => n\n")
-    app(dir, "import \{ label_of \} from lib/style\n"
-                 ++ "import \"vendor/daisyui.css\"\n")
+        "import \"page.css\" \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n" +
+            "label_of(n: str) -> str => n\n")
+    app(dir, "import \{ label_of \} from lib/style\n" +
+                 "import \"vendor/daisyui.css\"\n")
 
     assert_eq(str(exec(maca_bin(), ["fmt", "{dir}/home.maca"])), "0",
               "the formatter ran over a program that imports both forms")
@@ -404,8 +404,8 @@ test_both_forms_survive_the_formatter_and_the_module_inliner() {
 test_a_block_an_imported_module_writes_reaches_the_page_too() {
     dir = project("module-block")
     put(dir, "lib/style.maca",
-        "import \"page.css\" \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n"
-            ++ "label_of(n: str) -> str => n\n")
+        "import \"page.css\" \"\"\"\n.module-marker \{ color: olive \}\n\"\"\"\n\n" +
+            "label_of(n: str) -> str => n\n")
     app(dir, "import \{ label_of \} from lib/style\n")
 
     carries(page_of(dir), ".module-marker \{ color: olive \}",
@@ -432,8 +432,8 @@ test_the_desktop_window_takes_the_page_title_too() {
     put(dir, "maca.toml", "[page]\ntitle = \"tabpane\"\n")
     app(dir, "")
 
-    said = capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target tauri "
-                              ++ "home.maca -o out 2>&1", dir, maca_bin()])
+    said = capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target tauri " +
+                              "home.maca -o out 2>&1", dir, maca_bin()])
     conf = "{dir}/out/src-tauri/tauri.conf.json"
 
     assert(file_exists(conf), "no scaffold was written: {said}")
@@ -463,8 +463,8 @@ test_install_says_so_when_the_manifest_names_nothing() {
 test_install_leaves_a_package_that_is_already_there() {
     dir = project("install-present")
     put(dir, "maca.toml",
-        "[package]\nname = \"page\"\n\n[dependencies]\n"
-            ++ "daisyui = \"npm:daisyui@^4\"\n")
+        "[package]\nname = \"page\"\n\n[dependencies]\n" +
+            "daisyui = \"npm:daisyui@^4\"\n")
     daisyui(dir)
 
     said = said_by(dir, "install")
@@ -493,15 +493,15 @@ test_a_selective_import_keeps_every_declaration_its_block_provides() {
     dir = project("bridge")
 
     put(dir, "lib/clock.maca",
-        "/// The hour and minute.\nclock_time() -> str\n\n"
-            ++ "/// Today, written out.\nclock_date() -> str\n\n"
-            ++ "import \"page.js\" \"\"\"\nmaca.provide(\{\n"
-            ++ "  clock_time: () => \"12:00\",\n"
-            ++ "  clock_date: () => \"2026-08-04\",\n\});\n\"\"\"\n")
+        "/// The hour and minute.\nclock_time() -> str\n\n" +
+            "/// Today, written out.\nclock_date() -> str\n\n" +
+            "import \"page.js\" \"\"\"\nmaca.provide(\{\n" +
+            "  clock_time: () => \"12:00\",\n" +
+            "  clock_date: () => \"2026-08-04\",\n\});\n\"\"\"\n")
     put(dir, "home.maca",
-        "import \{ clock_time \} from lib/clock\n\n"
-            ++ "main() -> Element =>\n"
-            ++ "    div(class=\"card\" span(clock_time()))\n")
+        "import \{ clock_time \} from lib/clock\n\n" +
+            "main() -> Element =>\n" +
+            "    div(class=\"card\" span(clock_time()))\n")
 
     page = page_of(dir)
 
@@ -527,11 +527,11 @@ test_a_call_to_a_name_nothing_defines_is_refused() {
 test_reading_another_function_s_local_is_refused_by_name() {
     dir = project("sibling")
     put(dir, "home.maca",
-        "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\n"
-            ++ "main() -> Element \{\n    tab = \"Console\"\n\n"
-            ++ "    choose(which: str) \{\n        tab = which\n    \}\n\n"
-            ++ "    div(button(onclick=(e => choose(\"Preview\")), \"go\")"
-            ++ " span(tab))\n\}\n")
+        "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\n" +
+            "main() -> Element \{\n    tab = \"Console\"\n\n" +
+            "    choose(which: str) \{\n        tab = which\n    \}\n\n" +
+            "    div(button(onclick=(e => choose(\"Preview\")), \"go\")" +
+            " span(tab))\n\}\n")
 
     said = refused(dir)
 
@@ -547,9 +547,9 @@ test_reading_another_function_s_local_is_refused_by_name() {
 test_reading_a_nested_handler_s_own_local_is_refused_by_name() {
     dir = project("nested-local")
     put(dir, "home.maca",
-        "board() -> Element \{\n    grab() \{\n        held = 1\n    \}\n\n"
-            ++ "    div(button(onclick=grab, \"grab\") span(\"\{held\}\"))\n"
-            ++ "\}\n\nmain() -> Element => div(board())\n")
+        "board() -> Element \{\n    grab() \{\n        held = 1\n    \}\n\n" +
+            "    div(button(onclick=grab, \"grab\") span(\"\{held\}\"))\n" +
+            "\}\n\nmain() -> Element => div(board())\n")
 
     assert(refused(dir).index_of("`held` is a local of another function") >= 0,
            "a name bound inside a nested function is one of its locals")
@@ -561,9 +561,9 @@ test_reading_a_nested_handler_s_own_local_is_refused_by_name() {
 test_calling_another_function_s_nested_handler_is_named_once() {
     dir = project("named-once")
     put(dir, "home.maca",
-        "board() -> Element \{\n    grab() \{\n        held = 1\n    \}\n\n"
-            ++ "    div(button(onclick=grab, \"grab\"))\n\}\n\n"
-            ++ "main() -> Element \{\n    grab()\n    div(board())\n\}\n")
+        "board() -> Element \{\n    grab() \{\n        held = 1\n    \}\n\n" +
+            "    div(button(onclick=grab, \"grab\"))\n\}\n\n" +
+            "main() -> Element \{\n    grab()\n    div(board())\n\}\n")
 
     said = refused(dir)
 
@@ -577,12 +577,12 @@ test_calling_another_function_s_nested_handler_is_named_once() {
 test_top_level_state_two_functions_share_still_builds() {
     dir = project("shared-state")
     put(dir, "home.maca",
-        "tab = \"Console\"\n\n"
-            ++ "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\n"
-            ++ "choose(which: str) \{\n    tab = which\n\}\n\n"
-            ++ "main() -> Element =>\n"
-            ++ "    div(button(onclick=(e => choose(\"Preview\")), \"go\")\n"
-            ++ "        span(class=paneClass(), tab))\n")
+        "tab = \"Console\"\n\n" +
+            "paneClass() -> str => tab == \"Preview\" ? \"on\" : \"off\"\n\n" +
+            "choose(which: str) \{\n    tab = which\n\}\n\n" +
+            "main() -> Element =>\n" +
+            "    div(button(onclick=(e => choose(\"Preview\")), \"go\")\n" +
+            "        span(class=paneClass(), tab))\n")
 
     carries(page_of(dir), "<div id=\"app\">", "the page was written")
 }
@@ -593,10 +593,10 @@ test_top_level_state_two_functions_share_still_builds() {
 test_a_view_local_only_its_own_handler_writes_still_builds() {
     dir = project("view-local")
     put(dir, "home.maca",
-        "board() -> Element \{\n    grip = 0\n\n"
-            ++ "    grab() \{\n        grip = grip + 1\n    \}\n\n"
-            ++ "    div(button(onclick=grab, \"grab\") span(\"\{grip\}\"))\n"
-            ++ "\}\n\nmain() -> Element => div(board())\n")
+        "board() -> Element \{\n    grip = 0\n\n" +
+            "    grab() \{\n        grip = grip + 1\n    \}\n\n" +
+            "    div(button(onclick=grab, \"grab\") span(\"\{grip\}\"))\n" +
+            "\}\n\nmain() -> Element => div(board())\n")
 
     carries(page_of(dir), "<div id=\"app\">", "the page was written")
 }
@@ -604,9 +604,9 @@ test_a_view_local_only_its_own_handler_writes_still_builds() {
 test_a_match_that_misses_a_variant_is_refused() {
     dir = project("nonexhaustive")
     put(dir, "home.maca",
-        "Colour = Red | Green\n\nname(c: Colour) -> str =>\n"
-            ++ "    match c \{\n        Red => \"red\"\n    \}\n\n"
-            ++ "main() -> Element => div(name(Red))\n")
+        "Colour = Red | Green\n\nname(c: Colour) -> str =>\n" +
+            "    match c \{\n        Red => \"red\"\n    \}\n\n" +
+            "main() -> Element => div(name(Red))\n")
 
     assert(refused(dir).index_of("not exhaustive; missing: Green") >= 0,
            "the variant left unhandled is named")
@@ -615,8 +615,8 @@ test_a_match_that_misses_a_variant_is_refused() {
 test_writing_a_constant_is_refused() {
     dir = project("immutable")
     put(dir, "home.maca",
-        "main() -> Element \{\n    const n = 1\n    n = 2\n"
-            ++ "    div(\"\{n\}\")\n\}\n")
+        "main() -> Element \{\n    const n = 1\n    n = 2\n" +
+            "    div(\"\{n\}\")\n\}\n")
 
     assert(refused(dir).index_of("cannot reassign constant `n`") >= 0,
            "the constant written twice is named")
@@ -629,8 +629,8 @@ test_the_desktop_target_is_checked_too() {
     dir = project("tauri-checked")
     put(dir, "home.maca", "main() -> int => nowhere()\n")
 
-    said = capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target tauri "
-                              ++ "home.maca -o out 2>&1", dir, maca_bin()])
+    said = capture("sh", ["-c", "cd \"$0\" && \"$1\" build --target tauri " +
+                              "home.maca -o out 2>&1", dir, maca_bin()])
 
     assert(said.index_of("call to undefined function `nowhere`") >= 0,
            "the desktop scaffold runs the checker too: {said}")

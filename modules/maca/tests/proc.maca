@@ -1,7 +1,7 @@
 import std/proc
 
 scratch() -> str =>
-    env_or("TMPDIR", "/tmp") ++ "/maca-selfhost-proc"
+    env_or("TMPDIR", "/tmp") + "/maca-selfhost-proc"
 
 maca_bin() -> str =>
     env_or("MACA", "target/release/maca")
@@ -9,7 +9,7 @@ maca_bin() -> str =>
 fixture(name: str, src: str) -> str {
     dir = scratch()
     make_dir(dir)
-    path = dir ++ "/" ++ name
+    path = dir + "/" + name
     write_file(path, src)
 
     path
@@ -48,7 +48,7 @@ test_an_unbuilt_target_is_refused_with_the_list() {
     src = fixture("beam.maca", "main() -> int {{\n    0\n}}\n")
 
     said = capture_err(maca_bin(), ["build", "--target", "beam", src,
-        "-o", scratch() ++ "/beam.out"])
+        "-o", scratch() + "/beam.out"])
 
     assert(said.contains("no target `beam`"), "names the target: {said}")
     assert(said.contains("embedded"), "and lists the ones that exist: {said}")
@@ -56,11 +56,11 @@ test_an_unbuilt_target_is_refused_with_the_list() {
 
 test_the_wasm_target_refuses_the_try_it_cannot_lower() {
     src = fixture("caught.maca",
-        "boom() -> int {{\n    fail \"kaboom\"\n    0\n}}\n\n"
-        ++ "main() -> int {{\n    try boom()\n    0\n}}\n")
+        "boom() -> int {{\n    fail \"kaboom\"\n    0\n}}\n\n" +
+        "main() -> int {{\n    try boom()\n    0\n}}\n")
 
     said = capture_err(maca_bin(), ["build", "--target", "wasm", src,
-        "-o", scratch() ++ "/caught.wasm"])
+        "-o", scratch() + "/caught.wasm"])
 
     assert(said.contains("cannot carry `try`"),
         "the target names what it cannot lower: {said}")

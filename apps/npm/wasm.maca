@@ -13,18 +13,18 @@ PgVersion = "0.4.0"
 pg_compile(src: str, mode: int) -> str {
     scanned = lex_all(src)
     raw = parse_module(scanned.tokens, 0, [])
-    broke = scanned.errors ++ raw.errors
+    broke = scanned.errors + raw.errors
     said = pg_checked(raw, broke)
 
-    "\{\"parseErrors\":" ++ array_of_str(broke)
-        ++ ",\"diagnostics\":[" ++ pg_diags(said, 0, []).join(",") ++ "]"
-        ++ ",\"markers\":[" ++ pg_marks(src, broke, said).join(",") ++ "]"
-        ++ ",\"outputs\":" ++ pg_outputs(raw, mode, broke.length() > 0)
-        ++ ",\"limits\":\{\}"
-        ++ ",\"jsExports\":"
-        ++ array_of_str(pg_exported(raw.items, 0, []))
-        ++ pg_ran(raw, mode, broke.length() > 0)
-        ++ "\}"
+    "\{\"parseErrors\":" + array_of_str(broke) +
+        ",\"diagnostics\":[" + pg_diags(said, 0, []).join(",") + "]" +
+        ",\"markers\":[" + pg_marks(src, broke, said).join(",") + "]" +
+        ",\"outputs\":" + pg_outputs(raw, mode, broke.length() > 0) +
+        ",\"limits\":\{\}" +
+        ",\"jsExports\":" +
+        array_of_str(pg_exported(raw.items, 0, [])) +
+        pg_ran(raw, mode, broke.length() > 0) +
+        "\}"
 }
 
 pg_checked(m: Module, broke: str[]) -> Diagnostic[] =>
@@ -35,15 +35,15 @@ pg_diags(ds: Diagnostic[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         d = ds.get(i)
-        one = "\{\"kind\":" ++ quote(d.code) ++ ",\"msg\":"
-            ++ quote(d.message) ++ "\}"
+        one = "\{\"kind\":" + quote(d.code) + ",\"msg\":" +
+            quote(d.message) + "\}"
 
         pg_diags(ds, i + 1, acc.push(one))
     }
 }
 
 pg_marks(src: str, broke: str[], ds: Diagnostic[]) -> str[] =>
-    pg_broken_marks(src, broke, 0, []) ++ pg_diag_marks(src, ds, 0, [])
+    pg_broken_marks(src, broke, 0, []) + pg_diag_marks(src, ds, 0, [])
 
 pg_broken_marks(src: str, xs: str[], i: int, acc: str[]) -> str[] {
     if i >= xs.length() {
@@ -69,17 +69,17 @@ pg_diag_marks(src: str, ds: Diagnostic[], i: int, acc: str[]) -> str[] {
 }
 
 pg_marker(src: str, lo: int, hi: int, msg: str) -> str =>
-    "\{\"severity\":\"error\"," ++ pg_at(src, lo, hi) ++ ",\"message\":"
-        ++ quote(msg) ++ "\}"
+    "\{\"severity\":\"error\"," + pg_at(src, lo, hi) + ",\"message\":" +
+        quote(msg) + "\}"
 
 pg_span(src: str, lo: int, hi: int) -> str =>
-    "\{" ++ pg_at(src, lo, hi) ++ "\}"
+    "\{" + pg_at(src, lo, hi) + "\}"
 
 pg_at(src: str, lo: int, hi: int) -> str =>
-    "\"line\":" ++ str(pg_line_at(src, lo))
-        ++ ",\"col\":" ++ str(pg_col_at(src, lo))
-        ++ ",\"endLine\":" ++ str(pg_line_at(src, hi))
-        ++ ",\"endCol\":" ++ str(pg_col_at(src, hi))
+    "\"line\":" + str(pg_line_at(src, lo)) +
+        ",\"col\":" + str(pg_col_at(src, lo)) +
+        ",\"endLine\":" + str(pg_line_at(src, hi)) +
+        ",\"endCol\":" + str(pg_col_at(src, hi))
 
 pg_line_at(text: str, at: int) -> int =>
     text.slice(0, at).split("\n").length()
@@ -112,10 +112,10 @@ pg_outputs(m: Module, mode: int, broke: bool) -> str {
     if broke {
         "\{\}"
     } else if mode == 1 {
-        "\{\"Nix\":" ++ quote(nemit_module(m)) ++ "\}"
+        "\{\"Nix\":" + quote(nemit_module(m)) + "\}"
     } else {
-        "\{\"C\":" ++ quote(emit_module(m)) ++ ",\"JS\":"
-            ++ quote(jemit_module(m)) ++ "\}"
+        "\{\"C\":" + quote(emit_module(m)) + ",\"JS\":" +
+            quote(jemit_module(m)) + "\}"
     }
 }
 
@@ -135,9 +135,9 @@ pg_ran(m: Module, mode: int, broke: bool) -> str {
     } else {
         r = run_module(m)
 
-        ",\"run\":\{\"output\":" ++ quote(r.output) ++ ",\"error\":"
-            ++ (r.fault == "" ? "null" : quote(r.fault))
-            ++ ",\"exit\":" ++ str(r.exit) ++ "\}"
+        ",\"run\":\{\"output\":" + quote(r.output) + ",\"error\":" +
+            (r.fault == "" ? "null" : quote(r.fault)) +
+            ",\"exit\":" + str(r.exit) + "\}"
     }
 }
 
@@ -148,10 +148,10 @@ pg_lsp(src: str, off: int) -> str {
     m = parse_module(lex_all(src).tokens, 0, [])
     at = pg_def_at(m.items, name, 0)
 
-    "\{\"hover\":" ++ quote(pg_hover(m.items, at))
-        ++ ",\"signature\":" ++ pg_sig_json(m.items, at)
-        ++ ",\"definition\":" ++ pg_def_json(src, m.items, at, name)
-        ++ ",\"references\":[" ++ pg_refs(src, name, 0, []).join(",") ++ "]\}"
+    "\{\"hover\":" + quote(pg_hover(m.items, at)) +
+        ",\"signature\":" + pg_sig_json(m.items, at) +
+        ",\"definition\":" + pg_def_json(src, m.items, at, name) +
+        ",\"references\":[" + pg_refs(src, name, 0, []).join(",") + "]\}"
 }
 
 pg_def_at(items: Stmt[], name: str, i: int) -> int {
@@ -168,8 +168,8 @@ pg_hover(items: Stmt[], at: int) -> str =>
     at < 0 ? "" : pg_sig(items.get(at))
 
 pg_sig(s: Stmt) -> str =>
-    s.name ++ "(" ++ pg_params(s.params, 0, []).join(", ") ++ ")"
-        ++ (s.ret == "" ? "" : " -> " ++ s.ret)
+    s.name + "(" + pg_params(s.params, 0, []).join(", ") + ")" +
+        (s.ret == "" ? "" : " -> " + s.ret)
 
 pg_params(ps: Expr[], i: int, acc: str[]) -> str[] {
     if i >= ps.length() {
@@ -178,16 +178,16 @@ pg_params(ps: Expr[], i: int, acc: str[]) -> str[] {
         p = ps.get(i)
 
         pg_params(ps, i + 1,
-                  acc.push(p.ty == "" ? p.text : p.text ++ ": " ++ p.ty))
+                  acc.push(p.ty == "" ? p.text : p.text + ": " + p.ty))
     }
 }
 
 pg_sig_json(items: Stmt[], at: int) -> str =>
     at < 0 ? "null"
-           : "\{\"label\":" ++ quote(pg_sig(items.get(at)))
-               ++ ",\"params\":"
-               ++ array_of_str(pg_params(items.get(at).params, 0, []))
-               ++ ",\"active\":0\}"
+           : "\{\"label\":" + quote(pg_sig(items.get(at))) +
+               ",\"params\":" +
+               array_of_str(pg_params(items.get(at).params, 0, [])) +
+               ",\"active\":0\}"
 
 pg_def_json(src: str, items: Stmt[], at: int, name: str) -> str {
     if at < 0 {
@@ -249,7 +249,7 @@ main(args: str[]) -> int {
         print(pg_compile(args.get(2), int(args.get(1))))
         0
     } else {
-        print("\{\"parseErrors\":[\"no such command `" ++ cmd ++ "`\"]\}")
+        print("\{\"parseErrors\":[\"no such command `" + cmd + "`\"]\}")
         2
     }
 }

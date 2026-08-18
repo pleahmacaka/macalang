@@ -35,19 +35,19 @@ main() -> int {
 report_on(t: Trace, prose: str, ranked: str[], found: Scan) {
     info("")
     counted = "{found.files} .maca files, {found.rows} lines"
-    info("{ranked.length()} words, {prose.length()} bytes; " ++ counted)
+    info("{ranked.length()} words, {prose.length()} bytes; " + counted)
 
     make_dir(Out)
-    write_file(Out ++ "/trace.json", to_json(t))
-    write_file(Out ++ "/flame.svg", flame_svg(t, 1000))
-    back = from_json(read_file(Out ++ "/trace.json"))
+    write_file(Out + "/trace.json", to_json(t))
+    write_file(Out + "/flame.svg", flame_svg(t, 1000))
+    back = from_json(read_file(Out + "/trace.json"))
 
     info("wrote {Out}/trace.json and {Out}/flame.svg")
     info("read back {span_count(back)} spans, {wall(back)}ms, same run")
     info("")
     info("the first four moments of it:")
     for line in narrate(t).slice(0, 4) {
-        info("  " ++ line)
+        info("  " + line)
     }
 }
 
@@ -55,7 +55,7 @@ paragraph(n: int, acc: str) -> str {
     if n <= 0 {
         acc
     } else {
-        paragraph(n - 1, acc ++ "the quick brown fox jumps over {n} lazy dogs ")
+        paragraph(n - 1, acc + "the quick brown fox jumps over {n} lazy dogs ")
     }
 }
 
@@ -79,7 +79,7 @@ scan_entries(r: Rec, dir: str, names: str[], i: int, files: int,
     if i >= names.length() {
         Scan { rec = r, files = files, bytes = bytes, rows = rows }
     } else {
-        got = scan_one(r, dir ++ "/" ++ names.get(i))
+        got = scan_one(r, dir + "/" + names.get(i))
 
         scan_entries(got.rec, dir, names, i + 1, files + got.files,
                      bytes + got.bytes, rows + got.rows)

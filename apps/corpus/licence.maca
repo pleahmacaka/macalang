@@ -59,4 +59,4 @@ all_permitted(ids: str[], i: int) -> bool {
 refusal(spdx: str) -> str =>
     spdx.trim() == ""
         ? "the package states no licence, and an unstated licence is not a permissive one"
-        : "`" ++ spdx.trim() ++ "` is not on the allowed list"
+        : "`" + spdx.trim() + "` is not on the allowed list"

@@ -26,15 +26,15 @@ flame(t: Trace, cols: int) -> str {
     } else {
         rows = chart_rows(t, scale_of(t, cols), 0, [])
 
-        chart_head(t) ++ "\n" ++ rows.join("\n") ++ leak_note(t)
+        chart_head(t) + "\n" + rows.join("\n") + leak_note(t)
     }
 }
 
 chart_head(t: Trace) -> str {
-    seen = plural(span_count(t), "span") ++ ", " ++ plural(levels(t), "level")
-    counts = ", {wall(t)}ms, " ++ seen
+    seen = plural(span_count(t), "span") + ", " + plural(levels(t), "level")
+    counts = ", {wall(t)}ms, " + seen
 
-    bold(t.label) ++ dim(counts)
+    bold(t.label) + dim(counts)
 }
 
 plural(n: int, noun: str) -> str {
@@ -49,7 +49,7 @@ leak_note(t: Trace) -> str {
     if open.length() == 0 {
         ""
     } else {
-        "\n" ++ yellow("!") ++ " never closed: " ++ open.join(", ")
+        "\n" + yellow("!") + " never closed: " + open.join(", ")
     }
 }
 
@@ -71,7 +71,7 @@ lay_out(t: Trace, sc: Scale, ids: int[], i: int, cursor: int,
         from = bar_start(sc, s, cursor)
         w = bar_width(sc, s, from)
         gap = " ".repeat(from - cursor)
-        drawn = acc ++ gap ++ tint(ids.get(i), bar_text(s, w))
+        drawn = acc + gap + tint(ids.get(i), bar_text(s, w))
 
         lay_out(t, sc, ids, i + 1, from + w, drawn)
     }
@@ -93,7 +93,7 @@ bar_text(s: Span, w: int) -> str {
     if w < 3 {
         "▏".repeat(w)
     } else {
-        "[" ++ inside(s.name, duration(s), w - 2) ++ "]"
+        "[" + inside(s.name, duration(s), w - 2) + "]"
     }
 }
 
@@ -105,7 +105,7 @@ inside(name: str, ms: int, room: int) -> str {
     } else if width(name) <= room {
         pad(name, room)
     } else {
-        pad(fit(name, room - 1) ++ "…", room)
+        pad(fit(name, room - 1) + "…", room)
     }
 }
 
@@ -161,8 +161,8 @@ flame_svg_in(t: Trace, px: int, unit: str) -> str {
     sc = scale_of(t, px - inset * 2)
     body = svg_frames(t, sc, inset, 0, "", unit)
 
-    svg_open(px, high) ++ svg_backdrop(t, px, high, inset, unit) ++ body
-        ++ "</svg>\n"
+    svg_open(px, high) + svg_backdrop(t, px, high, inset, unit) + body +
+        "</svg>\n"
 }
 
 svg_head_h() -> int => 38
@@ -181,12 +181,12 @@ svg_backdrop(t: Trace, px: int, high: int, inset: int,
              unit: str) -> str {
     back = "<rect width=\"{px}\" height=\"{high}\" fill=\"#12121a\"/>\n"
     name = escape_html(t.label)
-    seen = plural(span_count(t), "span") ++ ", " ++ plural(levels(t), "level")
-    counts = "{wall(t)}{unit}, " ++ seen
+    seen = plural(span_count(t), "span") + ", " + plural(levels(t), "level")
+    counts = "{wall(t)}{unit}, " + seen
     top = "<text x=\"{inset}\" y=\"17\" fill=\"#f2f1f8\" font-weight=\"600\">"
     sub = "<text x=\"{inset}\" y=\"31\" fill=\"#8d8c9b\">"
 
-    back ++ top ++ name ++ "</text>\n" ++ sub ++ counts ++ "</text>\n"
+    back + top + name + "</text>\n" + sub + counts + "</text>\n"
 }
 
 svg_frames(t: Trace, sc: Scale, inset: int, i: int, acc: str,
@@ -195,7 +195,7 @@ svg_frames(t: Trace, sc: Scale, inset: int, i: int, acc: str,
         acc
     } else {
         svg_frames(t, sc, inset, i + 1,
-                   acc ++ svg_frame(t, sc, inset, i, unit), unit)
+                   acc + svg_frame(t, sc, inset, i, unit), unit)
     }
 }
 
@@ -204,10 +204,10 @@ svg_frame(t: Trace, sc: Scale, inset: int, i: int, unit: str) -> str {
     left = inset + column(sc, s.start)
     w = frame_width(sc, s, inset, left)
     y = svg_head_h() + s.depth * svg_row()
-    tip = "<title>" ++ svg_tip(t, i, unit) ++ "</title>"
+    tip = "<title>" + svg_tip(t, i, unit) + "</title>"
     box = svg_rect(left, y, w, i)
 
-    "<g>" ++ tip ++ box ++ svg_label(s, left, y, w) ++ "</g>\n"
+    "<g>" + tip + box + svg_label(s, left, y, w) + "</g>\n"
 }
 
 frame_width(sc: Scale, s: Span, inset: int, left: int) -> int {
@@ -232,7 +232,7 @@ svg_label(s: Span, x: int, y: int, w: int) -> str {
         text = escape_html(fit(s.name, room))
         at = "x=\"{x + 4}\" y=\"{y + svg_row() - 9}\""
 
-        "<text {at} fill=\"#12121a\" font-weight=\"600\">" ++ text ++ "</text>"
+        "<text {at} fill=\"#12121a\" font-weight=\"600\">" + text + "</text>"
     }
 }
 
@@ -241,7 +241,7 @@ svg_tip(t: Trace, i: int, unit: str) -> str {
     share = percent(duration(s), wall(t))
     own = "self {self_time(t, i)}{unit}"
 
-    escape_html(s.name) ++ ": {duration(s)}{unit} ({share:.1}%), " ++ own
+    escape_html(s.name) + ": {duration(s)}{unit} ({share:.1}%), " + own
 }
 
 /** `part` as a percentage of `whole`, and zero rather than a division by zero

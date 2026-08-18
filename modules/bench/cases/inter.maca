@@ -317,7 +317,7 @@ run_length_encode(s: str) -> str {
         while i + run < s.length() && s.at(i + run) == c {
             run = run + 1
         }
-        out = out ++ "{run}" ++ escaped_byte(c)
+        out = out + "{run}" + escaped_byte(c)
         i = i + run
     }
     out
@@ -325,7 +325,7 @@ run_length_encode(s: str) -> str {
 
 escaped_byte(c: str) -> str {
     if c.is_ascii_digit() || c == "\\" {
-        "\\" ++ c
+        "\\" + c
     } else {
         c
     }
@@ -344,7 +344,7 @@ run_length_decode(s: str) -> str {
         }
         at = i < s.length() && s.at(i) == "\\" ? i + 1 : i
         if at < s.length() {
-            out = out ++ s.at(at).repeat(run)
+            out = out + s.at(at).repeat(run)
         }
         i = at + 1
     }
@@ -361,12 +361,12 @@ to_base(v: int, base: int) -> str {
     } else if v == 0 {
         "0"
     } else if v < 0 {
-        "-" ++ to_base(0 - v, base)
+        "-" + to_base(0 - v, base)
     } else {
         out = ""
         left = v
         while left > 0 {
-            out = digit_char(left % base) ++ out
+            out = digit_char(left % base) + out
             left = left / base
         }
         out

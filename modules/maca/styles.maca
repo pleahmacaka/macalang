@@ -141,7 +141,7 @@ tw_pad(n: int, width: int) -> str {
     if width <= 1 || n >= tw_pow10(width - 1) {
         "{n}"
     } else {
-        "0" ++ tw_pad(n, width - 1)
+        "0" + tw_pad(n, width - 1)
     }
 }
 
@@ -209,8 +209,8 @@ tw_border(sides: str[], i: int, w: str) -> str {
     } else {
         s = sides.get(i)
 
-        "border-{s}-width:{w};border-{s}-style:solid;"
-            ++ tw_border(sides, i + 1, w)
+        "border-{s}-width:{w};border-{s}-style:solid;" +
+            tw_border(sides, i + 1, w)
     }
 }
 
@@ -542,14 +542,14 @@ tw_parts(c: str, acc: str[]) -> str[] {
     at = c.index_of(":")
 
     if at < 0 || c.slice(0, at).index_of("[") >= 0 {
-        acc ++ [c]
+        acc + [c]
     } else {
-        tw_parts(c.slice(at + 1, c.length()), acc ++ [c.slice(0, at)])
+        tw_parts(c.slice(at + 1, c.length()), acc + [c.slice(0, at)])
     }
 }
 
 tw_variant(v: str) -> str =>
-    tw_look(TwPseudo, v) ++ tw_look(TwMedia, v)
+    tw_look(TwPseudo, v) + tw_look(TwMedia, v)
 
 tw_known(parts: str[], i: int, n: int) -> bool {
     if i >= n {
@@ -565,7 +565,7 @@ tw_selector(parts: str[], i: int, n: int, acc: str) -> str {
     if i >= n {
         acc
     } else {
-        tw_selector(parts, i + 1, n, acc ++ tw_look(TwPseudo, parts.get(i)))
+        tw_selector(parts, i + 1, n, acc + tw_look(TwPseudo, parts.get(i)))
     }
 }
 
@@ -574,7 +574,7 @@ tw_queries(parts: str[], i: int, n: int, acc: str[]) -> str[] {
         acc
     } else {
         found = tw_look(TwMedia, parts.get(i))
-        got = if found == "" { acc } else { acc ++ [found] }
+        got = if found == "" { acc } else { acc + [found] }
 
         tw_queries(parts, i + 1, n, got)
     }
@@ -588,9 +588,9 @@ tw_escaped(cs: str[], i: int, acc: str) -> str {
     if i >= cs.length() {
         acc
     } else if TwEscaped.index_of(cs.get(i)) >= 0 {
-        tw_escaped(cs, i + 1, acc ++ "\\" ++ cs.get(i))
+        tw_escaped(cs, i + 1, acc + "\\" + cs.get(i))
     } else {
-        tw_escaped(cs, i + 1, acc ++ cs.get(i))
+        tw_escaped(cs, i + 1, acc + cs.get(i))
     }
 }
 
@@ -604,8 +604,8 @@ tw_rule(c: str) -> str {
         ""
     } else {
         tw_wrapped(tw_queries(parts, 0, n, []),
-                   ".{tw_escape(c)}{tw_selector(parts, 0, n, "")} "
-                       ++ "{{ {body} }}")
+                   ".{tw_escape(c)}{tw_selector(parts, 0, n, "")} " +
+                       "{{ {body} }}")
     }
 }
 
@@ -672,7 +672,7 @@ tw_in_exprs(xs: Expr[], i: int, acc: str[]) -> str[] {
 }
 
 tw_in_expr(e: Expr, acc: str[]) -> str[] {
-    got = if e.kind == EStr { acc ++ tw_words(e.text) } else { acc }
+    got = if e.kind == EStr { acc + tw_words(e.text) } else { acc }
     from = if tw_tagged(e) { 1 } else { 0 }
 
     tw_in_stmts(e.stmts, 0, tw_in_exprs(e.children, from, got))
@@ -704,7 +704,7 @@ tw_unique(cs: str[], i: int, acc: str[]) -> str[] {
     } else if i > 0 && cs.get(i) == cs.get(i - 1) {
         tw_unique(cs, i + 1, acc)
     } else {
-        tw_unique(cs, i + 1, acc ++ [cs.get(i)])
+        tw_unique(cs, i + 1, acc + [cs.get(i)])
     }
 }
 
@@ -716,7 +716,7 @@ tw_sheet(cs: str[], rank: int, acc: str) -> str {
     if rank > 9 {
         acc
     } else {
-        tw_sheet(cs, rank + 1, acc ++ tw_rules(cs, 0, rank, ""))
+        tw_sheet(cs, rank + 1, acc + tw_rules(cs, 0, rank, ""))
     }
 }
 
@@ -726,14 +726,14 @@ tw_rules(cs: str[], i: int, rank: int, acc: str) -> str {
     } else {
         c = cs.get(i)
         r = if tw_order(c) == rank { tw_rule(c) } else { "" }
-        line = if r == "" { "" } else { tw_quoted(r) ++ "\\n" }
+        line = if r == "" { "" } else { tw_quoted(r) + "\\n" }
 
-        tw_rules(cs, i + 1, rank, acc ++ line)
+        tw_rules(cs, i + 1, rank, acc + line)
     }
 }
 
 /** The stylesheet a program's own class names ask for, as a C string spells it.
  */
 style_sheet(items: Stmt[]) -> str =>
-    TwReset
-        ++ tw_sheet(tw_unique(tw_in_stmts(items, 0, []).sort(), 0, []), 0, "")
+    TwReset +
+        tw_sheet(tw_unique(tw_in_stmts(items, 0, []).sort(), 0, []), 0, "")

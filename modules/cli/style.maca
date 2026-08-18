@@ -14,7 +14,7 @@ paint(code: str, s: str) -> str {
     if !enabled() || s == "" {
         s
     } else {
-        chr(27) ++ "[" ++ code ++ "m" ++ s ++ chr(27) ++ "[0m"
+        chr(27) + "[" + code + "m" + s + chr(27) + "[0m"
     }
 }
 
@@ -115,13 +115,13 @@ skip_escape(s: str, from: int) -> int {
 /** Pad `s` to `w` columns, counting what shows rather than what is stored. */
 pad(s: str, w: int) -> str {
     short = w - width(s)
-    short > 0 ? s ++ " ".repeat(short) : s
+    short > 0 ? s + " ".repeat(short) : s
 }
 
 /** Right-align `s` within `w` columns, for a column of numbers. */
 pad_left(s: str, w: int) -> str {
     short = w - width(s)
-    short > 0 ? " ".repeat(short) ++ s : s
+    short > 0 ? " ".repeat(short) + s : s
 }
 
 /** Drop every escape sequence, leaving the text a file should get. */
@@ -133,7 +133,7 @@ plain(s: str) -> str {
         if s.at(i) == chr(27) {
             i = skip_escape(s, i + 1)
         } else {
-            out = out ++ s.at(i)
+            out = out + s.at(i)
             i = i + 1
         }
     }
@@ -156,7 +156,7 @@ grey(s: str) -> str => paint("90", s)
 /** The four things a command line says about what happened, each with the
  * marker and colour it always has.
  */
-ok(s: str) -> str => green("✓") ++ " " ++ s
-warn(s: str) -> str => yellow("!") ++ " " ++ s
-bad(s: str) -> str => red("✗") ++ " " ++ s
-note(s: str) -> str => grey("-") ++ " " ++ grey(s)
+ok(s: str) -> str => green("✓") + " " + s
+warn(s: str) -> str => yellow("!") + " " + s
+bad(s: str) -> str => red("✗") + " " + s
+note(s: str) -> str => grey("-") + " " + grey(s)

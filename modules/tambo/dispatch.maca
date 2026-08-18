@@ -32,7 +32,7 @@ route_answer(a: App, pick: Pick, ctx: Ctx, handle) -> Response {
     if pick.ok {
         route_or_gap(pick, ctx, handle)
     } else if pick.allowed.length() > 0 {
-        with_header(status(405), "Allow: " ++ pick.allowed.join(", "))
+        with_header(status(405), "Allow: " + pick.allowed.join(", "))
     } else {
         missing_answer(a, ctx, handle)
     }
@@ -42,8 +42,8 @@ route_or_gap(pick: Pick, ctx: Ctx, handle) -> Response {
     out = ask(ctx with { name = pick.name }, handle)
 
     if passed(out) {
-        err("tambo: route `{pick.pattern}` names `{pick.name}`, "
-            ++ "which `handle` has no arm for")
+        err("tambo: route `{pick.pattern}` names `{pick.name}`, " +
+            "which `handle` has no arm for")
         status(500)
     } else {
         out

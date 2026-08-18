@@ -1,44 +1,44 @@
 import std/proc
 
 scratch() -> str =>
-    env_or("TMPDIR", "/tmp") ++ "/maca-refusals"
+    env_or("TMPDIR", "/tmp") + "/maca-refusals"
 
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 entry_project() -> str {
-    root = scratch() ++ "/entry"
+    root = scratch() + "/entry"
 
     make_dir(scratch())
     make_dir(root)
-    make_dir(root ++ "/modules")
-    write_file(root ++ "/maca.toml", "[package]\nname = \"p\"\n")
-    write_file(root ++ "/modules/status.maca",
+    make_dir(root + "/modules")
+    write_file(root + "/maca.toml", "[package]\nname = \"p\"\n")
+    write_file(root + "/modules/status.maca",
         "code() -> int => 0\n\nneeds(port: int) -> int => port\n")
-    write_file(root ++ "/modules/quiet.maca", "helper() -> int => 0\n")
+    write_file(root + "/modules/quiet.maca", "helper() -> int => 0\n")
 
     root
 }
 
 pair_project() -> str {
-    root = scratch() ++ "/pair"
+    root = scratch() + "/pair"
 
     make_dir(scratch())
     make_dir(root)
-    write_file(root ++ "/maca.toml",
-        "[package]\nname = \"pair\"\n\n[[bin]]\nname = \"a\"\npath = \"a.maca\"\n"
-            ++ "\n[[bin]]\nname = \"b\"\npath = \"b.maca\"\n")
-    write_file(root ++ "/a.maca", "main() -> int {{\n    info(\"A\")\n    0\n}}\n")
-    write_file(root ++ "/b.maca", "main() -> int {{\n    info(\"B\")\n    0\n}}\n")
+    write_file(root + "/maca.toml",
+        "[package]\nname = \"pair\"\n\n[[bin]]\nname = \"a\"\npath = \"a.maca\"\n" +
+            "\n[[bin]]\nname = \"b\"\npath = \"b.maca\"\n")
+    write_file(root + "/a.maca", "main() -> int {{\n    info(\"A\")\n    0\n}}\n")
+    write_file(root + "/b.maca", "main() -> int {{\n    info(\"B\")\n    0\n}}\n")
 
     root
 }
 
 bare_project() -> str {
-    root = scratch() ++ "/bare"
+    root = scratch() + "/bare"
 
     make_dir(scratch())
     make_dir(root)
@@ -88,33 +88,33 @@ test_the_bad_corpus_is_refused_and_told_why() {
     refused("apps/examples/bad/undefined_call.maca",
         "call to undefined function `slugify`")
     refused("apps/examples/bad/misspelt_variant.maca",
-        "`Busi` is capitalized, so it is a constructor, and nothing declares"
-            ++ " one by that name: did you mean `Busy`?")
+        "`Busi` is capitalized, so it is a constructor, and nothing declares" +
+            " one by that name: did you mean `Busy`?")
     refused("apps/examples/bad/missing_asset.maca",
         "data(\"nowhere.txt\"): apps/examples/bad/nowhere.txt: no such file")
     refused("apps/examples/bad/reassign_const.maca",
-        "cannot reassign constant `count`; declare it mutable with"
-            ++ " `count = …` (no `const`)")
+        "cannot reassign constant `count`; declare it mutable with" +
+            " `count = …` (no `const`)")
     refused("apps/examples/bad/foreign_local.maca",
-        "`scale` is a local of another function, and a local is reachable"
-            ++ " only inside the one that declares it; state two functions"
-            ++ " share is written at the top level")
+        "`scale` is a local of another function, and a local is reachable" +
+            " only inside the one that declares it; state two functions" +
+            " share is written at the top level")
     refused("apps/examples/bad/bare_decode.maca",
         "`decode`: say what it reads into, as in `c: Config = decode(text)`")
 }
 
 test_a_refused_build_leaves_no_page_behind() {
-    out = scratch() ++ "/nopage"
+    out = scratch() + "/nopage"
 
     make_dir(scratch())
-    remove_file(out ++ "/app.js")
+    remove_file(out + "/app.js")
 
     said = capture(maca_bin(), ["build", "--target", "js",
         "apps/examples/bad/bare_decode.maca", "-o", out])
 
     assert(said.contains("say what it reads into"),
         "the diagnostic should name the fix: {said}")
-    assert(!file_exists(out ++ "/app.js"),
+    assert(!file_exists(out + "/app.js"),
         "a refused build must leave no page behind: {said}")
 }
 
@@ -124,19 +124,19 @@ test_a_config_file_is_refused_for_what_a_nixos_module_cannot_do() {
     refused("apps/examples/bad/effect_statement_in_config.maca",
         "config must be pure, and `info` performs io")
     refused("apps/examples/bad/unknown_option.maca",
-        "unknown NixOS option namespace `netwrking`: did you mean"
-            ++ " `networking`?")
+        "unknown NixOS option namespace `netwrking`: did you mean" +
+            " `networking`?")
 }
 
 test_a_dotted_binding_is_what_makes_a_file_config_mode() {
     make_dir(scratch())
-    program = scratch() ++ "/effectful.maca"
-    config = scratch() ++ "/pure.maca"
+    program = scratch() + "/effectful.maca"
+    config = scratch() + "/pure.maca"
 
-    write_file(program, "info(\"before main\")\n\n"
-        ++ "main() -> int {{\n    info(\"hello\")\n    0\n}}\n")
-    write_file(config, "networking.hostName = \"rigel\"\n"
-        ++ "boot.loader.systemd_boot = true\n")
+    write_file(program, "info(\"before main\")\n\n" +
+        "main() -> int {{\n    info(\"hello\")\n    0\n}}\n")
+    write_file(config, "networking.hostName = \"rigel\"\n" +
+        "boot.loader.systemd_boot = true\n")
 
     assert_eq(str(exec(maca_bin(), ["check", program])), "0",
         "a program names no option, so no purity rule reaches it")
@@ -156,13 +156,13 @@ test_the_golden_examples_are_still_accepted() {
 
 test_every_back_end_refuses_the_same_type_error() {
     make_dir(scratch())
-    src = scratch() ++ "/mismatch.maca"
+    src = scratch() + "/mismatch.maca"
 
-    write_file(src, "add(a: int, b: int) -> int => a + b\n\n"
-        ++ "main() -> int {{\n    add(\"not an int\", 2)\n}}\n")
+    write_file(src, "add(a: int, b: int) -> int => a + b\n\n" +
+        "main() -> int {{\n    add(\"not an int\", 2)\n}}\n")
 
     for target in ["c", "js", "jvm", "rust", "nix", "embedded"] {
-        built = ["build", src, "-o", scratch() ++ "/out-{target}", "--target", target]
+        built = ["build", src, "-o", scratch() + "/out-{target}", "--target", target]
 
         assert(exec(maca_bin(), built) != 0,
             "{target} accepted a program the checker rejects")
@@ -174,8 +174,8 @@ test_every_back_end_refuses_the_same_type_error() {
 
 test_check_answers_on_stdout_and_counts_on_the_exit_code() {
     make_dir(scratch())
-    good = scratch() ++ "/good.maca"
-    bad = scratch() ++ "/bad.maca"
+    good = scratch() + "/good.maca"
+    bad = scratch() + "/bad.maca"
 
     write_file(good, "f(n: int) -> int => n + 1\n")
     write_file(bad, "f() -> int => \"x\"\n")
@@ -288,8 +288,8 @@ test_a_rest_parameter_is_lowered_and_its_misuse_is_refused() {
 
 test_an_effect_in_config_is_refused_by_the_effect_it_carries() {
     make_dir(scratch())
-    spawned = scratch() ++ "/spawned.maca"
-    awaited = scratch() ++ "/awaited.maca"
+    spawned = scratch() + "/spawned.maca"
+    awaited = scratch() + "/awaited.maca"
 
     write_file(spawned, "svc.value = spawn work(1)\n")
     write_file(awaited, "svc.value = await work(1)\n")
@@ -337,7 +337,7 @@ test_a_program_is_refused_by_the_effect_its_target_cannot_carry() {
 
 keyworded(name: str, src: str) -> str {
     make_dir(scratch())
-    at = scratch() ++ "/" ++ name
+    at = scratch() + "/" + name
     write_file(at, src)
 
     at
@@ -358,14 +358,29 @@ test_the_beam_names_a_bodyless_function_rather_than_answering_nothing() {
     at = keyworded("ffi.maca",
                    "native_tick() -> int\n\nmain() -> int => native_tick()\n")
     said = capture(maca_bin(), ["build", at, "--target", "elixir", "-o",
-                                scratch() ++ "/ffi.exs"])
+                                scratch() + "/ffi.exs"])
 
     assert(said.contains("native_tick"),
            "the declaration is named: {said}")
     assert(said.contains("NIF"),
            "and why the BEAM cannot reach it: {said}")
-    assert(!file_exists(scratch() ++ "/ffi.exs"),
+    assert(!file_exists(scratch() + "/ffi.exs"),
            "and nothing was written that would answer nothing at run time")
+}
+
+test_the_old_join_is_refused_and_the_bump_still_works() {
+    at = keyworded("oldjoin.maca", "join(a: str, b: str) -> str => a ++ b\n")
+    said = capture(maca_bin(), ["check", at])
+
+    assert(said.contains("joining is `+`"),
+           "the refusal names the operator that replaced it: {said}")
+
+    bumped = keyworded("bump.maca", "count() -> int {{\n    n = 0\n    n++\n    ++n\n    n\n}}\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", bumped])), "0",
+              "`n++` and `++n` are the `++` that stays, each `n = n + 1`")
+    assert_eq(capture(maca_bin(), ["-m", "bump.count"]).trim(), "",
+              "and nothing else about them is special")
 }
 
 test_a_builtin_used_as_a_value_is_named_before_a_back_end_sees_it() {
@@ -380,9 +395,9 @@ test_a_builtin_used_as_a_value_is_named_before_a_back_end_sees_it() {
 
 test_a_backslash_inside_an_interpolation_is_caught_before_a_back_end_sees_it() {
     at = keyworded("escaped.maca",
-                   "main() -> int {{\n    xs = [\"a\", \"b\"]\n"
-                       ++ "    info(\"joined {{xs.join(\\\", \\\")}}\")\n"
-                       ++ "    0\n}}\n")
+                   "main() -> int {{\n    xs = [\"a\", \"b\"]\n" +
+                       "    info(\"joined {{xs.join(\\\", \\\")}}\")\n" +
+                       "    0\n}}\n")
     said = capture(maca_bin(), ["check", at])
 
     assert(said.contains("not an escape"),
@@ -395,35 +410,35 @@ test_a_backslash_inside_an_interpolation_is_caught_before_a_back_end_sees_it() {
 
 test_an_import_is_classified_by_the_string_it_names() {
     at = keyworded("named.maca",
-                   "import \"sqlite3.h\"\nimport \"itoa\"\n"
-                       ++ "import \"std::time::Duration\"\n"
-                       ++ "import \"net.fabricmc.api.ModInitializer\"\n\n"
-                       ++ "main() -> int => 0\n")
+                   "import \"sqlite3.h\"\nimport \"itoa\"\n" +
+                       "import \"std::time::Duration\"\n" +
+                       "import \"net.fabricmc.api.ModInitializer\"\n\n" +
+                       "main() -> int => 0\n")
 
     assert_eq(str(exec(maca_bin(), ["check", at])), "0",
-              "an extension, a bare crate, a crate path and a class each "
-                  ++ "say what they are without a word in front")
+              "an extension, a bare crate, a crate path and a class each " +
+                  "say what they are without a word in front")
 }
 
 test_the_rust_target_refuses_a_method_that_keeps_what_it_was_lent() {
     bad = "apps/examples/bad/kept_borrow.maca"
 
     refused_on(bad, "rust",
-        "`w` in method `keep` is a borrowed foreign value: it can be read"
-            ++ " and passed on, but not returned or stored, because it"
-            ++ " belongs to the caller")
+        "`w` in method `keep` is a borrowed foreign value: it can be read" +
+            " and passed on, but not returned or stored, because it" +
+            " belongs to the caller")
     assert_eq(str(exec(maca_bin(), ["check", bad])), "0",
         "the borrow is a Rust rule, so the same program is clean natively")
 }
 
 refused_by_every_target(name: str, src: str, said: str, why: str) {
     make_dir(scratch())
-    at = scratch() ++ "/" ++ name
+    at = scratch() + "/" + name
 
     write_file(at, src)
 
     for target in ["c", "js", "jvm", "rust"] {
-        built = ["build", at, "-o", scratch() ++ "/out-{target}", "--target",
+        built = ["build", at, "-o", scratch() + "/out-{target}", "--target",
                  target]
 
         assert(exec(maca_bin(), built) != 0, "{target} accepted {why}")
@@ -434,9 +449,9 @@ refused_by_every_target(name: str, src: str, said: str, why: str) {
 
 test_every_back_end_refuses_a_match_that_misses_a_variant() {
     refused_by_every_target("kinds.maca",
-        "Color = Red | Green | Blue\n\nname(c: Color) -> str => match c {{\n"
-            ++ "    Red => \"red\"\n    Green => \"green\"\n}}\n\n"
-            ++ "main() -> int {{\n    info(name(Red))\n    0\n}}\n",
+        "Color = Red | Green | Blue\n\nname(c: Color) -> str => match c {{\n" +
+            "    Red => \"red\"\n    Green => \"green\"\n}}\n\n" +
+            "main() -> int {{\n    info(name(Red))\n    0\n}}\n",
         "match on `Color` is not exhaustive; missing: Blue",
         "a match that misses a variant")
 }
@@ -450,12 +465,12 @@ test_every_back_end_refuses_a_write_to_a_constant() {
 
 refused_by_ported_targets(name: str, src: str, said: str, why: str) {
     make_dir(scratch())
-    at = scratch() ++ "/" ++ name
+    at = scratch() + "/" + name
 
     write_file(at, src)
 
     for target in ["jvm", "rust"] {
-        built = ["build", at, "-o", scratch() ++ "/port-{target}", "--target",
+        built = ["build", at, "-o", scratch() + "/port-{target}", "--target",
                  target]
 
         assert(exec(maca_bin(), built) != 0, "{target} accepted {why}")
@@ -480,12 +495,12 @@ test_a_field_holding_a_function_reaches_no_target_without_a_pointer() {
 
 /** A page that reaches the two forms the driver rewrites before it compiles. */
 host_forms_page() -> str =>
-    "import \{ decode \} from std/json\n"
-        ++ "import \{ local_start, local_store \} from web/storage\n\n"
-        ++ "Site = \{ title: str \}\n\nLinks = \"links.json\"\n\n"
-        ++ "site: Site = data(Links)\n"
-        ++ "locked = stored(\"page.locked\", true)\n\n"
-        ++ "main() -> str => site.title\n"
+    "import \{ decode \} from std/json\n" +
+        "import \{ local_start, local_store \} from web/storage\n\n" +
+        "Site = \{ title: str \}\n\nLinks = \"links.json\"\n\n" +
+        "site: Site = data(Links)\n" +
+        "locked = stored(\"page.locked\", true)\n\n" +
+        "main() -> str => site.title\n"
 
 host_forms_dir(name: str) -> str {
     dir = "{scratch()}/{name}"
@@ -493,7 +508,7 @@ host_forms_dir(name: str) -> str {
     make_dir(scratch())
     exec("rm", ["-rf", dir])
     make_dir(dir)
-    write_file(dir ++ "/page.maca", host_forms_page())
+    write_file(dir + "/page.maca", host_forms_page())
 
     dir
 }
@@ -504,11 +519,11 @@ checked(dir: str) -> str =>
 test_check_accepts_the_two_forms_the_driver_rewrites() {
     dir = host_forms_dir("forms-clean")
 
-    write_file(dir ++ "/links.json", "\{\"title\": \"home\"\}\n")
+    write_file(dir + "/links.json", "\{\"title\": \"home\"\}\n")
 
     said = checked(dir)
 
-    assert_eq(exec(maca_bin(), ["check", dir ++ "/page.maca"]), 0,
+    assert_eq(exec(maca_bin(), ["check", dir + "/page.maca"]), 0,
         "the call that builds is no defect to the call that checks: {said}")
     assert(!said.contains("M0006"), "no name is undefined here: {said}")
 }
@@ -517,9 +532,9 @@ test_check_names_the_file_data_cannot_read() {
     dir = host_forms_dir("forms-missing")
     said = checked(dir)
 
-    assert(exec(maca_bin(), ["check", dir ++ "/page.maca"]) > 0,
-        "the file is read while checking, so a path that is not there is "
-            ++ "named rather than believed: {said}")
+    assert(exec(maca_bin(), ["check", dir + "/page.maca"]) > 0,
+        "the file is read while checking, so a path that is not there is " +
+            "named rather than believed: {said}")
     assert(said.contains("links.json"),
         "the message names the file it could not read: {said}")
     assert(!said.contains("M0006"),
@@ -552,7 +567,7 @@ test_a_literal_of_another_shape_beside_a_record_is_refused() {
 }
 
 test_a_return_that_is_not_a_statement_is_refused_by_name() {
-    dir = scratch() ++ "/returns"
+    dir = scratch() + "/returns"
     make_dir(scratch())
     make_dir(dir)
 
@@ -562,67 +577,67 @@ test_a_return_that_is_not_a_statement_is_refused_by_name() {
               "main() -> int {{\n    n = 1 + (return 2)\n    n\n}}\n"]
 
     for src in inside {
-        at = dir ++ "/{str(inside.index_of(src))}.maca"
+        at = dir + "/{str(inside.index_of(src))}.maca"
         write_file(at, src)
         refused(at, "this `return` stands inside an expression")
     }
 }
 
 test_what_a_return_carries_is_what_the_function_declared() {
-    dir = scratch() ++ "/returns"
+    dir = scratch() + "/returns"
     make_dir(scratch())
     make_dir(dir)
 
-    write_file(dir ++ "/none.maca",
+    write_file(dir + "/none.maca",
         "tally() {{\n    return 5\n}}\n\nmain() -> int {{\n    tally()\n    0\n}}\n")
-    write_file(dir ++ "/bare.maca",
+    write_file(dir + "/bare.maca",
         "tally() -> int {{\n    return\n}}\n\nmain() -> int => tally()\n")
-    write_file(dir ++ "/wrong.maca",
+    write_file(dir + "/wrong.maca",
         "tally() -> int {{\n    return \"no\"\n}}\n\nmain() -> int => tally()\n")
 
-    refused(dir ++ "/none.maca", "declares no result")
-    refused(dir ++ "/bare.maca", "a bare `return` leaves without one")
-    refused(dir ++ "/wrong.maca", "expected int, found str")
+    refused(dir + "/none.maca", "declares no result")
+    refused(dir + "/bare.maca", "a bare `return` leaves without one")
+    refused(dir + "/wrong.maca", "expected int, found str")
 }
 
 test_a_handler_has_nowhere_to_attach_in_markup() {
-    dir = scratch() ++ "/handlers"
+    dir = scratch() + "/handlers"
     make_dir(scratch())
     make_dir(dir)
 
     for attr in ["onclick=go", "onclick=(e => 0)", "value=(v => 0)"] {
-        at = dir ++ "/h{str(["onclick=go", "onclick=(e => 0)",
+        at = dir + "/h{str(["onclick=go", "onclick=(e => 0)",
                              "value=(v => 0)"].index_of(attr))}.maca"
 
-        write_file(at, "go() -> int => 0\n\nmain() -> int {{\n"
-            ++ "    info(button({attr}, \"press\"))\n    0\n}}\n")
+        write_file(at, "go() -> int => 0\n\nmain() -> int {{\n" +
+            "    info(button({attr}, \"press\"))\n    0\n}}\n")
 
         refused(at, "build this with `--target js`")
     }
 }
 
 test_a_quoted_handler_is_an_ordinary_attribute() {
-    dir = scratch() ++ "/handlers"
+    dir = scratch() + "/handlers"
     make_dir(scratch())
     make_dir(dir)
-    at = dir ++ "/quoted.maca"
+    at = dir + "/quoted.maca"
 
-    write_file(at, "main() -> int {{\n"
-        ++ "    info(button(onclick=\"alert(1)\", \"press\"))\n    0\n}}\n")
+    write_file(at, "main() -> int {{\n" +
+        "    info(button(onclick=\"alert(1)\", \"press\"))\n    0\n}}\n")
 
     assert(capture(maca_bin(), ["run", at]).contains("onclick=\"alert(1)\""),
         "a string belongs in the markup, and only a handler has nowhere to go")
 }
 
 test_a_nested_definition_is_named_by_the_targets_that_cannot_carry_it() {
-    dir = scratch() ++ "/nested"
+    dir = scratch() + "/nested"
     make_dir(scratch())
     make_dir(dir)
-    at = dir ++ "/counted.maca"
+    at = dir + "/counted.maca"
 
-    write_file(at, "main() -> int {{\n    total = 0\n\n"
-        ++ "    add(n: int) {{\n        total = total + n\n    }}\n\n"
-        ++ "    add(42)\n\n    total\n}}\n")
+    write_file(at, "main() -> int {{\n    total = 0\n\n" +
+        "    add(n: int) {{\n        total = total + n\n    }}\n\n" +
+        "    add(42)\n\n    total\n}}\n")
 
     assert_eq(exec(maca_bin(), ["run", at]), 42,
         "the native back end holds the local in a cell, so the write lands")
@@ -633,30 +648,30 @@ test_a_nested_definition_is_named_by_the_targets_that_cannot_carry_it() {
 }
 
 test_a_slot_the_browser_keeps_is_refused_when_it_cannot_be_named() {
-    dir = scratch() ++ "/storage"
+    dir = scratch() + "/storage"
     make_dir(scratch())
     make_dir(dir)
 
-    write_file(dir ++ "/computed.maca",
-        "import web/storage\n\nlocked = stored(\"a\" ++ \"b\", true)\n\n"
-            ++ "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
-    write_file(dir ++ "/noimport.maca",
-        "locked = stored(\"page.locked\", true)\n\n"
-            ++ "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
-    write_file(dir ++ "/constant.maca",
-        "import web/storage\n\nconst locked = stored(\"page.locked\", true)\n\n"
-            ++ "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
-    write_file(dir ++ "/native.maca",
-        "import {{ local_forget }} from web/storage\n\n"
-            ++ "main() -> int {{\n    local_forget(\"x\")\n    0\n}}\n")
+    write_file(dir + "/computed.maca",
+        "import web/storage\n\nlocked = stored(\"a\" ++ \"b\", true)\n\n" +
+            "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
+    write_file(dir + "/noimport.maca",
+        "locked = stored(\"page.locked\", true)\n\n" +
+            "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
+    write_file(dir + "/constant.maca",
+        "import web/storage\n\nconst locked = stored(\"page.locked\", true)\n\n" +
+            "main() -> Element =>\n    div(span(\"{{locked}}\"))\n")
+    write_file(dir + "/native.maca",
+        "import {{ local_forget }} from web/storage\n\n" +
+            "main() -> int {{\n    local_forget(\"x\")\n    0\n}}\n")
 
-    refused_on(dir ++ "/computed.maca", "js", "stored(…): the key names a slot")
-    refused_on(dir ++ "/noimport.maca", "js", "add `import web/storage`")
-    refused_on(dir ++ "/constant.maca", "js", "is a constant")
+    refused_on(dir + "/computed.maca", "js", "stored(…): the key names a slot")
+    refused_on(dir + "/noimport.maca", "js", "add `import web/storage`")
+    refused_on(dir + "/constant.maca", "js", "is a constant")
 
     said = output("sh", ["-c", "'{maca_bin()}' run '{dir}/native.maca' 2>&1"])
 
-    assert(exec(maca_bin(), ["run", dir ++ "/native.maca"]) != 0,
+    assert(exec(maca_bin(), ["run", dir + "/native.maca"]) != 0,
         "a browser module has nothing to run natively")
     assert(said.contains("web/storage") && said.contains("--target js"),
         "and the message names the module and where it does run: {said}")

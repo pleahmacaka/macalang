@@ -23,7 +23,7 @@ PollPath = "/_maca/hmr"
 publish(f: Feed, gen: int, ops: str) -> bool {
     if write_file(patch_file(f, gen), ops) {
         remove_file(patch_file(f, gen - Keep))
-        write_file(f.dir ++ "/generation", str(gen) ++ "\n")
+        write_file(f.dir + "/generation", str(gen) + "\n")
     } else {
         false
     }
@@ -31,7 +31,7 @@ publish(f: Feed, gen: int, ops: str) -> bool {
 
 /** The newest generation published, or 0 when nothing has been. */
 generation(f: Feed) -> int {
-    at = f.dir ++ "/generation"
+    at = f.dir + "/generation"
 
     if !file_exists(at) {
         0
@@ -51,7 +51,7 @@ patch_of(f: Feed, gen: int) -> str {
     }
 }
 
-patch_file(f: Feed, gen: int) -> str => f.dir ++ "/" ++ str(gen) ++ ".json"
+patch_file(f: Feed, gen: int) -> str => f.dir + "/" + str(gen) + ".json"
 
 /** Is this the dev channel's own request? */
 is_poll(req: Request) -> bool => req.path == PollPath
@@ -102,7 +102,7 @@ message(f: Feed, since: int, gen: int) -> str {
  * order.
  */
 ops_since(f: Feed, since: int, gen: int) -> str =>
-    "[" ++ merged(f, since + 1, gen, []).join(",") ++ "]"
+    "[" + merged(f, since + 1, gen, []).join(",") + "]"
 
 merged(f: Feed, at: int, gen: int, acc: str[]) -> str[] {
     if at > gen {
@@ -143,13 +143,13 @@ whole(f: Feed, gen: int) -> bool {
 }
 
 /** What a dev-mode page needs in its `<head>`, and the whole of it. */
-dev_head() -> str => runtime_script() ++ poll_script()
+dev_head() -> str => runtime_script() + poll_script()
 
 /** The poll loop, in a `<script>`. */
 poll_script() -> str => script(poll_js())
 
 poll_js() -> str =>
-    "window.macaDevPath=\"" ++ PollPath ++ "\";\n" ++ Poller
+    "window.macaDevPath=\"" + PollPath + "\";\n" + Poller
 
 Poller = """
 (function () {

@@ -99,12 +99,12 @@ download_url(version: str, asset: str) -> str {
 }
 
 usage() -> str =>
-    "maca-install: put the Maca toolchain on this machine\n\n"
-        ++ "usage: maca-install [--version <x.y.z>] [--prefix <dir>]\n\n"
-        ++ "  --version   which release, e.g. 9.9.9 (default: latest)\n"
-        ++ "  --prefix    where to install; the binaries go in <prefix>/bin\n"
-        ++ "              (default: {home()}/.local)\n\n"
-        ++ "MACA_VERSION and PREFIX set the same two things."
+    "maca-install: put the Maca toolchain on this machine\n\n" +
+        "usage: maca-install [--version <x.y.z>] [--prefix <dir>]\n\n" +
+        "  --version   which release, e.g. 9.9.9 (default: latest)\n" +
+        "  --prefix    where to install; the binaries go in <prefix>/bin\n" +
+        "              (default: {home()}/.local)\n\n" +
+        "MACA_VERSION and PREFIX set the same two things."
 
 defaults() -> Options {
     version = env("MACA_VERSION")
@@ -175,7 +175,7 @@ place_all(names: str[], work: str, bin: str, i: int, acc: str[]) -> str[] {
     } else if !file_exists("{work}/{names.get(i)}") {
         place_all(names, work, bin, i + 1, acc)
     } else if place("{work}/{names.get(i)}", "{bin}/{names.get(i)}") {
-        place_all(names, work, bin, i + 1, acc ++ [names.get(i)])
+        place_all(names, work, bin, i + 1, acc + [names.get(i)])
     } else {
         place_all(names, work, bin, i + 1, acc)
     }
@@ -271,9 +271,9 @@ finish(work: str, bin: str, first: str) -> int {
     remove_dir(work)
 
     if !ran {
-        err("maca-install: installed, but compiling a program that imports"
-                ++ " std failed. `maca build` and `maca run` need a C compiler"
-                ++ " (cc or clang) on PATH.")
+        err("maca-install: installed, but compiling a program that imports" +
+                " std failed. `maca build` and `maca run` need a C compiler" +
+                " (cc or clang) on PATH.")
 
         1
     } else {

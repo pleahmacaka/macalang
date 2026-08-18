@@ -64,11 +64,11 @@ take_long(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     o = find_long(c, name)
 
     if !found(o) {
-        refuse(p, unknown(c, "--" ++ name), i)
+        refuse(p, unknown(c, "--" + name), i)
     } else if !o.takes {
         if cut >= 0 {
             why = "`--{name}` is a flag and takes no value"
-            refuse(p, why ++ ". Write `--{name}` on its own", i)
+            refuse(p, why + ". Write `--{name}` on its own", i)
         } else {
             Step { parsed = set(p, name, "true"), next = i + 1 }
         }
@@ -77,7 +77,7 @@ take_long(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     } else if i + 1 < argv.length() {
         Step { parsed = set(p, name, argv.get(i + 1)), next = i + 2 }
     } else {
-        refuse(p, needs_value("--" ++ name, o.help), i)
+        refuse(p, needs_value("--" + name, o.help), i)
     }
 }
 
@@ -88,17 +88,17 @@ take_short(c: Cmd, p: Parsed, body: str, argv: str[], i: int) -> Step {
     o = find_short(c, name)
 
     if !found(o) {
-        refuse(p, unknown(c, "-" ++ name), i)
+        refuse(p, unknown(c, "-" + name), i)
     } else if o.takes && cut >= 0 {
         Step { parsed = set(p, o.long, inline), next = i + 1 }
     } else if o.takes && body.length() > 1 {
         why = "`-{name}` takes a value"
-        refuse(p, why ++ ". Write `-{name} <value>` or `-{name}=<value>`", i)
+        refuse(p, why + ". Write `-{name} <value>` or `-{name}=<value>`", i)
     } else if o.takes {
         if i + 1 < argv.length() {
             Step { parsed = set(p, o.long, argv.get(i + 1)), next = i + 2 }
         } else {
-            refuse(p, needs_value("-" ++ name, o.help), i)
+            refuse(p, needs_value("-" + name, o.help), i)
         }
     } else {
         Step { parsed = bundle(c, p, body, 0), next = i + 1 }
@@ -113,7 +113,7 @@ bundle(c: Cmd, p: Parsed, body: str, at: int) -> Parsed {
         o = find_short(c, s)
 
         if !found(o) {
-            p with { error = unknown(c, "-" ++ s) }
+            p with { error = unknown(c, "-" + s) }
         } else if o.takes {
             bundle(c, p with {
                 error = "`-{s}` takes a value, so it cannot be bundled. Write it on its own"

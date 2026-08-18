@@ -4,11 +4,11 @@ import std/json
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-check-json"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-check-json"
 
     make_dir(dir)
 
@@ -16,11 +16,11 @@ scratch() -> str {
 }
 
 broken_source() -> str =>
-    "main() -> int {{\n    let x = 1\n    total = 0 as const\n"
-        ++ "    total = 5\n    nope()\n    x\n}}\n"
+    "main() -> int {{\n    let x = 1\n    total = 0 as const\n" +
+        "    total = 5\n    nope()\n    x\n}}\n"
 
 written(name: str, src: str) -> str {
-    path = scratch() ++ "/" ++ name
+    path = scratch() + "/" + name
 
     write_file(path, src)
 
@@ -65,8 +65,8 @@ carries_every_field(d: str, want: str[], i: int) -> bool {
         true
     } else {
         assert(get(d, want.get(i)) != "",
-               "the schema requires `{want.get(i)}` and the output has no "
-                   ++ "such key: {d}")
+               "the schema requires `{want.get(i)}` and the output has no " +
+                   "such key: {d}")
 
         carries_every_field(d, want, i + 1)
     }

@@ -38,7 +38,7 @@ maca_type(py: str) -> str {
         "bool"
     } else if t.starts_with("List[") {
         inner = maca_type(between(t, "List[", "]"))
-        inner == "" ? "" : inner ++ "[]"
+        inner == "" ? "" : inner + "[]"
     } else {
         ""
     }
@@ -58,9 +58,9 @@ maca_value(py: str) -> str {
 
         translated.filter(x => x == "").length() > 0
             ? ""
-            : "[" ++ translated.join(", ") ++ "]"
+            : "[" + translated.join(", ") + "]"
     } else if v.starts_with(Quote) || v.starts_with("'") {
-        Quote ++ between_ends(v).replace(Quote, Backslash ++ Quote) ++ Quote
+        Quote + between_ends(v).replace(Quote, Backslash + Quote) + Quote
     } else if is_number(v) {
         v
     } else {
@@ -99,11 +99,11 @@ split_top(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
         if c == "," && depth == 0 {
             split_top(s, i + 1, depth, "", acc.push(cur.trim()))
         } else if c == "[" || c == "(" {
-            split_top(s, i + 1, depth + 1, cur ++ c, acc)
+            split_top(s, i + 1, depth + 1, cur + c, acc)
         } else if c == "]" || c == ")" {
-            split_top(s, i + 1, depth - 1, cur ++ c, acc)
+            split_top(s, i + 1, depth - 1, cur + c, acc)
         } else {
-            split_top(s, i + 1, depth, cur ++ c, acc)
+            split_top(s, i + 1, depth, cur + c, acc)
         }
     }
 }
@@ -112,7 +112,7 @@ split_top(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
  * has no Maca word.
  */
 port_signature(prompt: str, entry: str) -> str {
-    marker = "def " ++ entry ++ "("
+    marker = "def " + entry + "("
     at = prompt.index_of(marker)
 
     if at < 0 {
@@ -125,7 +125,7 @@ port_signature(prompt: str, entry: str) -> str {
 
         returns == "" || ported.filter(p => p == "").length() > 0
             ? ""
-            : entry ++ "(" ++ ported.join(", ") ++ ") -> " ++ returns
+            : entry + "(" + ported.join(", ") + ") -> " + returns
     }
 }
 
@@ -136,7 +136,7 @@ port_param(p: str) -> str {
         ""
     } else {
         t = maca_type(parts.get(1))
-        t == "" ? "" : parts.get(0).trim() ++ ": " ++ t
+        t == "" ? "" : parts.get(0).trim() + ": " + t
     }
 }
 
@@ -174,14 +174,14 @@ port_case(line: str, entry: str) -> str {
  * every file to.
  */
 one_case(entry: str, args: str, want: str) -> str {
-    flat = "    assert_eq(" ++ entry ++ "(" ++ args ++ "), " ++ want
-        ++ ", \"case\")"
+    flat = "    assert_eq(" + entry + "(" + args + "), " + want +
+        ", \"case\")"
 
     if flat.length() <= 80 {
         flat
     } else {
-        "    assert_eq(\n        " ++ entry ++ "(" ++ args ++ "),\n        "
-            ++ want ++ ", \"case\")"
+        "    assert_eq(\n        " + entry + "(" + args + "),\n        " +
+            want + ", \"case\")"
     }
 }
 
@@ -193,7 +193,7 @@ after_last(line: str, sep: str) -> str {
 
 /** The first line of the docstring, which is what the problem asks for. */
 port_doc(prompt: str) -> str {
-    fence = Quote ++ Quote ++ Quote
+    fence = Quote + Quote + Quote
     body = between(prompt, fence, fence)
     first = body.split("\n").filter(l => l.trim() != "")
 
@@ -202,12 +202,12 @@ port_doc(prompt: str) -> str {
 
 /** One problem as the `.maca` file the harness hands a model and then runs. */
 render(p: Problem) -> str =>
-    "// " ++ p.id ++ ": " ++ p.doc ++ "\n"
-        ++ "// Write it, and leave the test below alone.\n\n"
-        ++ p.signature ++ " " ++ Open ++ "\n    fail " ++ Quote
-        ++ "not written yet" ++ Quote ++ "\n" ++ Close ++ "\n\n"
-        ++ "test_" ++ p.entry ++ "() " ++ Open ++ "\n"
-        ++ p.cases.join("\n") ++ "\n" ++ Close ++ "\n"
+    "// " + p.id + ": " + p.doc + "\n" +
+        "// Write it, and leave the test below alone.\n\n" +
+        p.signature + " " + Open + "\n    fail " + Quote +
+        "not written yet" + Quote + "\n" + Close + "\n\n" +
+        "test_" + p.entry + "() " + Open + "\n" +
+        p.cases.join("\n") + "\n" + Close + "\n"
 
 main(argv: str[]) -> int {
     if argv.length() < 1 {
@@ -228,8 +228,8 @@ port_all(jsonl: str, out: str) -> int {
     skipped = collect_skips(rows, 0, [])
 
     write_file(join(out, "SKIPPED.md"), skip_report(skipped))
-    info(ok("{kept.length()} ported")
-         ++ dim(", {skipped.length()} left for want of a Maca form"))
+    info(ok("{kept.length()} ported") +
+         dim(", {skipped.length()} left for want of a Maca form"))
     0
 }
 
@@ -240,7 +240,7 @@ write_problems(rows: str[], i: int, out: str, acc: str[]) -> str[] {
         p = parse_row(rows.get(i))
 
         if usable(p) {
-            write_file(join(out, p.entry ++ ".maca"), render(p))
+            write_file(join(out, p.entry + ".maca"), render(p))
             write_problems(rows, i + 1, out, acc.push(p.id))
         } else {
             write_problems(rows, i + 1, out, acc)
@@ -293,7 +293,7 @@ parse_row(line: str) -> Problem {
  * actually uses.
  */
 json_string(line: str, key: str) -> str {
-    marker = Quote ++ key ++ Quote ++ ": " ++ Quote
+    marker = Quote + key + Quote + ": " + Quote
     at = line.index_of(marker)
 
     if at < 0 {
@@ -308,24 +308,24 @@ scan_string(cs: str[], i: int, acc: str) -> str {
     if i >= cs.length() {
         acc
     } else if cs.get(i) == Backslash {
-        scan_string(cs, i + 2, acc ++ cs.get(i) ++ cs.get(i + 1))
+        scan_string(cs, i + 2, acc + cs.get(i) + cs.get(i + 1))
     } else if cs.get(i) == Quote {
         acc
     } else {
-        scan_string(cs, i + 1, acc ++ cs.get(i))
+        scan_string(cs, i + 1, acc + cs.get(i))
     }
 }
 
 unescape(s: str) -> str =>
-    s.replace(Backslash ++ "n", "\n").replace(Backslash ++ "t", "    ")
-        .replace(Backslash ++ Quote, Quote)
-        .replace(Backslash ++ Backslash, Backslash)
+    s.replace(Backslash + "n", "\n").replace(Backslash + "t", "    ")
+        .replace(Backslash + Quote, Quote)
+        .replace(Backslash + Backslash, Backslash)
 
 skip_report(skipped: Skipped[]) -> str =>
-    "# Not ported\n\n"
-        ++ "`port.maca` translates a HumanEval problem when every parameter, the\n"
-        ++ "result and every assertion have a Maca form. These do not, and the\n"
-        ++ "reason is the work: a form added to the porter moves a problem out of\n"
-        ++ "this file and into the set.\n\n"
-        ++ "| problem | why |\n|---|---|\n"
-        ++ skipped.map(s => "| `{s.id}` | {s.why} |").join("\n") ++ "\n"
+    "# Not ported\n\n" +
+        "`port.maca` translates a HumanEval problem when every parameter, the\n" +
+        "result and every assertion have a Maca form. These do not, and the\n" +
+        "reason is the work: a form added to the porter moves a problem out of\n" +
+        "this file and into the set.\n\n" +
+        "| problem | why |\n|---|---|\n" +
+        skipped.map(s => "| `{s.id}` | {s.why} |").join("\n") + "\n"

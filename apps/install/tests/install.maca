@@ -13,8 +13,8 @@ test_the_asset_is_read_off_what_uname_says() {
     assert_eq(asset_for("Linux x86_64"), "maca-linux-x86_64.tar.gz",
               "the kernel names the platform and the machine names the arch")
     assert_eq(asset_for("Darwin arm64"), "maca-macos-aarch64.tar.gz",
-              "macOS spells its own arch arm64, and the release spells it"
-                  ++ " aarch64")
+              "macOS spells its own arch arm64, and the release spells it" +
+                  " aarch64")
     assert_eq(asset_for("Linux aarch64"), "maca-linux-aarch64.tar.gz",
               "which is already how Linux spells it")
     assert_eq(asset_for("Windows x86_64"), "maca-windows-x86_64.zip",

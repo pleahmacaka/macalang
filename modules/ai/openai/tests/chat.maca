@@ -55,9 +55,9 @@ test_a_quote_in_a_prompt_does_not_break_the_body() {
 }
 
 test_the_answer_is_the_first_choice_and_the_usage_beside_it() {
-    said = "{{\"model\":\"m-1\",\"choices\":[{{\"message\":"
-        ++ "{{\"role\":\"assistant\",\"content\":\"Blue\"}}}}],"
-        ++ "\"usage\":{{\"prompt_tokens\":15,\"completion_tokens\":1}}}}"
+    said = "{{\"model\":\"m-1\",\"choices\":[{{\"message\":" +
+        "{{\"role\":\"assistant\",\"content\":\"Blue\"}}}}]," +
+        "\"usage\":{{\"prompt_tokens\":15,\"completion_tokens\":1}}}}"
     a = chat_read(said)
 
     assert_eq(a.text, "Blue", "the text is the first choice's content")
@@ -97,8 +97,8 @@ test_a_free_model_answers_when_a_key_is_in_the_environment() {
                          user_turn("What colour is a clear midday sky?")])
 
         if a.error.contains("429") {
-            assert(true, "the free tier is throttling, which is its right "
-                             ++ "and not a fault of this tree")
+            assert(true, "the free tier is throttling, which is its right " +
+                             "and not a fault of this tree")
         } else {
             assert_eq(a.error, "", "the host answered: {a.error}")
             assert(a.text.lower().contains("blue"),

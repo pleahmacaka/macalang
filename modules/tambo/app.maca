@@ -106,11 +106,11 @@ rows(rs: Route[], i: int, acc: str[]) -> str[] {
         acc
     } else {
         r = rs.get(i)
-        line = column(r.method, 8) ++ column(r.pattern, 26) ++ r.name
+        line = column(r.method, 8) + column(r.pattern, 26) + r.name
 
         rows(rs, i + 1, acc.push(line))
     }
 }
 
 column(s: str, w: int) -> str =>
-    (s ++ " ").pad_end(w, " ")
+    (s + " ").pad_end(w, " ")

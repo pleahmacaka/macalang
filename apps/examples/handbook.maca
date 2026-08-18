@@ -77,7 +77,7 @@ main() -> int {
     info("ui: {article(class="prose", h1("Hi") span("Body"))}")
     info("attrs: {div(data-kind="note", hidden=false, "seen")}")
     info("flag: {details(open=true, summary("more") "text")}")
-    info("dyn: {element("h" ++ 2, id="s", "Deep")}")
+    info("dyn: {element("h{2}", id="s", "Deep")}")
     sheet = styles()
     info("styles: {sheet.contains(".font-bold")} {sheet.contains(".text-9xl")}")
 

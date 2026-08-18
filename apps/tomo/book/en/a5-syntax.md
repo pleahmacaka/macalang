@@ -218,7 +218,7 @@ total = base +
 ```
 
 **A leading token continues only when it cannot start an expression.** `&&`,
-`||`, `++`, `.`, `?` and `:` qualify, so these are one expression each:
+`||`, `.`, `?` and `:` qualify, so these are one expression each:
 
 ```maca
 ok = a > 0

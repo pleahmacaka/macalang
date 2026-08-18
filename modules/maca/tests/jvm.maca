@@ -7,9 +7,9 @@ gate_jvm(src: str) -> str =>
     jvmemit_module(annotated(parse_module(lex(src), 0, [])), "Main")
 
 test_a_record_is_a_class_of_the_fields_it_declared() {
-    made = gate_jvm("Point = {{ x: int y: int }}\n"
-                    ++ "flipped() -> Point => Point {{ y = 2, x = 1 }}\n"
-                    ++ "main() -> int {{ p = flipped() info(\"x={{p.x}} y={{p.y}}\") 0 }}")
+    made = gate_jvm("Point = {{ x: int y: int }}\n" +
+                    "flipped() -> Point => Point {{ y = 2, x = 1 }}\n" +
+                    "main() -> int {{ p = flipped() info(\"x={{p.x}} y={{p.y}}\") 0 }}")
 
     assert(made.index_of("final class Point {{") >= 0, "the record is a class")
     assert(made.index_of("long x;") >= 0 && made.index_of("long y;") >= 0,
@@ -20,8 +20,8 @@ test_a_record_is_a_class_of_the_fields_it_declared() {
 }
 
 test_a_string_pattern_is_a_case_label_not_a_second_default() {
-    made = gate_jvm("grade(s: str) -> int {{ match s {{"
-                    ++ " \"a\" => 1 \"b\" => 2 _ => 0 }} }}")
+    made = gate_jvm("grade(s: str) -> int {{ match s {{" +
+                    " \"a\" => 1 \"b\" => 2 _ => 0 }} }}")
 
     assert(made.index_of("case \"b\" -> 2L;") >= 0,
            "Java switches on a string, so an arm is a label rather than a chain of ifs")
@@ -32,9 +32,9 @@ test_a_string_pattern_is_a_case_label_not_a_second_default() {
 }
 
 test_a_sum_is_an_enum_and_its_match_is_a_switch() {
-    made = gate_jvm("Status = Todo | Done\n"
-                    ++ "label(s: Status) -> str {{ match s {{"
-                    ++ " Todo => \"todo\" Done => \"done\" }} }}")
+    made = gate_jvm("Status = Todo | Done\n" +
+                    "label(s: Status) -> str {{ match s {{" +
+                    " Todo => \"todo\" Done => \"done\" }} }}")
 
     assert(made.index_of("enum Status {{ Todo, Done }}") >= 0, "the sum is an enum")
     assert(made.index_of("case Todo -> \"todo\";") >= 0
@@ -45,8 +45,8 @@ test_a_sum_is_an_enum_and_its_match_is_a_switch() {
 }
 
 test_break_reaches_the_loop_it_is_written_in() {
-    made = gate_jvm("count_to(n: int) -> int {{ i = 0"
-                    ++ " while true {{ i = i + 1 if i >= n {{ break }} }} i }}")
+    made = gate_jvm("count_to(n: int) -> int {{ i = 0" +
+                    " while true {{ i = i + 1 if i >= n {{ break }} }} i }}")
 
     assert(made.index_of("while (true) {{") >= 0, "the loop")
     assert(made.index_of("break;") >= 0, "and the jump out of it")

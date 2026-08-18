@@ -5,8 +5,8 @@ Version = 1
 
 /** A run as a JSON document: a version, and the results in the order given. */
 to_json(rs: Result[]) -> str =>
-    "\{\"version\":{Version},\"results\":["
-        ++ encoded(rs, 0, []).join(",") ++ "]\}"
+    "\{\"version\":{Version},\"results\":[" +
+        encoded(rs, 0, []).join(",") + "]\}"
 
 encoded(rs: Result[], i: int, acc: str[]) -> str[] {
     if i >= rs.length() {
@@ -17,9 +17,9 @@ encoded(rs: Result[], i: int, acc: str[]) -> str[] {
 }
 
 one_json(r: Result) -> str =>
-    "\{\"name\":" ++ encode_str(r.name) ++ ",\"size\":{r.size}"
-        ++ ",\"iters\":{r.iters},\"samples\":[" ++ int_csv(r.samples, 0, [])
-        ++ "],\"checksum\":{r.checksum}\}"
+    "\{\"name\":" + encode_str(r.name) + ",\"size\":{r.size}" +
+        ",\"iters\":{r.iters},\"samples\":[" + int_csv(r.samples, 0, []) +
+        "],\"checksum\":{r.checksum}\}"
 
 int_csv(xs: int[], i: int, acc: str[]) -> str {
     if i >= xs.length() {
@@ -31,11 +31,11 @@ int_csv(xs: int[], i: int, acc: str[]) -> str {
 
 /** A JSON string literal. */
 encode_str(s: str) -> str =>
-    "\"" ++ s.replace("\\", "\\\\")
+    "\"" + s.replace("\\", "\\\\")
              .replace("\"", "\\\"")
              .replace("\n", "\\n")
              .replace("\r", "\\r")
-             .replace("\t", "\\t") ++ "\""
+             .replace("\t", "\\t") + "\""
 
 /** The results in a document written by `to_json`. */
 from_json(src: str) -> Result[] {
@@ -73,7 +73,7 @@ int_list(raw: str[], i: int, acc: int[]) -> int[] {
 
 /** The raw text of `key`'s value in a JSON object, or "" when it is absent. */
 field(src: str, key: str) -> str {
-    marker = "\"" ++ key ++ "\":"
+    marker = "\"" + key + "\":"
     at = src.index_of(marker)
 
     if at < 0 {
@@ -166,11 +166,11 @@ split_at_depth(s: str, i: int, depth: int, cur: str, acc: str[]) -> str[] {
         cur.trim() == "" ? acc : acc.push(bare(cur))
     } else if s.at(i) == "\"" {
         stop = quoted_end(s, i + 1)
-        split_at_depth(s, stop, depth, cur ++ s.slice(i, stop), acc)
+        split_at_depth(s, stop, depth, cur + s.slice(i, stop), acc)
     } else if s.at(i) == "," && depth == 0 {
         split_at_depth(s, i + 1, depth, "", acc.push(bare(cur)))
     } else {
-        split_at_depth(s, i + 1, depth + step(s.at(i)), cur ++ s.at(i), acc)
+        split_at_depth(s, i + 1, depth + step(s.at(i)), cur + s.at(i), acc)
     }
 }
 
@@ -202,9 +202,9 @@ unescaped(s: str, i: int, acc: str) -> str {
     if i >= s.length() {
         acc
     } else if s.at(i) != "\\" || i + 1 >= s.length() {
-        unescaped(s, i + 1, acc ++ s.at(i))
+        unescaped(s, i + 1, acc + s.at(i))
     } else {
-        unescaped(s, i + 2, acc ++ unescape_one(s.at(i + 1)))
+        unescaped(s, i + 2, acc + unescape_one(s.at(i + 1)))
     }
 }
 
@@ -218,13 +218,13 @@ unescape_one(c: str) -> str {
     } else if c == "\"" || c == "\\" {
         c
     } else {
-        "\\" ++ c
+        "\\" + c
     }
 }
 
 /** Write a run to `path`. */
 save(path: str, rs: Result[]) -> bool =>
-    write_file(path, to_json(rs) ++ "\n")
+    write_file(path, to_json(rs) + "\n")
 
 /** Read a run from `path`, or an empty list when there is nothing there. */
 load(path: str) -> Result[] {

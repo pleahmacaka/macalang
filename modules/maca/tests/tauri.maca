@@ -3,7 +3,7 @@ import std/proc
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 scratch(name: str) -> str {
@@ -160,14 +160,14 @@ test_the_bridge_calls_the_command_under_a_tauri_runtime() {
                "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
     scaffolded("{dir}/src/home.maca", "{dir}/out")
     write_file("{dir}/probe.js",
-               "globalThis.__TAURI__ = {{ core: {{ invoke: (c, a) =>"
-                   ++ " c + \":\" + a.arg }} }};\n"
-                   ++ "require(\"{dir}/out/dist/bridge.js\");\n"
-                   ++ "macaInvoke(41).then(r => console.log(r));\n")
+               "globalThis.__TAURI__ = {{ core: {{ invoke: (c, a) =>" +
+                   " c + \":\" + a.arg }} }};\n" +
+                   "require(\"{dir}/out/dist/bridge.js\");\n" +
+                   "macaInvoke(41).then(r => console.log(r));\n")
 
     assert_eq(capture("node", ["{dir}/probe.js"]).trim(), "maca_run:41",
-              "the bridge names the command and hands it the argument, "
-                  ++ "as a string")
+              "the bridge names the command and hands it the argument, " +
+                  "as a string")
 }
 
 test_the_bridge_says_so_where_there_is_no_tauri_runtime() {
@@ -182,8 +182,8 @@ test_the_bridge_says_so_where_there_is_no_tauri_runtime() {
                "main() -> Element =>\n    div(class=\"card\" \"hello\")\n")
     scaffolded("{dir}/src/home.maca", "{dir}/out")
     write_file("{dir}/probe.js",
-               "require(\"{dir}/out/dist/bridge.js\");\n"
-                   ++ "macaInvoke(1).then(r => console.log(r));\n")
+               "require(\"{dir}/out/dist/bridge.js\");\n" +
+                   "macaInvoke(1).then(r => console.log(r));\n")
 
     assert_eq(capture("node", ["{dir}/probe.js"]).trim(), "(no tauri runtime)",
               "a page opened in a browser is told, not left hanging")

@@ -104,7 +104,7 @@ slot_of(it: Interp, name: str) -> int =>
     seek_slot(it.names, name, it.names.length() - 1)
 
 push_var(it: Interp, name: str, v: Value) -> Interp =>
-    it with { names = it.names ++ [name], slots = it.slots ++ [v] }
+    it with { names = it.names + [name], slots = it.slots + [v] }
 
 store_var(it: Interp, name: str, v: Value) -> Interp {
     at = slot_of(it, name)
@@ -135,9 +135,9 @@ load_items(it: Interp, items: Stmt[], i: int) -> Interp {
 
 load_item(it: Interp, s: Stmt) -> Interp {
     if s.kind == SFn {
-        it with { defs = it.defs ++ [s] }
+        it with { defs = it.defs + [s] }
     } else if s.kind == SSum {
-        it with { ctors = it.ctors ++ s.params.map(v => v.text) }
+        it with { ctors = it.ctors + s.params.map(v => v.text) }
     } else {
         it
     }
@@ -328,7 +328,7 @@ ev_each(it: Interp, es: Expr[], i: int, acc: Value[]) -> Ev {
         ev(it, v_list(acc))
     } else {
         one = ev_expr(it, es.get(i))
-        ev_each(one.it, es, i + 1, acc ++ [one.v])
+        ev_each(one.it, es, i + 1, acc + [one.v])
     }
 }
 
@@ -387,7 +387,7 @@ put_field(v: Value, name: str, x: Value) -> Value {
     if at >= 0 {
         v with { items = v.items.set(at, x) }
     } else {
-        v with { keys = v.keys ++ [name], items = v.items ++ [x] }
+        v with { keys = v.keys + [name], items = v.items + [x] }
     }
 }
 
@@ -436,10 +436,16 @@ ev_arith(it: Interp, e: Expr) -> Ev {
     ev(r.it, binop(e.text, l.v, r.v))
 }
 
+/** `+` joins when either side already is text or a list, the same rule the
+ * checker keeps.
+ */
+joins_val(l: Value, r: Value) -> bool =>
+    l.kind == VStr || r.kind == VStr || l.kind == VList || r.kind == VList
+
 binop(op: str, l: Value, r: Value) -> Value {
     if op == ".." {
         v_list(span_cells(int_of(l), int_of(r), []))
-    } else if op == "++" {
+    } else if op == "++" || (op == "+" && joins_val(l, r)) {
         joined_val(l, r)
     } else if op == "==" {
         v_bool(same_val(l, r))
@@ -456,15 +462,15 @@ span_cells(a: int, b: int, acc: Value[]) -> Value[] {
     if a > b {
         acc
     } else {
-        span_cells(a + 1, b, acc ++ [v_int(a)])
+        span_cells(a + 1, b, acc + [v_int(a)])
     }
 }
 
 joined_val(l: Value, r: Value) -> Value {
     if l.kind == VList && r.kind == VList {
-        v_list(l.items ++ r.items)
+        v_list(l.items + r.items)
     } else {
-        v_str(show_val(l) ++ show_val(r))
+        v_str(show_val(l) + show_val(r))
     }
 }
 
@@ -638,7 +644,7 @@ shown_cells(xs: Value[], i: int, acc: str[]) -> str[] {
     if i >= xs.length() {
         acc
     } else {
-        shown_cells(xs, i + 1, acc ++ [show_val(xs.get(i))])
+        shown_cells(xs, i + 1, acc + [show_val(xs.get(i))])
     }
 }
 
@@ -647,7 +653,7 @@ shown_fields(v: Value, i: int, acc: str[]) -> str[] {
         acc
     } else {
         said = "{v.keys.get(i)} = {show_val(v.items.get(i))}"
-        shown_fields(v, i + 1, acc ++ [said])
+        shown_fields(v, i + 1, acc + [said])
     }
 }
 
@@ -664,13 +670,13 @@ show_val(v: Value) -> str {
     } else if v.kind == VStr {
         v.sval
     } else if v.kind == VList {
-        "[" ++ commas(shown_cells(v.items, 0, [])) ++ "]"
+        "[" + commas(shown_cells(v.items, 0, [])) + "]"
     } else if v.kind == VRec {
-        "\{ " ++ commas(shown_fields(v, 0, [])) ++ " \}"
+        "\{ " + commas(shown_fields(v, 0, [])) + " \}"
     } else if v.kind == VSum && v.items.length() == 0 {
         v.sval
     } else if v.kind == VSum {
-        v.sval ++ "(" ++ commas(shown_cells(v.items, 0, [])) ++ ")"
+        v.sval + "(" + commas(shown_cells(v.items, 0, [])) + ")"
     } else if v.kind == VFun {
         "<closure>"
     } else {
@@ -1039,9 +1045,9 @@ said_line(it: Interp, name: str, vals: Value[]) -> Interp {
     line = text_at(vals, 0)
 
     if name == "print" {
-        it with { out = it.out ++ line }
+        it with { out = it.out + line }
     } else {
-        it with { out = it.out ++ line ++ "\n" }
+        it with { out = it.out + line + "\n" }
     }
 }
 
@@ -1247,12 +1253,12 @@ set_cell(xs: Value[], i: int, x: Value) -> Value {
 insert_cell(xs: Value[], i: int, x: Value) -> Value {
     at = min_int(max_int(i, 0), xs.length())
 
-    v_list(xs.slice(0, at) ++ [x] ++ xs.slice(at, xs.length()))
+    v_list(xs.slice(0, at) + [x] + xs.slice(at, xs.length()))
 }
 
 remove_cell(xs: Value[], i: int) -> Value {
     if i >= 0 && i < xs.length() {
-        v_list(xs.slice(0, i) ++ xs.slice(i + 1, xs.length()))
+        v_list(xs.slice(0, i) + xs.slice(i + 1, xs.length()))
     } else {
         v_list(xs)
     }
@@ -1262,7 +1268,7 @@ flipped(xs: Value[], i: int, acc: Value[]) -> Value[] {
     if i < 0 {
         acc
     } else {
-        flipped(xs, i - 1, acc ++ [xs.get(i)])
+        flipped(xs, i - 1, acc + [xs.get(i)])
     }
 }
 
@@ -1281,7 +1287,7 @@ numbered(xs: Value[], i: int, acc: Value[]) -> Value[] {
         acc
     } else {
         cell = v_rec(["index", "value"], [v_int(i), xs.get(i)])
-        numbered(xs, i + 1, acc ++ [cell])
+        numbered(xs, i + 1, acc + [cell])
     }
 }
 
@@ -1331,9 +1337,9 @@ best_cell(xs: Value[], want: int, i: int, best: Value) -> Value {
 
 placed(acc: Value[], x: Value, i: int) -> Value[] {
     if i >= acc.length() {
-        acc ++ [x]
+        acc + [x]
     } else if cmp_val(x, acc.get(i)) < 0 {
-        acc.slice(0, i) ++ [x] ++ acc.slice(i, acc.length())
+        acc.slice(0, i) + [x] + acc.slice(i, acc.length())
     } else {
         placed(acc, x, i + 1)
     }
@@ -1361,7 +1367,7 @@ cell_method(name: str, xs: Value[], vals: Value[]) -> Value {
     } else if name == "reverse" {
         v_list(flipped(xs, xs.length() - 1, []))
     } else if name == "push" {
-        v_list(xs ++ [arg_at(vals, 1)])
+        v_list(xs + [arg_at(vals, 1)])
     } else if name == "pop" {
         v_list(xs.slice(0, max_int(xs.length() - 1, 0)))
     } else if name == "set" {
@@ -1394,7 +1400,7 @@ mapped(it: Interp, f: Value, xs: Value[], i: int, acc: Value[]) -> Ev {
         ev(it, v_list(acc))
     } else {
         r = call_fun(it, f, [xs.get(i)])
-        mapped(r.it, f, xs, i + 1, acc ++ [r.v])
+        mapped(r.it, f, xs, i + 1, acc + [r.v])
     }
 }
 
@@ -1404,7 +1410,7 @@ kept_cells(it: Interp, f: Value, xs: Value[], i: int, acc: Value[]) -> Ev {
     } else {
         r = call_fun(it, f, [xs.get(i)])
         next = if truth_of(r.v) {
-            acc ++ [xs.get(i)]
+            acc + [xs.get(i)]
         } else {
             acc
         }
@@ -1455,8 +1461,8 @@ by_key(ks: Value[], xs: Value[], i: int, sk: Value[],
     } else {
         at = key_slot(sk, ks.get(i), 0)
         by_key(ks, xs, i + 1,
-               sk.slice(0, at) ++ [ks.get(i)] ++ sk.slice(at, sk.length()),
-               sv.slice(0, at) ++ [xs.get(i)] ++ sv.slice(at, sv.length()))
+               sk.slice(0, at) + [ks.get(i)] + sk.slice(at, sk.length()),
+               sv.slice(0, at) + [xs.get(i)] + sv.slice(at, sv.length()))
     }
 }
 

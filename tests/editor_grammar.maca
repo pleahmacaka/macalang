@@ -6,11 +6,11 @@ Quote = "\""
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
-Reserved = "const as if else for in while break continue return match import"
-    ++ " with fail try alias await spawn"
+Reserved = "const as if else for in while break continue return match import" +
+    " with fail try alias await spawn"
 
 Phantoms = "let type var fn def"
 
@@ -31,7 +31,7 @@ zed(query: str) -> str =>
 /** A grammar names a word when it sits in an alternation or is quoted whole. */
 names_word(src: str, w: str) -> bool =>
     src.contains("({w}|") || src.contains("|{w}|") || src.contains("|{w})")
-        || src.contains(Quote ++ w ++ Quote)
+        || src.contains(Quote + w + Quote)
 
 is_lower(c: str) -> bool =>
     ord(c) >= 97 && ord(c) <= 122
@@ -81,7 +81,7 @@ from_lines(ls: str[], i: int, acc: str[]) -> str[] {
     } else if ls.get(i).trim().starts_with(";") {
         from_lines(ls, i + 1, acc)
     } else {
-        from_lines(ls, i + 1, acc ++ opened_in(unquoted(ls.get(i))))
+        from_lines(ls, i + 1, acc + opened_in(unquoted(ls.get(i))))
     }
 }
 
@@ -112,7 +112,7 @@ test_the_word_scan_reads_an_alternation_and_a_quoted_list() {
     assert(names_word("(if|else|for)", "if"), "the first of an alternation")
     assert(names_word("(if|else|for)", "else"), "one in the middle")
     assert(names_word("(if|else|for)", "for"), "and the last")
-    assert(names_word("keywords: [" ++ Quote ++ "as" ++ Quote ++ "]", "as"),
+    assert(names_word("keywords: [" + Quote + "as" + Quote + "]", "as"),
            "a quoted word in a list")
     assert(!names_word("(if|else|for)", "spawn"),
            "a word nobody named is not found")
@@ -145,8 +145,8 @@ test_the_node_scan_skips_a_comment_and_a_pattern_string() {
               "function,ident", "both nodes, in the order they are written")
     assert_eq(node_types("; (block) is only prose here").join(","), "",
               "a comment line names no node")
-    assert_eq(node_types("(#match? @x " ++ Quote ++ "^(int|float)$"
-                             ++ Quote ++ ")").join(","), "",
+    assert_eq(node_types("(#match? @x " + Quote + "^(int|float)$" +
+                             Quote + ")").join(","), "",
               "and neither does a regex inside a string")
 }
 
@@ -157,15 +157,15 @@ ScannerC = "apps/editor/tree-sitter-maca/src/scanner.c"
  * to each other.
  */
 test_the_committed_scanner_is_what_its_source_emits() {
-    out = env_or("TMPDIR", "/tmp") ++ "/maca-scanner.c"
+    out = env_or("TMPDIR", "/tmp") + "/maca-scanner.c"
 
     remove_file(out)
 
     assert_eq(exec(maca_bin(), [Scanner, out]), 0,
               "the scanner did not compile: {capture_err(maca_bin(), [Scanner, out])}")
     assert_eq(read_file(out), read_file(ScannerC),
-              "`{ScannerC}` is generated; regenerate it with "
-                  ++ "`maca {Scanner} {ScannerC}`")
+              "`{ScannerC}` is generated; regenerate it with " +
+                  "`maca {Scanner} {ScannerC}`")
 }
 
 test_the_scanner_and_the_lexer_agree_on_what_continues_a_line() {
@@ -174,13 +174,13 @@ test_the_scanner_and_the_lexer_agree_on_what_continues_a_line() {
     for code in ["63", "58", "43", "45", "42", "37", "60", "62", "61", "38",
                  "124", "46", "41", "93", "125", "44"] {
         assert(src.contains("c == {code}"),
-               "a line opening with the character {code} carries on the one "
-                   ++ "before it, and the scanner no longer says so")
+               "a line opening with the character {code} carries on the one " +
+                   "before it, and the scanner no longer says so")
     }
 
     assert(!src.contains("c == 47"),
            "`/` opens a comment, so a line starting with it is a new line")
     assert(!src.contains("c == 40"),
-           "and `(` opens an expression, which is why the compiler's own "
-               ++ "lexer marks it fresh")
+           "and `(` opens an expression, which is why the compiler's own " +
+               "lexer marks it fresh")
 }

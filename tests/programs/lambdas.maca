@@ -66,7 +66,7 @@ at(parts: str[], i: int) -> str =>
     parts.get(i)
 
 prefixed(at: str, text: str) -> str =>
-    text.split("\n").map(l => at ++ l).join("\n")
+    text.split("\n").map(l => at + l).join("\n")
 
 test_a_lambda_captures_the_local_over_a_global_of_the_same_name() {
     assert_eq(prefixed("> ", "a\nb"), "> a\n> b", "the parameter came along")
@@ -86,7 +86,7 @@ test_a_lambda_captures_a_local_over_a_global_of_the_same_name() {
 mark = "GLOBAL"
 
 tagged(mark: str, xs: str[]) -> str =>
-    xs.map(x => mark ++ x).join(",")
+    xs.map(x => mark + x).join(",")
 
 test_a_lambda_captures_a_local_over_a_top_level_binding() {
     assert_eq(tagged("<", ["a", "b"]), "<a,<b", "the parameter, not the module")

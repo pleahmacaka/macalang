@@ -88,8 +88,8 @@ ask_tmp() -> str =>
  */
 ask_once(c: Client, method: str, at: str, body: str, kind: str) -> Reply {
     if !have("curl") {
-        return ask_failed("curl is not on PATH, and it is what chaski sends "
-                              ++ "with")
+        return ask_failed("curl is not on PATH, and it is what chaski sends " +
+                              "with")
     }
 
     stamp = str(now_ms())
@@ -115,24 +115,24 @@ ask_args(c: Client, method: str, at: str, body: str, kind: str, out: str,
          payload: str) -> str[] {
     args = ["-sS", "-i", "-X", method, "--max-time", str(c.seconds),
             "-H", "Expect:", "-o", out]
-    args = args ++ ask_header_flags(c.headers, 0, [])
+    args = args + ask_header_flags(c.headers, 0, [])
 
     if kind != "" {
-        args = args ++ ["-H", "Content-Type: {kind}"]
+        args = args + ["-H", "Content-Type: {kind}"]
     }
 
     if body != "" {
-        args = args ++ ["--data-binary", "@{payload}"]
+        args = args + ["--data-binary", "@{payload}"]
     }
 
-    args ++ [at]
+    args + [at]
 }
 
 ask_header_flags(hs: str[], i: int, acc: str[]) -> str[] {
     if i >= hs.length() {
         acc
     } else {
-        ask_header_flags(hs, i + 1, acc ++ ["-H", hs.get(i)])
+        ask_header_flags(hs, i + 1, acc + ["-H", hs.get(i)])
     }
 }
 
@@ -187,7 +187,7 @@ ask_status(head: str) -> int {
  * carries none.
  */
 reply_header(r: Reply, name: str) -> str =>
-    ask_scan(r.headers.split("\n"), 0, name.lower() ++ ":")
+    ask_scan(r.headers.split("\n"), 0, name.lower() + ":")
 
 ask_scan(lines: str[], i: int, want: str) -> str {
     if i >= lines.length() {

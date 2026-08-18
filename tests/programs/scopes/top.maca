@@ -1,5 +1,5 @@
 /** `s` widened to `w` characters with trailing spaces. */
 column(s: str, w: int) -> str {
     short = w - s.length()
-    short > 0 ? s ++ " ".repeat(short) : s
+    short > 0 ? s + " ".repeat(short) : s
 }

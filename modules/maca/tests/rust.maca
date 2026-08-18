@@ -18,7 +18,7 @@ borrows_of(src: str) -> str[] =>
     kept_borrow_notes(annotated(parse_module(lex(src), 0, [])))
 
 impl_src(methods: str) -> str =>
-    "Counter = {{ count: int }}\nCounter : Greet = {{\n" ++ methods ++ "}}\n"
+    "Counter = {{ count: int }}\nCounter : Greet = {{\n" + methods + "}}\n"
 
 test_main_exits_with_the_code_it_answered() {
     made = gate_rust("main() -> int {{ info(\"hi\") 0 }}")
@@ -49,10 +49,10 @@ test_a_record_is_a_struct_and_a_sum_is_an_enum() {
 }
 
 test_a_variant_with_a_payload_is_a_data_enum() {
-    made = gate_rust("Shape = Circle(int) | Rect(int, int)\n"
-                     ++ "area(s: Shape) -> int => match s {{"
-                     ++ " Circle(r) => r * r Rect(w, h) => w * h }}\n"
-                     ++ "main() -> int {{ area(Circle(5)) }}")
+    made = gate_rust("Shape = Circle(int) | Rect(int, int)\n" +
+                     "area(s: Shape) -> int => match s {{" +
+                     " Circle(r) => r * r Rect(w, h) => w * h }}\n" +
+                     "main() -> int {{ area(Circle(5)) }}")
 
     assert(made.index_of("enum Shape {{ Circle(i64), Rect(i64, i64) }}") >= 0,
            "each variant carries the types it declared")
@@ -65,20 +65,20 @@ test_a_variant_with_a_payload_is_a_data_enum() {
 }
 
 test_a_value_read_twice_is_cloned_rather_than_moved() {
-    made = gate_rust("Grid = {{ rows: int }}\n"
-                     ++ "Outcome = Rows(Grid) | Affected(int)\n"
-                     ++ "rows_of(o: Outcome) -> int => match o {{"
-                     ++ " Rows(g) => g.rows Affected(n) => n }}\n"
-                     ++ "main() -> int {{ r = Rows(Grid {{ rows = 7 }})"
-                     ++ " info(\"{{rows_of(r)}}\") rows_of(r) }}")
+    made = gate_rust("Grid = {{ rows: int }}\n" +
+                     "Outcome = Rows(Grid) | Affected(int)\n" +
+                     "rows_of(o: Outcome) -> int => match o {{" +
+                     " Rows(g) => g.rows Affected(n) => n }}\n" +
+                     "main() -> int {{ r = Rows(Grid {{ rows = 7 }})" +
+                     " info(\"{{rows_of(r)}}\") rows_of(r) }}")
 
     assert(made.index_of("rows_of(r.clone())") >= 0,
            "the second read would be a use after move")
 }
 
 test_a_reassignment_is_not_a_new_binding() {
-    made = gate_rust("sum_to(n: int) -> int {{ acc = 0 i = 1"
-                     ++ " while i <= n {{ acc = acc + i i = i + 1 }} acc }}")
+    made = gate_rust("sum_to(n: int) -> int {{ acc = 0 i = 1" +
+                     " while i <= n {{ acc = acc + i i = i + 1 }} acc }}")
 
     assert(made.index_of("let mut acc = 0i64;") >= 0, "the first write declares")
     assert(made.index_of("acc = (acc + i);") >= 0
@@ -97,11 +97,11 @@ test_a_list_is_a_vec_and_its_length_is_a_number() {
 }
 
 test_break_and_continue_are_lowered_rather_than_defaulted() {
-    made = gate_rust("count_to(n: int) -> int {{ i = 0"
-                     ++ " while true {{ i = i + 1 if i >= n {{ break }} }} i }}\n"
-                     ++ "evens_below(n: int) -> int {{ total = 0"
-                     ++ " for i in 1..n {{ if i % 2 == 1 {{ continue }} total = total + i }}"
-                     ++ " total }}")
+    made = gate_rust("count_to(n: int) -> int {{ i = 0" +
+                     " while true {{ i = i + 1 if i >= n {{ break }} }} i }}\n" +
+                     "evens_below(n: int) -> int {{ total = 0" +
+                     " for i in 1..n {{ if i % 2 == 1 {{ continue }} total = total + i }}" +
+                     " total }}")
 
     assert(made.index_of("break") >= 0, "a break is a break")
     assert(made.index_of("continue") >= 0, "and a continue is a continue")
@@ -110,8 +110,8 @@ test_break_and_continue_are_lowered_rather_than_defaulted() {
 }
 
 test_a_record_update_copies_the_base_it_was_given() {
-    made = gate_rust("Point = {{ x: int y: int }}\n"
-                     ++ "moved(p: Point) -> int {{ q = p with {{ x = 9 }} q.x + q.y }}")
+    made = gate_rust("Point = {{ x: int y: int }}\n" +
+                     "moved(p: Point) -> int {{ q = p with {{ x = 9 }} q.x + q.y }}")
 
     assert(made.index_of("Default::default()") < 0,
            "the untouched fields come from the base, not from a zero value")
@@ -142,8 +142,8 @@ test_a_shift_lowers_to_the_rust_shift() {
 }
 
 test_a_binder_the_arm_writes_is_mutable() {
-    made = gate_rust("grown(x: int) -> int {{ out = 0"
-                         ++ " match x {{ v => {{ v = v + 1 out = v }} }} out }}")
+    made = gate_rust("grown(x: int) -> int {{ out = 0" +
+                         " match x {{ v => {{ v = v + 1 out = v }} }} out }}")
 
     assert(made.index_of("mut v => ") >= 0,
            "Maca reassigns the binder where Rust would shadow it")
@@ -152,9 +152,9 @@ test_a_binder_the_arm_writes_is_mutable() {
 }
 
 test_a_record_of_methods_is_that_type_implemented_for_the_record() {
-    made = gate_rust(impl_src("    value = (self) => self.count + 1\n"
-                                  ++ "    bump = (self) =>"
-                                  ++ " self.count = self.count + 100\n"))
+    made = gate_rust(impl_src("    value = (self) => self.count + 1\n" +
+                                  "    bump = (self) =>" +
+                                  " self.count = self.count + 100\n"))
 
     assert(made.index_of("impl Greet for Counter {{") >= 0,
            "the declared type is the trait, and the bound name is what it is for")
@@ -174,8 +174,8 @@ test_a_record_of_methods_is_that_type_implemented_for_the_record() {
 }
 
 test_a_method_borrows_every_type_its_module_never_declared() {
-    made = gate_rust(impl_src("    bump = (self, w: Window, n: int)"
-                                  ++ " -> AnyElement => self.count\n"))
+    made = gate_rust(impl_src("    bump = (self, w: Window, n: int)" +
+                                  " -> AnyElement => self.count\n"))
 
     assert(made.index_of("w: &mut Window") >= 0,
            "a foreign value belongs to the caller, so it is lent for the call")
@@ -186,14 +186,14 @@ test_a_method_borrows_every_type_its_module_never_declared() {
 }
 
 test_a_borrowed_value_may_be_read_and_passed_on_but_not_kept() {
-    kept = borrows_of("Holder = {{ saved: Window }}\nHolder : Keep = {{\n"
-                          ++ "    keep = (self, w: Window) -> int =>"
-                          ++ " Holder {{ saved = w }}.saved\n}}\n")
-    given = borrows_of("Holder = {{ saved: int }}\nHolder : Keep = {{\n"
-                           ++ "    keep = (self, w: Window) -> int =>"
-                           ++ " peek(w)\n}}\n")
-    back = borrows_of("Holder = {{ saved: int }}\nHolder : Keep = {{\n"
-                          ++ "    keep = (self, w: Window) -> Window => w\n}}\n")
+    kept = borrows_of("Holder = {{ saved: Window }}\nHolder : Keep = {{\n" +
+                          "    keep = (self, w: Window) -> int =>" +
+                          " Holder {{ saved = w }}.saved\n}}\n")
+    given = borrows_of("Holder = {{ saved: int }}\nHolder : Keep = {{\n" +
+                           "    keep = (self, w: Window) -> int =>" +
+                           " peek(w)\n}}\n")
+    back = borrows_of("Holder = {{ saved: int }}\nHolder : Keep = {{\n" +
+                          "    keep = (self, w: Window) -> Window => w\n}}\n")
 
     assert_eq(str(kept.length()), "1", "a borrow put in a record never comes back")
     assert(kept.get(0).index_of("`w` in method `keep`") >= 0,
@@ -205,11 +205,11 @@ test_a_borrowed_value_may_be_read_and_passed_on_but_not_kept() {
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-rust-foreign"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-rust-foreign"
     make_dir(dir)
 
     dir
@@ -229,75 +229,75 @@ emitted_rust(name: str, src: str) -> str {
     read_file("{scratch()}/{name}.rs")
 }
 
-ClosureSrc = "import \"shim.rs\" \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64)"
-    ++ " -> i64 {{ f(x) }}\n\"\"\"\n\n"
-    ++ "main() -> int {{\n    r = apply(n => n + 1, 41)\n"
-    ++ "    info(\"apply = {{r}}\")\n    r\n}}\n"
+ClosureSrc = "import \"shim.rs\" \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64)" +
+    " -> i64 {{ f(x) }}\n\"\"\"\n\n" +
+    "main() -> int {{\n    r = apply(n => n + 1, 41)\n" +
+    "    info(\"apply = {{r}}\")\n    r\n}}\n"
 
-TraitSrc = "import \"shim.rs\" \"\"\"\ntrait Greet {{ fn value(&mut self) -> i64; }}"
-    ++ "\n\"\"\"\n\nCounter = {{ count: int }}\n"
-    ++ "Counter : Greet = {{\n    value = (self) => self.count + 1\n}}\n\n"
-    ++ "main() -> int {{\n    c = Counter {{ count = 41 }}\n"
-    ++ "    v = c.value()\n    info(\"value = {{v}}\")\n    v\n}}\n"
+TraitSrc = "import \"shim.rs\" \"\"\"\ntrait Greet {{ fn value(&mut self) -> i64; }}" +
+    "\n\"\"\"\n\nCounter = {{ count: int }}\n" +
+    "Counter : Greet = {{\n    value = (self) => self.count + 1\n}}\n\n" +
+    "main() -> int {{\n    c = Counter {{ count = 41 }}\n" +
+    "    v = c.value()\n    info(\"value = {{v}}\")\n    v\n}}\n"
 
 rustc_here() -> bool =>
     exec("sh", ["-c", "command -v rustc >/dev/null 2>&1"]) == 0
 
-CoreSrc = "Color = Red | Green | Blue\n"
-    ++ "Point = {{ x: int y: int }}\n"
-    ++ "Grid = {{ rows: int }}\n"
-    ++ "Outcome = Rows(Grid) | Affected(int)\n"
-    ++ "fib(n: int) -> int => n < 2 ? n : fib(n - 1) + fib(n - 2)\n"
-    ++ "warmth(c: Color) -> int => match c {{"
-    ++ " Red => 2 Green => 1 Blue => 0 }}\n"
-    ++ "sum_to(n: int) -> int {{ acc = 0 i = 1"
-    ++ " while i <= n {{ acc = acc + i i = i + 1 }} acc }}\n"
-    ++ "describe(o: Outcome) -> int => match o {{"
-    ++ " Rows(g) => g.rows Affected(n) => n }}\n"
-    ++ "main() -> int {{\n    p = Point {{ x = 3, y = 4 }}\n"
-    ++ "    r = Rows(Grid {{ rows = 7 }})\n"
-    ++ "    info(\"fib={{fib(10)}} warmth={{warmth(Green)}}"
-    ++ " sum={{sum_to(5)}} px={{p.x}} rows={{describe(r)}}"
-    ++ " affected={{describe(Affected(42))}}\")\n    sum_to(5)\n}}\n"
+CoreSrc = "Color = Red | Green | Blue\n" +
+    "Point = {{ x: int y: int }}\n" +
+    "Grid = {{ rows: int }}\n" +
+    "Outcome = Rows(Grid) | Affected(int)\n" +
+    "fib(n: int) -> int => n < 2 ? n : fib(n - 1) + fib(n - 2)\n" +
+    "warmth(c: Color) -> int => match c {{" +
+    " Red => 2 Green => 1 Blue => 0 }}\n" +
+    "sum_to(n: int) -> int {{ acc = 0 i = 1" +
+    " while i <= n {{ acc = acc + i i = i + 1 }} acc }}\n" +
+    "describe(o: Outcome) -> int => match o {{" +
+    " Rows(g) => g.rows Affected(n) => n }}\n" +
+    "main() -> int {{\n    p = Point {{ x = 3, y = 4 }}\n" +
+    "    r = Rows(Grid {{ rows = 7 }})\n" +
+    "    info(\"fib={{fib(10)}} warmth={{warmth(Green)}}" +
+    " sum={{sum_to(5)}} px={{p.x}} rows={{describe(r)}}" +
+    " affected={{describe(Affected(42))}}\")\n    sum_to(5)\n}}\n"
 
-ForeignSrc = "import \"std::time::Duration\"\n\n"
-    ++ "main() -> int {{\n    d = Duration.from_secs(5)\n"
-    ++ "    total = d.as_secs()\n"
-    ++ "    info(\"duration = {{total}} secs\")\n    int(total)\n}}\n"
+ForeignSrc = "import \"std::time::Duration\"\n\n" +
+    "main() -> int {{\n    d = Duration.from_secs(5)\n" +
+    "    total = d.as_secs()\n" +
+    "    info(\"duration = {{total}} secs\")\n    int(total)\n}}\n"
 
-AsyncSrc = "work(n: int) -> int => n * 2\n\nmain() -> int {{\n"
-    ++ "    a = spawn work(21)\n    b = spawn work(10)\n"
-    ++ "    info(\"{{await a}} {{await b}}\")\n    0\n}}\n"
+AsyncSrc = "work(n: int) -> int => n * 2\n\nmain() -> int {{\n" +
+    "    a = spawn work(21)\n    b = spawn work(10)\n" +
+    "    info(\"{{await a}} {{await b}}\")\n    0\n}}\n"
 
-AnonSrc = "main() -> int {{\n"
-    ++ "    c = {{ host = \"localhost\", port = 8080 }}\n"
-    ++ "    info(\"{{c.host}}:{{c.port}}\")\n"
-    ++ "    d = {{ port = 80, host = \"example.com\" }}\n"
-    ++ "    info(\"{{d.host}}:{{d.port}}\")\n    0\n}}\n"
+AnonSrc = "main() -> int {{\n" +
+    "    c = {{ host = \"localhost\", port = 8080 }}\n" +
+    "    info(\"{{c.host}}:{{c.port}}\")\n" +
+    "    d = {{ port = 80, host = \"example.com\" }}\n" +
+    "    info(\"{{d.host}}:{{d.port}}\")\n    0\n}}\n"
 
-DeclaredRetSrc = "import \"shim.rs\" \"\"\"\n"
-    ++ "pub struct Div {{ pub s: String }}\n"
-    ++ "pub struct AnyElement {{ pub s: String }}\n"
-    ++ "impl Div {{ pub fn into_any_element(self) -> AnyElement"
-    ++ " {{ AnyElement {{ s: self.s }} }} }}\n"
-    ++ "pub fn div() -> Div {{ Div {{ s: \"count \".to_string()"
-    ++ " }} }}\n"
-    ++ "pub trait Render {{ fn render(&mut self) -> AnyElement; }}\n"
-    ++ "\"\"\"\n\nCounter = {{ count: int }}\n\n"
-    ++ "Counter : Render = {{\n"
-    ++ "    render = (self) -> AnyElement => div().into_any_element()\n}}\n\n"
-    ++ "main() -> int {{\n    c = Counter {{ count = 41 }}\n"
-    ++ "    info(\"{{c.render().s}}{{c.count}}\")\n    0\n}}\n"
+DeclaredRetSrc = "import \"shim.rs\" \"\"\"\n" +
+    "pub struct Div {{ pub s: String }}\n" +
+    "pub struct AnyElement {{ pub s: String }}\n" +
+    "impl Div {{ pub fn into_any_element(self) -> AnyElement" +
+    " {{ AnyElement {{ s: self.s }} }} }}\n" +
+    "pub fn div() -> Div {{ Div {{ s: \"count \".to_string()" +
+    " }} }}\n" +
+    "pub trait Render {{ fn render(&mut self) -> AnyElement; }}\n" +
+    "\"\"\"\n\nCounter = {{ count: int }}\n\n" +
+    "Counter : Render = {{\n" +
+    "    render = (self) -> AnyElement => div().into_any_element()\n}}\n\n" +
+    "main() -> int {{\n    c = Counter {{ count = 41 }}\n" +
+    "    info(\"{{c.render().s}}{{c.count}}\")\n    0\n}}\n"
 
-BorrowSrc = "import \"shim.rs\" \"\"\"\n"
-    ++ "pub struct Window {{ pub n: i64 }}\n"
-    ++ "pub trait Bump {{ fn bump(&mut self, w: &mut Window) -> i64;"
-    ++ " }}\n"
-    ++ "pub fn peek(w: &mut Window) -> i64 {{ w.n }}\n\"\"\"\n\n"
-    ++ "Counter = {{ count: int }}\n\nCounter : Bump = {{\n"
-    ++ "    bump = (self, w: Window) -> int => peek(w) + self.count\n}}\n\n"
-    ++ "main() -> int {{\n    c = Counter {{ count = 40 }}\n"
-    ++ "    info(\"{{c.bump(Window {{ n = 2 }})}}\")\n    0\n}}\n"
+BorrowSrc = "import \"shim.rs\" \"\"\"\n" +
+    "pub struct Window {{ pub n: i64 }}\n" +
+    "pub trait Bump {{ fn bump(&mut self, w: &mut Window) -> i64;" +
+    " }}\n" +
+    "pub fn peek(w: &mut Window) -> i64 {{ w.n }}\n\"\"\"\n\n" +
+    "Counter = {{ count: int }}\n\nCounter : Bump = {{\n" +
+    "    bump = (self, w: Window) -> int => peek(w) + self.count\n}}\n\n" +
+    "main() -> int {{\n    c = Counter {{ count = 40 }}\n" +
+    "    info(\"{{c.bump(Window {{ n = 2 }})}}\")\n    0\n}}\n"
 
 ran_rust(name: str, src: str, said: str, code: str) -> bool {
     at = "{scratch()}/{name}"
@@ -316,8 +316,8 @@ ran_rust(name: str, src: str, said: str, code: str) -> bool {
 
 test_the_core_language_computes_the_same_answers_through_rustc() {
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         ran_rust("core_run", CoreSrc,
                  "fib=55 warmth=1 sum=15 px=3 rows=7 affected=42", "15")
@@ -326,22 +326,22 @@ test_the_core_language_computes_the_same_answers_through_rustc() {
 
 test_a_foreign_type_is_reached_by_its_own_path() {
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         made = emitted_rust("foreign_std", ForeignSrc)
 
         assert(made.index_of("Duration::from_secs(5)") >= 0,
-               "an associated function is reached with `::`, and a foreign"
-                   ++ " call takes the literal Rust would type for itself")
+               "an associated function is reached with `::`, and a foreign" +
+                   " call takes the literal Rust would type for itself")
         ran_rust("foreign_std", ForeignSrc, "duration = 5 secs", "5")
     }
 }
 
 test_spawn_and_await_reach_this_target_too() {
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         ran_rust("async_run", AsyncSrc, "42 20", "0")
     }
@@ -349,8 +349,8 @@ test_spawn_and_await_reach_this_target_too() {
 
 test_a_literal_of_no_named_type_still_gets_one() {
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         ran_rust("anon_run", AnonSrc, "localhost:8080", "0")
         assert(capture("{scratch()}/anon_run", []).contains("example.com:80"),
@@ -367,8 +367,8 @@ test_a_tag_a_raw_block_declares_is_that_function_and_not_an_element() {
            "and the method a trait declared answers what it said it would")
 
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         ran_rust("declared_ret", DeclaredRetSrc, "count 41", "0")
     }
@@ -381,8 +381,8 @@ test_a_foreign_argument_is_lent_at_the_call_site_as_well() {
            "the method borrows it, so the caller has to lend it")
 
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         ran_rust("borrowed_param", BorrowSrc, "42", "0")
     }
@@ -390,8 +390,8 @@ test_a_foreign_argument_is_lent_at_the_call_site_as_well() {
 
 test_a_crate_path_import_is_written_back_as_a_use_item() {
     made = emitted_rust("use_item",
-                        "import \"std::time::Duration\"\n\n"
-                            ++ "main() -> int => 0\n")
+                        "import \"std::time::Duration\"\n\n" +
+                            "main() -> int => 0\n")
 
     assert(made.index_of("use std::time::Duration;") >= 0,
            "the path the program asked for is a use item, not a dropped line")
@@ -409,8 +409,8 @@ test_a_raw_block_is_pasted_as_the_rust_it_was_written_in() {
 
 test_a_call_into_a_raw_block_is_not_an_undefined_function() {
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         assert_eq(str(built_rust("closure_run", ClosureSrc)), "0",
                   "a name the block declares is declared, so the build is clean")
@@ -421,8 +421,8 @@ test_a_call_into_a_raw_block_is_not_an_undefined_function() {
 
 test_a_trait_a_raw_block_declared_is_implemented_for_a_record() {
     if !rustc_here() {
-        assert(true, "running what was emitted needs rustc, which this host "
-                         ++ "has not got")
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
     } else {
         assert_eq(str(built_rust("trait_run", TraitSrc)), "0",
                   "the trait is declared by the block, and implemented here")

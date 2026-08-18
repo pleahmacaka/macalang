@@ -52,8 +52,8 @@ test_a_gutter_mark_toggles_and_the_stops_come_out_in_order() {
     assert_eq(gutter(ide, 1), "*", "a marked line draws a stop")
     assert_eq(gutter(ide, 4), "4", "and an unmarked one draws its number")
     assert_eq(stops(ide), "1,2,3",
-              "the runner is told the lines in order, whatever order they "
-                  ++ "were clicked in")
+              "the runner is told the lines in order, whatever order they " +
+                  "were clicked in")
 
     off = toggled(ide, 2)
 
@@ -213,8 +213,8 @@ test_the_editor_says_the_truth_about_updating_in_every_case() {
     assert(update_said("0.4.0", "0.4.0").contains("is the latest"),
            "and nothing is offered when there is nothing")
     assert(update_said("0.4.0", "").contains("could not reach"),
-           "a release nobody could ask about is said to be unknown, never "
-               ++ "reported as up to date")
+           "a release nobody could ask about is said to be unknown, never " +
+               "reported as up to date")
 }
 
 main() -> int {

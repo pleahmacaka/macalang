@@ -22,11 +22,11 @@ RaJoin = "j(xs: str[]) -> str => xs.join(\", \")"
 
 RaChars = "c(s: str) -> str => s.chars().join(\"\")"
 
-RaMap = "u(s: str) -> str => s.upper()"
-    ++ "  m(xs: str[]) -> str => xs.map(u).join(\", \")"
+RaMap = "u(s: str) -> str => s.upper()" +
+    "  m(xs: str[]) -> str => xs.map(u).join(\", \")"
 
-RaPred = "p(c: str) -> bool =>"
-    ++ " c.is_whitespace() || c.is_ascii_digit() || c.is_alpha()"
+RaPred = "p(c: str) -> bool =>" +
+    " c.is_whitespace() || c.is_ascii_digit() || c.is_alpha()"
 
 RaFind = "q(s: str, t: str) -> bool => s.contains(t) && s.ends_with(t)"
 
@@ -210,8 +210,8 @@ test_an_empty_list_leaves_its_element_type_to_be_inferred() {
     out = ra_rust("f() -> int[] => []")
 
     assert(out.index_of("Rc::new(vec![])") >= 0,
-           "the checker leaves an empty list open, so pinning it named i64"
-               ++ " where a Vec<Ty> was wanted")
+           "the checker leaves an empty list open, so pinning it named i64" +
+               " where a Vec<Ty> was wanted")
 }
 
 test_a_function_with_no_declared_return_takes_the_type_of_its_tail() {
@@ -222,9 +222,9 @@ test_a_function_with_no_declared_return_takes_the_type_of_its_tail() {
 }
 
 test_a_program_that_calls_nothing_foreign_emits_no_unsafe() {
-    out = ra_rust("R = {{ n: int }} f(xs: R[]) -> int => xs.get(0).n"
-                  ++ " g(s: str) -> str => s.upper()"
-                  ++ " h(m: Map str int) -> int => m.get(\"k\")")
+    out = ra_rust("R = {{ n: int }} f(xs: R[]) -> int => xs.get(0).n" +
+                  " g(s: str) -> str => s.upper()" +
+                  " h(m: Map str int) -> int => m.get(\"k\")")
 
     assert(out.index_of("unsafe") < 0,
            "Maca has no raw pointer and no transmute, so nothing needs it")
@@ -233,8 +233,8 @@ test_a_program_that_calls_nothing_foreign_emits_no_unsafe() {
 test_a_foreign_call_keeps_its_unsafe_in_one_wrapper() {
     out = ra_rust("now_parts() -> int\nuse() -> int => now_parts()")
 
-    assert(out.index_of("fn now_parts() -> i64 {{ unsafe {{"
-                        ++ " now_parts_raw() }} }}") >= 0,
+    assert(out.index_of("fn now_parts() -> i64 {{ unsafe {{" +
+                        " now_parts_raw() }} }}") >= 0,
            "Rust cannot cross the C ABI safely, so the block is the boundary")
     assert(out.index_of("unsafe {{ now_parts_raw() }} }} }}") < 0,
            "and the call site stays outside it")

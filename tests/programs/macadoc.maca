@@ -82,7 +82,7 @@ test_a_row_links_within_its_page_and_across_the_others() {
 TySpan = "<span class=\"tok-ty\">"
 
 test_a_type_in_a_signature_becomes_a_link() {
-    got = cross_linked(ty("Point") ++ " -&gt; " ++ ty("Facing"), fixture(),
+    got = cross_linked(ty("Point") + " -&gt; " + ty("Facing"), fixture(),
                        "shapes", "shift")
 
     assert(links_to(got, "Point", "#Point"), "the parameter's type")
@@ -99,13 +99,13 @@ test_a_type_from_another_module_carries_its_page() {
 }
 
 links_to(html: str, name: str, href: str) -> bool {
-    at = html.index_of("href=\"" ++ href ++ "\"")
+    at = html.index_of("href=\"" + href + "\"")
 
     if at < 0 {
         false
     } else {
         text = split_once(html.slice(at, html.length()), ">").get(1)
-        text.starts_with(name ++ "</a>")
+        text.starts_with(name + "</a>")
     }
 }
 
@@ -126,7 +126,7 @@ test_an_item_does_not_link_to_itself() {
 }
 
 ty(name: str) -> str =>
-    TySpan ++ name ++ "</span>"
+    TySpan + name + "</span>"
 
 fixture() -> Module[] =>
     [Module { path = "fx/shapes.maca", name = "shapes", blurb = [],
@@ -239,10 +239,10 @@ test_every_item_appears_in_its_own_sidebar_branch() {
 }
 
 own_branch(page: str, name: str) -> str =>
-    between(page, "data-mod=\"" ++ name ++ "\" open>", "</details>")
+    between(page, "data-mod=\"" + name + "\" open>", "</details>")
 
 missing_rows(dir: str, name: str) -> str {
-    page = read_file(join(dir, name ++ ".html"))
+    page = read_file(join(dir, name + ".html"))
     branch = own_branch(page, name)
 
     absent(branch, values_of(page, "<article id=\""), 0, []).join(", ")
@@ -251,7 +251,7 @@ missing_rows(dir: str, name: str) -> str {
 absent(branch: str, ids: str[], i: int, acc: str[]) -> str[] {
     if i >= ids.length() {
         acc
-    } else if branch.contains("data-item=\"" ++ ids.get(i) ++ "\"") {
+    } else if branch.contains("data-item=\"" + ids.get(i) + "\"") {
         absent(branch, ids, i + 1, acc)
     } else {
         absent(branch, ids, i + 1, acc.push(ids.get(i)))
@@ -358,7 +358,7 @@ resolves(dir: str, page: str, href: str) -> bool {
         } else if anchor == "" {
             true
         } else {
-            read_file(join(dir, file)).contains("id=\"" ++ anchor ++ "\"")
+            read_file(join(dir, file)).contains("id=\"" + anchor + "\"")
         }
     }
 }
@@ -398,7 +398,7 @@ test_a_signature_is_highlighted_and_carries_its_own_text() {
 }
 
 sig_of(page: str, name: str) -> str =>
-    between(between(page, "<article id=\"" ++ name ++ "\"", "</article>"),
+    between(between(page, "<article id=\"" + name + "\"", "</article>"),
             "<pre", "</pre>")
 
 test_a_kind_heading_appears_only_for_a_kind_that_is_there() {
@@ -463,7 +463,7 @@ test_no_two_elements_on_a_page_share_an_id() {
 }
 
 kind_of(page: str, name: str) -> str {
-    at = page.index_of("id=\"" ++ name ++ "\"")
+    at = page.index_of("id=\"" + name + "\"")
 
     if at < 0 {
         ""

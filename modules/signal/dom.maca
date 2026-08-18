@@ -32,7 +32,7 @@ html_node(s: Store, tag: str, key: str) -> str =>
     element(tag, data-signal=key, data-signal-as="html", get(s, key))
 
 /** The selector matching every node bound to `key`. */
-selector(key: str) -> str => "[data-signal=\"" ++ css_escaped(key) ++ "\"]"
+selector(key: str) -> str => "[data-signal=\"" + css_escaped(key) + "\"]"
 
 css_escaped(key: str) -> str =>
     key.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -78,22 +78,22 @@ patch_script(s: Store) -> str {
     if ops.length() == 0 {
         ""
     } else {
-        "macaSignal(" ++ ops_json(ops) ++ ");"
+        "macaSignal(" + ops_json(ops) + ");"
     }
 }
 
 /** The current patch as a JSON array, `[]` when nothing changed. */
 patch_json(s: Store) -> str => ops_json(patch(s))
 
-ops_json(ops: Op[]) -> str => "[" ++ encode(ops, 0, []).join(",") ++ "]"
+ops_json(ops: Op[]) -> str => "[" + encode(ops, 0, []).join(",") + "]"
 
 encode(ops: Op[], i: int, acc: str[]) -> str[] {
     if i >= ops.length() {
         acc
     } else {
         op = ops.get(i)
-        obj = "\{\"key\":" ++ quoted(op.key) ++ ",\"value\":"
-            ++ quoted(op.value) ++ "\}"
+        obj = "\{\"key\":" + quoted(op.key) + ",\"value\":" +
+            quoted(op.value) + "\}"
         encode(ops, i + 1, acc.push(obj))
     }
 }
@@ -104,10 +104,10 @@ escaped_value(v: str) -> str =>
         .replace("\n", "\\n")
         .replace("\r", "\\r")
 
-shown(v: str) -> str => "\"" ++ escaped_value(v) ++ "\""
+shown(v: str) -> str => "\"" + escaped_value(v) + "\""
 
 quoted(v: str) -> str =>
-    "\"" ++ escaped_value(v).replace("<", "\\u003c") ++ "\""
+    "\"" + escaped_value(v).replace("<", "\\u003c") + "\""
 
 /** `ops` applied to the markup they were computed against. */
 apply_patch(page: str, ops: Op[]) -> str => applied(page, ops, 0)
@@ -145,19 +145,19 @@ patch_node(page: str, op: Op, lt: int) -> str {
 patch_children(page: str, op: Op, tag: str, from: int, raw: bool) -> str {
     close = close_at(page, tag, from)
     shown = raw ? op.value : escape_html(op.value)
-    next = page.slice(0, from) ++ shown ++ page.slice(close, page.length())
+    next = page.slice(0, from) + shown + page.slice(close, page.length())
 
     apply_from(next, op, from + shown.length())
 }
 
 patch_attr(page: str, op: Op, lt: int, gt: int, name: str) -> str {
     rebuilt = with_attr(page.slice(lt, gt + 1), name, op.value)
-    next = page.slice(0, lt) ++ rebuilt ++ page.slice(gt + 1, page.length())
+    next = page.slice(0, lt) + rebuilt + page.slice(gt + 1, page.length())
 
     apply_from(next, op, lt + rebuilt.length())
 }
 
-marker(key: str) -> str => "data-signal=\"" ++ escape_html(key) ++ "\""
+marker(key: str) -> str => "data-signal=\"" + escape_html(key) + "\""
 
 tag_open(page: str, at: int) -> int {
     if at <= 0 {
@@ -175,7 +175,7 @@ name_from(page: str, i: int, acc: str) -> str {
     if i >= page.length() || !is_name_char(page.at(i)) {
         acc
     } else {
-        name_from(page, i + 1, acc ++ page.at(i))
+        name_from(page, i + 1, acc + page.at(i))
     }
 }
 
@@ -185,7 +185,7 @@ close_at(page: str, tag: str, from: int) -> int =>
     close_scan(page, tag, from, 0)
 
 close_scan(page: str, tag: str, at: int, depth: int) -> int {
-    closing = index_of_from(page, "</" ++ tag ++ ">", at)
+    closing = index_of_from(page, "</" + tag + ">", at)
     opening = next_open(page, tag, at)
 
     if closing < 0 {
@@ -200,7 +200,7 @@ close_scan(page: str, tag: str, at: int, depth: int) -> int {
 }
 
 next_open(page: str, tag: str, at: int) -> int {
-    found = index_of_from(page, "<" ++ tag, at)
+    found = index_of_from(page, "<" + tag, at)
     after = found + tag.length() + 1
 
     if found < 0 {
@@ -213,20 +213,20 @@ next_open(page: str, tag: str, at: int) -> int {
 }
 
 with_attr(open: str, name: str, v: str) -> str {
-    pat = " " ++ name ++ "=\""
+    pat = " " + name + "=\""
     at = open.index_of(pat)
     end = index_of_from(open, "\"", at + pat.length())
 
     if at < 0 {
-        open.slice(0, open.length() - 1) ++ pat ++ escape_html(v) ++ "\">"
+        open.slice(0, open.length() - 1) + pat + escape_html(v) + "\">"
     } else {
-        open.slice(0, at + pat.length()) ++ escape_html(v)
-            ++ open.slice(end, open.length())
+        open.slice(0, at + pat.length()) + escape_html(v) +
+            open.slice(end, open.length())
     }
 }
 
 attr_in(open: str, name: str) -> str {
-    pat = " " ++ name ++ "=\""
+    pat = " " + name + "=\""
     at = open.index_of(pat)
 
     if at < 0 {

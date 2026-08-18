@@ -5,7 +5,7 @@ maca_bin() -> str =>
     env_or("MACA", "target/release/maca")
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-corpus-docs"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-corpus-docs"
     make_dir(dir)
 
     dir
@@ -37,7 +37,7 @@ imports_a_package(block: str) -> bool =>
         .length() > 0
 
 as_program(block: str) -> str =>
-    block.contains("main(") ? block : block ++ "\nmain() -> int => 0\n"
+    block.contains("main(") ? block : block + "\nmain() -> int => 0\n"
 
 test_a_fenced_block_is_read_back_as_the_program_it_shows() {
     md = ["prose", "```maca", "import std/text", "", "main() -> int => 0",
@@ -63,33 +63,33 @@ test_every_documented_import_names_something_that_exists() {
     for file in documented_files() {
         for block in maca_blocks(read_file(file)) {
             if imports_a_package(block) {
-                src = scratch() ++ "/doc.maca"
+                src = scratch() + "/doc.maca"
                 write_file(src, as_program(block))
                 built = built + 1
 
                 assert_eq(exec(maca_bin(),
-                    ["build", src, "-o", scratch() ++ "/doc.out"]), 0,
+                    ["build", src, "-o", scratch() + "/doc.out"]), 0,
                     "a documented example in {file} does not build:\n{block}")
             }
         }
     }
 
     assert(built > 0,
-        "no documented example imports a package: either the docs stopped "
-            ++ "showing one, or the reading above stopped recognising it")
+        "no documented example imports a package: either the docs stopped " +
+            "showing one, or the reading above stopped recognising it")
 }
 
 test_the_corpus_rules_hold() {
     assert_eq(exec(maca_bin(), ["test", "apps/corpus/tests/corpus.maca"]), 0,
-        "the licence gate and the record shape are what decide whether the "
-            ++ "corpus may be redistributed")
+        "the licence gate and the record shape are what decide whether the " +
+            "corpus may be redistributed")
 }
 
 test_the_allowed_list_holds_no_copyleft() {
     src = read_file("apps/corpus/licence.maca")
 
     for refused in ["GPL", "AGPL", "LGPL", "SSPL", "CC-BY-SA"] {
-        assert(!src.contains("\"" ++ refused),
+        assert(!src.contains("\"" + refused),
             "`{refused}` is on the allowed list, and a corpus is redistributed")
     }
 }

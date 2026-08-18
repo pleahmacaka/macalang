@@ -128,8 +128,8 @@ handbook_reading() -> Reading {
         fail "{BookDir}: no chapters"
     }
 
-    Reading { value = "{n}", unit = "chapters, {book_languages().length()}"
-                                   ++ " languages",
+    Reading { value = "{n}", unit = "chapters, {book_languages().length()}" +
+                                   " languages",
               from = BookConfig }
 }
 

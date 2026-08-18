@@ -96,13 +96,13 @@ fn_type_args(ts: Token[], i: int, shut: int, acc: str) -> str {
         sep = acc == "" ? "" : ", "
 
         fn_type_args(ts, skip_comma(ts, one.tnext), shut,
-                     acc ++ sep ++ one.tname)
+                     acc + sep + one.tname)
     }
 }
 
 type_apply(ts: Token[], i: int, head: str) -> PType {
     if is_upper(head) && type_arg_at(ts, i) {
-        type_apply(ts, i + 1, head ++ " " ++ ts.get(i).text)
+        type_apply(ts, i + 1, head + " " + ts.get(i).text)
     } else {
         mk_ptype(head, i)
     }
@@ -127,7 +127,7 @@ type_post(ts: Token[], t: PType) -> PType {
     dotted = ts.get(t.tnext).kind == Dot && ts.get(t.tnext + 1).kind == TIdent
 
     if listed {
-        type_post(ts, mk_ptype(t.tname ++ "[]", t.tnext + 2))
+        type_post(ts, mk_ptype(t.tname + "[]", t.tnext + 2))
     } else if dotted {
         type_post(ts, mk_ptype("{t.tname}.{ts.get(t.tnext + 1).text}",
                                t.tnext + 2))
@@ -266,7 +266,7 @@ parse_list_expr(ts: Token[], i: int) -> PExpr {
 
 more_elems(ts: Token[], i: int, acc: Expr[]) -> PExpr {
     e = parse_expr(ts, i)
-    seen = acc ++ [e.node]
+    seen = acc + [e.node]
 
     if ts.get(e.next).kind == Comma {
         more_elems(ts, e.next + 1, seen)
@@ -288,9 +288,31 @@ parse_block(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
         parse_local_fn(ts, i, acc)
     } else if binds_a_name(ts, i) || is_const_word(ts, i) {
         parse_bind_stmt(ts, i, acc)
+    } else if bumps(ts, i) {
+        parse_bump(ts, i, acc)
     } else {
         parse_expr_stmt(ts, i, acc)
     }
+}
+
+/** `n+` and `+n` are the one place `+` still means something, and both are
+ * `n = n + 1` written small.
+ */
+bumps(ts: Token[], i: int) -> bool {
+    if ts.get(i).kind == PlusPlus && ts.get(i + 1).kind == TIdent {
+        return true
+    }
+
+    ts.get(i).kind == TIdent && ts.get(i + 1).kind == PlusPlus
+        && !ts.get(i + 1).fresh
+}
+
+parse_bump(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
+    name = ts.get(i).kind == TIdent ? ts.get(i).text : ts.get(i + 1).text
+    set = s_expr(e_binary("=", e_ident(name),
+                          e_binary("+", e_ident(name), e_int(1))))
+
+    parse_block(ts, i + 2, acc + [set])
 }
 
 starts_local_fn(ts: Token[], i: int) -> bool {
@@ -311,7 +333,7 @@ parse_local_fn(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     held = made.snode
 
     parse_block(ts, made.snext,
-                acc ++ [s_bind(held.name,
+                acc + [s_bind(held.name,
                                e_lambda(held.params, body_expr(held.body)))])
 }
 
@@ -337,7 +359,7 @@ parse_bind_stmt(ts: Token[], at: int, acc: Stmt[]) -> PBlock {
     made = s_bind_typed(ts.get(i).text, bind_type(ts, i + 1), v.node)
     kept = made with { frozen = i > at || says_as_const(ts, v.next) }
 
-    parse_block(ts, past_as_const(ts, v.next), acc ++ [kept])
+    parse_block(ts, past_as_const(ts, v.next), acc + [kept])
 }
 
 parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
@@ -346,7 +368,7 @@ parse_expr_stmt(ts: Token[], i: int, acc: Stmt[]) -> PBlock {
     if ts.get(e.next).kind == Eq {
         parse_store_stmt(ts, e, acc)
     } else {
-        parse_block(ts, e.next, acc ++ [s_expr(e.node)])
+        parse_block(ts, e.next, acc + [s_expr(e.node)])
     }
 }
 
@@ -354,7 +376,7 @@ parse_store_stmt(ts: Token[], target: PExpr, acc: Stmt[]) -> PBlock {
     v = parse_expr(ts, target.next + 1)
     set = s_expr(e_binary("=", target.node, v.node))
 
-    parse_block(ts, v.next, acc ++ [set])
+    parse_block(ts, v.next, acc + [set])
 }
 
 parse_module(ts: Token[], i: int, acc: Stmt[]) -> Module =>
@@ -381,7 +403,7 @@ parse_items(ts: Token[], i: int, acc: Stmt[], bad: str[]) -> Module {
             out = out.push(at_pos(one.made.get(0), ts.get(at).pos))
         }
 
-        errs = errs ++ one.obad
+        errs = errs + one.obad
         at = one.onext
     }
 
@@ -462,7 +484,7 @@ dotted_name(ts: Token[], i: int, end: int, acc: str) -> str {
     if i >= end {
         acc
     } else {
-        dotted_name(ts, i + 1, end, acc ++ ts.get(i).text)
+        dotted_name(ts, i + 1, end, acc + ts.get(i).text)
     }
 }
 
@@ -572,7 +594,7 @@ parse_variants(ts: Token[], i: int, acc: Expr[]) -> PParams {
 
 one_variant(ts: Token[], i: int, acc: Expr[]) -> PParams {
     v = parse_variant(ts, i)
-    seen = acc ++ [v.node]
+    seen = acc + [v.node]
 
     if ts.get(v.next).kind == Bar {
         parse_variants(ts, v.next + 1, seen)
@@ -617,9 +639,9 @@ arrow_doubt(ts: Token[], i: int) -> str[] {
             || arrow_read(ts, at + 1) != ABoth {
         []
     } else {
-        ["`{ts.get(i).text}`: this `=> {{ … }}` reads as a record literal and"
-             ++ " as a block. Write `Name {{ … }}` for the record, or drop the"
-             ++ " `=>` for the block"]
+        ["`{ts.get(i).text}`: this `=> {{ … }}` reads as a record literal and" +
+             " as a block. Write `Name {{ … }}` for the record, or drop the" +
+             " `=>` for the block"]
     }
 }
 
@@ -640,7 +662,7 @@ parse_fields(ts: Token[], i: int, acc: Expr[]) -> PParams {
 
 parse_one_field(ts: Token[], i: int, acc: Expr[]) -> PParams {
     t = scan_type(ts, i + 2)
-    seen = acc ++ [e_param(ts.get(i).text, t.tname)]
+    seen = acc + [e_param(ts.get(i).text, t.tname)]
 
     parse_fields(ts, skip_comma(ts, t.tnext), seen)
 }
@@ -664,10 +686,10 @@ parse_params(ts: Token[], i: int, acc: Expr[]) -> PParams {
 parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
     if ts.get(i).kind == Ellipsis {
         parse_params(ts, skip_comma(ts, after_param_type(ts, i + 1)),
-                     acc ++ [rest_param(ts, i + 1)])
+                     acc + [rest_param(ts, i + 1)])
     } else {
         parse_params(ts, skip_comma(ts, after_param_type(ts, i)),
-                     acc ++ [e_param(ts.get(i).text, param_type(ts, i))])
+                     acc + [e_param(ts.get(i).text, param_type(ts, i))])
     }
 }
 
@@ -675,7 +697,7 @@ parse_one_param(ts: Token[], i: int, acc: Expr[]) -> PParams {
  * list.
  */
 rest_param(ts: Token[], i: int) -> Expr =>
-    e_param(ts.get(i).text, param_type(ts, i) ++ "[]") with { ival = 1 }
+    e_param(ts.get(i).text, param_type(ts, i) + "[]") with { ival = 1 }
 
 param_type(ts: Token[], i: int) -> str {
     if ts.get(i + 1).kind != Colon {
@@ -745,7 +767,7 @@ parse_bin(ts: Token[], lhs: PExpr, min_prec: int) -> PExpr {
 }
 
 leads_a_line(k: Kind) -> bool =>
-    k == PlusPlus || k == Bar || k == PipePipe || k == PipeGt || k == AmpAmp
+    k == Bar || k == PipePipe || k == PipeGt || k == AmpAmp
 
 climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
     op = ts.get(lhs.next).text
@@ -760,10 +782,10 @@ climb(ts: Token[], lhs: PExpr, p: int, min_prec: int) -> PExpr {
  */
 piped(lhs: Expr, rhs: Expr) -> Expr {
     if rhs.kind == ECall {
-        e_call(rhs.text, [lhs] ++ rhs.children)
+        e_call(rhs.text, [lhs] + rhs.children)
     } else if rhs.kind == EMethod {
-        rhs with { children = [rhs.children.get(0), lhs]
-                       ++ rhs.children.slice(1, rhs.children.length()) }
+        rhs with { children = [rhs.children.get(0), lhs] +
+                       rhs.children.slice(1, rhs.children.length()) }
     } else {
         e_call(rhs.text, [lhs])
     }
@@ -856,7 +878,7 @@ plain_braces(cs: str[], i: int, acc: str) -> str {
             j = j + 1
         }
     }
-    acc ++ parts.join("")
+    acc + parts.join("")
 }
 
 escaped_brace(cs: str[], i: int) -> bool {
@@ -924,11 +946,11 @@ add_part(acc: Expr, piece: str, i: int) -> Expr {
     if i == 0 {
         e_str(piece)
     } else if i % 2 == 1 {
-        e_binary("++", acc, formatted(piece))
+        e_binary("+", acc, formatted(piece))
     } else if piece == "" {
         acc
     } else {
-        e_binary("++", acc, e_str(piece))
+        e_binary("+", acc, e_str(piece))
     }
 }
 
@@ -1065,7 +1087,7 @@ parse_list_elems(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 parse_one_elem(ts: Token[], i: int, acc: Expr[]) -> PArgs {
     e = parse_expr(ts, i)
 
-    parse_list_elems(ts, skip_comma(ts, e.next), acc ++ [e.node])
+    parse_list_elems(ts, skip_comma(ts, e.next), acc + [e.node])
 }
 
 header_brace(ts: Token[], i: int, depth: int) -> int {
@@ -1086,7 +1108,7 @@ end_tok() -> Token =>
     mk_token(Eof, "", 0)
 
 cond_tokens(ts: Token[], i: int, b: int) -> Token[] =>
-    ts.slice(i, b) ++ [end_tok(), end_tok(), end_tok(), end_tok()]
+    ts.slice(i, b) + [end_tok(), end_tok(), end_tok(), end_tok()]
 
 parse_cond(ts: Token[], i: int) -> PExpr {
     b = header_brace(ts, i, 0)
@@ -1151,7 +1173,7 @@ parse_one_arm(ts: Token[], i: int, acc: Expr[]) -> PArgs {
                                                      parse_pattern(ts, i))))
     body = parse_arm_body(ts, p.next + 1)
 
-    parse_arms(ts, body.next, acc ++ [p.node, body.node])
+    parse_arms(ts, body.next, acc + [p.node, body.node])
 }
 
 /** An arm may answer with a block, the same way a branch of an `if` does. */
@@ -1407,12 +1429,12 @@ parse_one_lit_field(ts: Token[], i: int, acc: Expr[]) -> PArgs {
 
     if ts.get(i + 1).kind != Eq {
         parse_lit_fields(ts, skip_comma(ts, i + 1),
-                         acc ++ [e_binary("=", e_ident(fname), e_ident(fname))])
+                         acc + [e_binary("=", e_ident(fname), e_ident(fname))])
     } else {
         v = lit_value(ts, i + 2)
 
         parse_lit_fields(ts, skip_comma(ts, v.next),
-                         acc ++ [e_binary("=", e_ident(fname), v.node)])
+                         acc + [e_binary("=", e_ident(fname), v.node)])
     }
 }
 
@@ -1431,7 +1453,7 @@ lit_value(ts: Token[], i: int) -> PExpr {
 
 more_lit_elems(ts: Token[], i: int, acc: Expr[]) -> PExpr {
     e = parse_expr(ts, i)
-    seen = acc ++ [e.node]
+    seen = acc + [e.node]
 
     if ts.get(e.next).kind == Comma && !ends_lit_value(ts, e.next + 1) {
         more_lit_elems(ts, e.next + 1, seen)
@@ -1468,11 +1490,11 @@ parse_one_arg(ts: Token[], i: int, acc: Expr[]) -> PArgs {
         v = parse_expr(ts, named + 1)
 
         parse_args(ts, skip_comma(ts, v.next),
-                   acc ++ [e_attr(attr_name(ts, i, named, ""), v.node)])
+                   acc + [e_attr(attr_name(ts, i, named, ""), v.node)])
     } else {
         a = parse_expr(ts, i)
 
-        parse_args(ts, skip_comma(ts, a.next), acc ++ [a.node])
+        parse_args(ts, skip_comma(ts, a.next), acc + [a.node])
     }
 }
 
@@ -1500,6 +1522,6 @@ attr_name(ts: Token[], i: int, end: int, acc: str) -> str {
     if i >= end {
         acc
     } else {
-        attr_name(ts, i + 1, end, acc ++ ts.get(i).text)
+        attr_name(ts, i + 1, end, acc + ts.get(i).text)
     }
 }

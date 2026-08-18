@@ -231,6 +231,10 @@ finishing.
 - **`match` must be exhaustive** over a sum type, or include `_`. Arms are
   separated by newlines, not commas.
 - **`xs.push(v)` returns a new list.** Append with `xs = xs.push(v)`.
+- **Joining is `+`, and `++` is only the bump.** `"a" + b` and
+  `xs + ys` concatenate when the sides agree; a number beside a string
+  is a mistake, written `str(n)` or `"{n}"` instead. Binary `++` is
+  refused by name, and the statements `n++` / `++n` are `n = n + 1`.
 - **`lo..hi` is half-open**: it runs from `lo` up to but not including `hi`, so
   `0..xs.length()` is every index of `xs` and needs no `- 1`.
 - **Config mode is pure `<>`**: no effects (`info`, file I/O, …) in a NixOS/

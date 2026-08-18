@@ -1,7 +1,7 @@
 import std/proc
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-cli-suites"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-cli-suites"
     make_dir(dir)
 
     dir
@@ -10,13 +10,13 @@ scratch() -> str {
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 suite_code(path: str) -> int {
     assert(file_exists(path),
-        "{path} is not there, and a suite nobody can find passes by saying "
-            ++ "it holds no tests")
+        "{path} is not there, and a suite nobody can find passes by saying " +
+            "it holds no tests")
 
     exec(maca_bin(), ["test", path])
 }
@@ -43,58 +43,58 @@ test_every_package_answers_for_its_own_suite() {
 
 test_the_installer_rules_hold() {
     assert_eq(suite_code("apps/install/tests/install.maca"), 0,
-        "the installer is a Maca program, so the rules it decides an install "
-            ++ "by are checked the way every other suite is")
+        "the installer is a Maca program, so the rules it decides an install " +
+            "by are checked the way every other suite is")
 }
 
 test_a_local_named_after_a_c_macro_is_renamed() {
-    src = scratch() ++ "/macro.maca"
-    write_file(src, "main() -> int {{\n    unix = 1\n    linux = 2\n"
-        ++ "    unix + linux - 3\n}}\n")
+    src = scratch() + "/macro.maca"
+    write_file(src, "main() -> int {{\n    unix = 1\n    linux = 2\n" +
+        "    unix + linux - 3\n}}\n")
 
     assert_eq(exec(maca_bin(), ["run", src]), 0,
-        "`unix` and `linux` are names every C compiler predefines, and the "
-            ++ "preprocessor wins that argument")
+        "`unix` and `linux` are names every C compiler predefines, and the " +
+            "preprocessor wins that argument")
 }
 
 test_the_mcp_server_rules_hold() {
     assert_eq(suite_code("apps/mcp/tests/mcp.maca"), 0,
-        "the protocol the server answers is checked the way every other "
-            ++ "suite is")
+        "the protocol the server answers is checked the way every other " +
+            "suite is")
 }
 
 test_the_language_server_rules_hold() {
     assert_eq(suite_code("apps/lsp/tests/lsp.maca"), 0,
-        "the frames an editor reads and the diagnostics it draws are "
-            ++ "checked the way every other suite is")
+        "the frames an editor reads and the diagnostics it draws are " +
+            "checked the way every other suite is")
 }
 
 test_the_reference_pages_are_what_they_claim() {
     assert_eq(suite_code("tests/programs/macadoc.maca"), 0,
-        "the reference is generated from the `///` lines, so the pages and "
-            ++ "those lines are held to each other")
+        "the reference is generated from the `///` lines, so the pages and " +
+            "those lines are held to each other")
 }
 
 test_the_figures_the_front_page_states_are_read_off_a_file() {
     assert_eq(suite_code("tests/programs/site_data.maca"), 0,
-        "every number the site prints is read off a committed file, so the "
-            ++ "readers are held to those files")
+        "every number the site prints is read off a committed file, so the " +
+            "readers are held to those files")
 }
 
 test_a_nested_definition_reads_and_writes_the_scope_that_holds_it() {
     path = "tests/programs/nested_fns.maca"
 
     assert_eq(suite_code(path), 0,
-        "a local a nested definition writes lives in a cell, so the write "
-            ++ "outlives the call that opened it")
+        "a local a nested definition writes lives in a cell, so the write " +
+            "outlives the call that opened it")
     assert_eq(exec("sh", ["-c", "MACA_POISON=1 {maca_bin()} test {path}"]), 0,
         "and a cell read after its release would read the poison")
 }
 
 test_the_view_helpers_render_what_they_claim() {
     assert_eq(suite_code("tests/programs/ui.maca"), 0,
-        "elements, escaping, styles, attributes and a view local a nested "
-            ++ "definition writes, all rendered natively")
+        "elements, escaping, styles, attributes and a view local a nested " +
+            "definition writes, all rendered natively")
 }
 
 test_return_leaves_early_and_the_tail_is_still_the_value() {
@@ -104,20 +104,20 @@ test_return_leaves_early_and_the_tail_is_still_the_value() {
 
 test_an_arrow_block_is_a_block_and_a_literal_meets_its_record_type() {
     assert_eq(suite_code("tests/programs/arrow_records.maca"), 0,
-        "a `{{ … }}` with no name is the record its context wants, and a "
-            ++ "`=> {{ … }}` that is not fields is a block")
+        "a `{{ … }}` with no name is the record its context wants, and a " +
+            "`=> {{ … }}` that is not fields is a block")
 }
 
 test_the_generated_pages_are_what_they_claim() {
     assert_eq(suite_code("tests/programs/sitegen.maca"), 0,
-        "the site is generated, so the generator and the pages it writes are "
-            ++ "held to each other")
+        "the site is generated, so the generator and the pages it writes are " +
+            "held to each other")
 }
 
 test_the_benchmark_section_says_what_the_data_says() {
     assert_eq(suite_code("tests/programs/site_home.maca"), 0,
-        "the front page states figures, and a figure nobody checks is a "
-            ++ "claim nobody keeps")
+        "the front page states figures, and a figure nobody checks is a " +
+            "claim nobody keeps")
 }
 
 test_a_variadic_call_survives_a_poisoned_release() {
@@ -125,30 +125,30 @@ test_a_variadic_call_survives_a_poisoned_release() {
 
     assert_eq(suite_code(path), 0, "the collected list reads as it was passed")
     assert_eq(exec("sh", ["-c", "MACA_POISON=1 {maca_bin()} test {path}"]), 0,
-        "a variadic that read its list after the release would read the "
-            ++ "poison, and only a poisoned run can tell")
+        "a variadic that read its list after the release would read the " +
+            "poison, and only a poisoned run can tell")
 }
 
 test_a_line_is_read_by_a_name_no_element_takes() {
-    src = scratch() ++ "/readline.maca"
-    write_file(src, "main() -> int {{\n    line = read_line()\n"
-        ++ "    line == \"hi\" ? 0 : 1\n}}\n")
+    src = scratch() + "/readline.maca"
+    write_file(src, "main() -> int {{\n    line = read_line()\n" +
+        "    line == \"hi\" ? 0 : 1\n}}\n")
 
     assert_eq(exec("sh", ["-c", "echo hi | {maca_bin()} run {src}"]), 0,
-        "`input` is an HTML tag, so a program that reads a line needs a name "
-            ++ "no element already takes")
+        "`input` is an HTML tag, so a program that reads a line needs a name " +
+            "no element already takes")
 }
 
 test_a_suite_drops_the_main_it_writes_for_itself() {
-    src = scratch() ++ "/own_main.maca"
+    src = scratch() + "/own_main.maca"
 
-    write_file(src, "main() -> int {{\n    info(\"main must not run\")\n"
-        ++ "    99\n}}\n\ntest_the_suite_still_runs() {{\n"
-        ++ "    assert_eq(str(1 + 1), \"2\", \"the runner ran it\")\n}}\n")
+    write_file(src, "main() -> int {{\n    info(\"main must not run\")\n" +
+        "    99\n}}\n\ntest_the_suite_still_runs() {{\n" +
+        "    assert_eq(str(1 + 1), \"2\", \"the runner ran it\")\n}}\n")
 
     assert_eq(exec(maca_bin(), ["test", src]), 0,
-        "the runner writes the entry point, so a suite holding a `main` of "
-            ++ "its own is not two definitions of one name")
+        "the runner writes the entry point, so a suite holding a `main` of " +
+            "its own is not two definitions of one name")
 
     said = capture(maca_bin(), ["test", src])
 
@@ -162,14 +162,14 @@ runner_said(src: str) -> str =>
     output("sh", ["-c", "'{maca_bin()}' test '{src}' 2>&1"])
 
 test_a_failed_assertion_is_counted_and_the_rest_still_run() {
-    src = scratch() ++ "/failing.maca"
+    src = scratch() + "/failing.maca"
 
-    write_file(src, "test_a_failure_shows_both_sides() {{\n"
-        ++ "    assert_eq(\"got\", \"want\", \"the two disagree\")\n}}\n\n"
-        ++ "test_a_bare_assertion_shows_its_message() {{\n"
-        ++ "    assert(1 > 2, \"one is not greater than two\")\n}}\n\n"
-        ++ "test_a_passing_one_still_runs() {{\n"
-        ++ "    assert(true, \"and is reported separately\")\n}}\n")
+    write_file(src, "test_a_failure_shows_both_sides() {{\n" +
+        "    assert_eq(\"got\", \"want\", \"the two disagree\")\n}}\n\n" +
+        "test_a_bare_assertion_shows_its_message() {{\n" +
+        "    assert(1 > 2, \"one is not greater than two\")\n}}\n\n" +
+        "test_a_passing_one_still_runs() {{\n" +
+        "    assert(true, \"and is reported separately\")\n}}\n")
 
     said = runner_said(src)
 
@@ -184,11 +184,11 @@ test_a_failed_assertion_is_counted_and_the_rest_still_run() {
 }
 
 test_a_test_that_aborts_stops_the_suite_where_it_failed() {
-    src = scratch() ++ "/aborting.maca"
+    src = scratch() + "/aborting.maca"
 
-    write_file(src, "test_ok() {{\n    assert(true, \"this one is fine\")"
-        ++ "\n}}\n\ntest_broken() -> int =>\n    fail \"deliberate\"\n\n"
-        ++ "test_after() {{\n    assert(true, \"never reached\")\n}}\n")
+    write_file(src, "test_ok() {{\n    assert(true, \"this one is fine\")" +
+        "\n}}\n\ntest_broken() -> int =>\n    fail \"deliberate\"\n\n" +
+        "test_after() {{\n    assert(true, \"never reached\")\n}}\n")
 
     said = runner_said(src)
 
@@ -200,7 +200,7 @@ test_a_test_that_aborts_stops_the_suite_where_it_failed() {
 }
 
 test_a_suite_holding_no_test_is_not_a_failure() {
-    src = scratch() ++ "/no_tests.maca"
+    src = scratch() + "/no_tests.maca"
 
     write_file(src, "main() -> int => 0\n")
 
@@ -218,28 +218,28 @@ test_a_generic_names_its_own_element_type() {
 test_a_function_can_be_kept_in_a_record_field() {
     assert_eq(suite_code("tests/programs/function_fields.maca"),
         0,
-        "a route table, a reducer and a builder, each called through the "
-            ++ "field that holds it, and a lambda that carried a capture in")
+        "a route table, a reducer and a builder, each called through the " +
+            "field that holds it, and a lambda that carried a capture in")
 }
 
 test_a_lambda_holds_at_every_position_it_is_written() {
     assert_eq(suite_code("tests/programs/lambdas.maca"), 0,
-        "a top level lambda is a function, a local one is a closure, both "
-            ++ "may declare their types, and a body may be a block")
+        "a top level lambda is a function, a local one is a closure, both " +
+            "may declare their types, and a body may be a block")
 }
 
 test_a_list_grows_in_place_only_while_it_is_the_tip() {
     assert_eq(suite_code("tests/programs/accumulate.maca"), 0,
-        "an accumulator appends without rebuilding itself, and every other "
-            ++ "holder reads what it was given")
+        "an accumulator appends without rebuilding itself, and every other " +
+            "holder reads what it was given")
 }
 
 test_a_binding_shadows_a_foreign_namespace_of_the_same_name() {
     suite = "tests/programs/ffi_names.maca"
 
     assert_eq(suite_code(suite), 0,
-        "a name spelled like a foreign namespace is the binding, and a call "
-            ++ "that does mean the library still reaches it")
+        "a name spelled like a foreign namespace is the binding, and a call " +
+            "that does mean the library still reaches it")
 
     assert(capture(maca_bin(), ["test", suite])
         .contains("test_the_py_namespace_is_shadowed_the_same_way"),
@@ -249,9 +249,9 @@ test_a_binding_shadows_a_foreign_namespace_of_the_same_name() {
 test_a_module_value_is_computed_once_and_typed_by_its_initialiser() {
     assert_eq(suite_code("tests/programs/module_values.maca"),
         0,
-        "one value, computed once, carrying the type its initialiser "
-            ++ "answered, and an initialiser may name a function written "
-            ++ "further down the file")
+        "one value, computed once, carrying the type its initialiser " +
+            "answered, and an initialiser may name a function written " +
+            "further down the file")
 }
 
 test_the_native_back_end_regressions_still_hold() {
@@ -268,9 +268,9 @@ test_modules_do_not_answer_for_each_others_names() {
     suite = "tests/programs/scopes/suite.maca"
 
     assert_eq(suite_code(suite), 0,
-        "two modules with the same private helper, a lambda capturing a "
-            ++ "parameter another module defines, and a third module written "
-            ++ "against one of two same-named definitions it can reach")
+        "two modules with the same private helper, a lambda capturing a " +
+            "parameter another module defines, and a third module written " +
+            "against one of two same-named definitions it can reach")
 
     said = capture(maca_bin(), ["test", suite])
 

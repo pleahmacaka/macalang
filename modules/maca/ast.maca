@@ -54,7 +54,7 @@ e_typed(name: str, ty: str) -> Expr =>
 
 with_child(e: Expr, c: Expr) -> Expr =>
     Expr { kind = e.kind, text = e.text, ival = e.ival, ty = e.ty,
-           children = e.children ++ [c], stmts = e.stmts }
+           children = e.children + [c], stmts = e.stmts }
 
 e_str(s: str) -> Expr =>
     Expr { kind = EStr, text = s, ival = 0, ty = "", children = [], stmts = [] }
@@ -91,7 +91,7 @@ e_record(tyname: str, fields: Expr[]) -> Expr =>
 
 e_with(base: Expr, fields: Expr[]) -> Expr =>
     Expr { kind = EWith, text = "", ival = 0, ty = "",
-           children = [base] ++ fields, stmts = [] }
+           children = [base] + fields, stmts = [] }
 
 e_field(base: Expr, name: str) -> Expr =>
     Expr { kind = EField, text = name, ival = 0, ty = "",
@@ -103,7 +103,7 @@ e_match(children: Expr[]) -> Expr =>
 
 e_method(recv: Expr, name: str, args: Expr[]) -> Expr =>
     Expr { kind = EMethod, text = name, ival = 0, ty = "",
-           children = [recv] ++ args, stmts = [] }
+           children = [recv] + args, stmts = [] }
 
 e_attr(name: str, value: Expr) -> Expr =>
     Expr { kind = EAttr, text = name, ival = 0, ty = "", children = [value],
@@ -168,7 +168,7 @@ declared_types(items: Stmt[], i: int, acc: str[]) -> str[] {
     if i >= items.length() {
         acc
     } else if items.get(i).kind == SRecord || items.get(i).kind == SSum {
-        declared_types(items, i + 1, acc ++ [items.get(i).name])
+        declared_types(items, i + 1, acc + [items.get(i).name])
     } else {
         declared_types(items, i + 1, acc)
     }
@@ -230,7 +230,7 @@ e_while(cond: Expr, body: Stmt[]) -> Expr =>
 
 e_lambda(params: Expr[], body: Expr) -> Expr =>
     Expr { kind = ELambda, text = "", ival = 0, ty = "",
-           children = params ++ [body], stmts = [] }
+           children = params + [body], stmts = [] }
 
 lambda_body(e: Expr) -> Expr =>
     e.children.get(e.children.length() - 1)

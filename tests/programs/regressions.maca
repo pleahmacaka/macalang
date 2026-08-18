@@ -40,15 +40,15 @@ test_chars_works_without_a_str_array_parameter_in_sight() {
     assert_eq(str("xy".chars().length()), "2", "inside an interpolation")
 }
 
-test_concat_converts_an_int_operand() {
+test_a_scalar_joins_text_by_being_named_one() {
     level = 3
 
-    assert_eq("h" ++ level, "h3", "on the right")
-    assert_eq(7 ++ " trailing", "7 trailing", "on the left")
+    assert_eq("h" + str(level), "h3", "str() says the conversion out loud")
+    assert_eq("h{level}", "h3", "and interpolation says it shorter")
 }
 
-test_concat_converts_every_scalar_type() {
-    joined = "n=" ++ 4 ++ " f=" ++ 1.5 ++ " b=" ++ true
+test_every_scalar_reaches_text_through_interpolation() {
+    joined = "n={4} f={1.5} b={true}"
 
     assert_eq(joined, "n=4 f=1.5 b=true", "int, float and bool")
 }
@@ -87,7 +87,7 @@ twice(x: int) -> int => x * 2
 
 plus(a: int, b: int) -> int => a + b
 
-surround(s: str, l: str, r: str) -> str => l ++ s ++ r
+surround(s: str, l: str, r: str) -> str => l + s + r
 
 shout(s: str) -> str => s.upper()
 

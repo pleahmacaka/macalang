@@ -10,7 +10,7 @@ join(a: str, b: str) -> str {
     } else if right == "" {
         left
     } else {
-        left ++ "/" ++ right
+        left + "/" + right
     }
 }
 
@@ -86,7 +86,7 @@ with_extension(p: str, ext: str) -> str {
     name = if bare_ext == "" {
         stem(p)
     } else {
-        stem(p) ++ "." ++ bare_ext
+        stem(p) + "." + bare_ext
     }
 
     if dir == "." && !p.starts_with("./") {
@@ -113,7 +113,7 @@ normalize(p: str) -> str {
     kept = walk_segments(p.split("/"), 0, []).join("/")
 
     if is_absolute(p) {
-        "/" ++ kept
+        "/" + kept
     } else if kept == "" {
         "."
     } else {

@@ -1,4 +1,4 @@
-shout(s: str) -> str => s.upper() ++ "!"
+shout(s: str) -> str => s.upper() + "!"
 
 test_every_str_method_the_checker_allows_actually_works() {
     s = "abcdef"

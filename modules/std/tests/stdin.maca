@@ -31,10 +31,10 @@ fed(src: str, name: str, stdin: str) -> str {
 }
 
 counter() -> str =>
-    "main() -> int {{\n    n = 0\n    while !at_eof() {{\n"
-        ++ "        line = read_line()\n        n = n + 1\n"
-        ++ "        info(\"{{n}}: {{line.upper()}}\")\n    }}\n"
-        ++ "    info(\"lines: {{n}}\")\n    0\n}}\n"
+    "main() -> int {{\n    n = 0\n    while !at_eof() {{\n" +
+        "        line = read_line()\n        n = n + 1\n" +
+        "        info(\"{{n}}: {{line.upper()}}\")\n    }}\n" +
+        "    info(\"lines: {{n}}\")\n    0\n}}\n"
 
 test_standard_input_is_read_line_by_line_until_it_runs_out() {
     said = fed(counter(), "lines", "alpha\nbeta\ngamma\n")
@@ -55,20 +55,20 @@ test_a_last_line_with_no_newline_is_still_a_line() {
     said = fed(counter(), "unterminated", "only")
 
     assert(said.contains("lines: 1"),
-           "a file that does not end in a newline still ends in a line:"
-               ++ "\n{said}")
+           "a file that does not end in a newline still ends in a line:" +
+               "\n{said}")
 }
 
 test_assertions_report_and_keep_going() {
-    said = fed("test_arithmetic() -> int {{\n"
-                   ++ "    assert(1 + 1 == 2, \"one plus one\")\n"
-                   ++ "    assert_eq(\"{{2 * 21}}\", \"42\", \"the answer\")\n"
-                   ++ "    failures()\n}}\n\n"
-                   ++ "main() -> int {{\n"
-                   ++ "    info(\"clean: {{test_arithmetic()}}\")\n"
-                   ++ "    assert(false, \"deliberate\")\n"
-                   ++ "    assert_eq(\"got\", \"want\", \"also deliberate\")\n"
-                   ++ "    info(\"failures: {{failures()}}\")\n    0\n}}\n",
+    said = fed("test_arithmetic() -> int {{\n" +
+                   "    assert(1 + 1 == 2, \"one plus one\")\n" +
+                   "    assert_eq(\"{{2 * 21}}\", \"42\", \"the answer\")\n" +
+                   "    failures()\n}}\n\n" +
+                   "main() -> int {{\n" +
+                   "    info(\"clean: {{test_arithmetic()}}\")\n" +
+                   "    assert(false, \"deliberate\")\n" +
+                   "    assert_eq(\"got\", \"want\", \"also deliberate\")\n" +
+                   "    info(\"failures: {{failures()}}\")\n    0\n}}\n",
                "assertions", "")
 
     assert(said.contains("clean: 0"), "a passing test counts none:\n{said}")

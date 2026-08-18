@@ -29,7 +29,7 @@ names(es: Entry[], i: int) -> str {
     if i >= es.length() {
         ""
     } else {
-        es.get(i).name ++ names(es, i + 1)
+        es.get(i).name + names(es, i + 1)
     }
 }
 

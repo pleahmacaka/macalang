@@ -18,7 +18,7 @@ main(argv: str[]) -> int {
         0
     } else if got.error != "" {
         err(bad(got.error))
-        err(dim("usage: " ++ usage(Report)))
+        err(dim("usage: " + usage(Report)))
         1
     } else {
         run(got.value("dir", "."), got.value("sort", "name"),

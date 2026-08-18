@@ -10,12 +10,12 @@ Rec = "R = {{ n: int }} "
 
 Sum = "C = A | B "
 
-Higher = "p(c: str) -> bool => true "
-    ++ "run(xs: str[], f) -> bool => f(xs.get(0)) "
-    ++ "use(xs: str[]) -> bool => run(xs, p)"
+Higher = "p(c: str) -> bool => true " +
+    "run(xs: str[], f) -> bool => f(xs.get(0)) " +
+    "use(xs: str[]) -> bool => run(xs, p)"
 
 test_a_record_element_is_read_back_as_a_record() {
-    out = c_for(Rec ++ "f(xs: R[]) -> int => xs.get(0).n")
+    out = c_for(Rec + "f(xs: R[]) -> int => xs.get(0).n")
 
     assert(out.index_of("(*(R*)xs.data[0]).n") >= 0,
            "the cell is a boxed R, so the field reads through the pointer")
@@ -24,7 +24,7 @@ test_a_record_element_is_read_back_as_a_record() {
 }
 
 test_a_record_element_is_boxed_into_the_cell() {
-    out = c_for(Rec ++ "f() -> R[] => [R {{ n = 1 }}]")
+    out = c_for(Rec + "f() -> R[] => [R {{ n = 1 }}]")
 
     assert(out.index_of("maca_box(sizeof(R), (R[]){{ (R){{ .n = 1 }} }})") >= 0,
            "a record is copied to the heap and the cell holds its address")
@@ -38,7 +38,7 @@ test_the_preamble_carries_the_box_helper() {
 }
 
 test_a_push_boxes_the_element_it_appends() {
-    out = c_for(Rec ++ "g(xs: R[]) -> R[] => xs.push(R {{ n = 2 }})")
+    out = c_for(Rec + "g(xs: R[]) -> R[] => xs.push(R {{ n = 2 }})")
 
     assert(out.index_of("maca_list_pushed(xs, maca_box(sizeof(R),") >= 0,
            "the appended cell is boxed like any other")
@@ -47,7 +47,7 @@ test_a_push_boxes_the_element_it_appends() {
 }
 
 test_the_element_type_comes_from_the_receiver_not_the_index() {
-    out = c_for(Rec ++ "h(xs: R[]) -> R => xs.get(1)")
+    out = c_for(Rec + "h(xs: R[]) -> R => xs.get(1)")
 
     assert(out.index_of("R h(MacaList xs)") >= 0,
            "a list is one C type whatever it holds")
@@ -56,7 +56,7 @@ test_the_element_type_comes_from_the_receiver_not_the_index() {
 }
 
 test_a_sum_element_is_boxed_and_compares_as_a_value() {
-    out = c_for(Sum ++ "f(xs: C[]) -> int => xs.get(0) == A ? 1 : 0")
+    out = c_for(Sum + "f(xs: C[]) -> int => xs.get(0) == A ? 1 : 0")
 
     assert(out.index_of("(*(C*)xs.data[0]) == A") >= 0,
            "an enum cell is unboxed before the comparison")
@@ -133,7 +133,7 @@ test_a_prototype_carries_the_definitions_parameter_types() {
 }
 
 test_a_record_is_defined_before_the_prototype_naming_it() {
-    out = c_for("f() -> R => R {{ n = 1 }} " ++ Rec)
+    out = c_for("f() -> R => R {{ n = 1 }} " + Rec)
     made = out.index_of("}} R;")
 
     assert(made >= 0, "the record is still emitted")
@@ -183,8 +183,8 @@ test_a_character_class_reads_a_byte_from_either_receiver() {
            "a one-character str is classified by its first byte")
     assert(digit.index_of("(isdigit((unsigned char)(c)[0]) != 0)") >= 0,
            "the same for a digit, which is what a number literal starts on")
-    assert(code.index_of("(isalpha((unsigned char)(maca_str_at(s, 0))[0])"
-                         ++ " != 0)") >= 0,
+    assert(code.index_of("(isalpha((unsigned char)(maca_str_at(s, 0))[0])" +
+                         " != 0)") >= 0,
            "and .at produced a one-character str, read by its first byte")
     assert(cell.index_of("#include <ctype.h>") >= 0,
            "the three classes are the C library's, so the header comes too")
@@ -228,8 +228,8 @@ test_a_main_that_takes_arguments_gets_a_c_shim() {
            "the Maca body keeps its list parameter, under another name")
     assert(out.index_of("long long maca_main(MacaList args);") >= 0,
            "and the prototype is renamed with it, or the two would conflict")
-    assert(out.index_of("int main(int argc, char** argv)"
-                        ++ " {{ return maca_main(maca_args(argc, argv)); }}")
+    assert(out.index_of("int main(int argc, char** argv)" +
+                        " {{ return maca_main(maca_args(argc, argv)); }}")
                >= 0,
            "while the real main builds the list out of what C hands it")
     assert(out.index_of("int main(MacaList") < 0,
@@ -286,8 +286,8 @@ test_upper_copies_a_string_and_folds_a_single_character() {
     assert(whole.index_of("maca_upper(s)") >= 0,
            "a str is uppercased into a fresh block, never in place")
     assert(one.index_of("maca_upper(maca_str_at(s, 0))") >= 0,
-           "one character folds the same way, which is how a type name"
-               ++ " is spotted")
+           "one character folds the same way, which is how a type name" +
+               " is spotted")
 }
 
 test_a_called_parameter_is_declared_as_a_closure() {
@@ -318,8 +318,8 @@ test_a_function_type_in_type_position_is_the_closure_struct() {
 }
 
 test_a_mapped_function_is_called_on_the_element_it_declared() {
-    out = c_for(Rec ++ "n(r: R) -> int => r.n"
-                ++ " f(xs: R[]) -> int[] => xs.map(n)")
+    out = c_for(Rec + "n(r: R) -> int => r.n" +
+                " f(xs: R[]) -> int[] => xs.map(n)")
 
     assert(out.index_of("n((*(R*)_m.data[_i]))") >= 0,
            "the cell is unboxed to the record the callee takes by value")
@@ -330,10 +330,10 @@ test_a_mapped_function_is_called_on_the_element_it_declared() {
 }
 
 test_a_mapped_result_is_boxed_when_the_callee_returns_a_record() {
-    boxed = c_for(Rec ++ "w(k: int) -> R => R {{ n = k }}"
-                  ++ " f(xs: int[]) -> R[] => xs.map(w)")
-    flat = c_for(Rec ++ "n(r: R) -> int => r.n"
-                 ++ " f(xs: R[]) -> int[] => xs.map(n)")
+    boxed = c_for(Rec + "w(k: int) -> R => R {{ n = k }}" +
+                  " f(xs: int[]) -> R[] => xs.map(w)")
+    flat = c_for(Rec + "n(r: R) -> int => r.n" +
+                 " f(xs: R[]) -> int[] => xs.map(n)")
 
     assert(boxed.index_of("maca_box(sizeof(R), (R[]){{ w(") >= 0,
            "the callee's return type is what decides the cell's shape")
@@ -413,8 +413,8 @@ test_a_child_that_is_not_text_is_rendered_as_text() {
 }
 
 test_one_arm_may_match_either_of_two_patterns() {
-    out = c_for("C = R | G | B f(c: C) -> str => match c {{"
-                ++ " R | G => \"warm\" B => \"cold\" }}")
+    out = c_for("C = R | G | B f(c: C) -> str => match c {{" +
+                " R | G => \"warm\" B => \"cold\" }}")
 
     assert(out.index_of("||") >= 0,
            "either alternative reaching the body is what `|` means")
@@ -423,8 +423,8 @@ test_one_arm_may_match_either_of_two_patterns() {
 }
 
 test_a_record_pattern_binds_the_fields_it_names() {
-    out = c_for("L = {{ a: int, b: int }}"
-                ++ " f(l: L) -> int => match l {{ {{ a, b }} => b - a }}")
+    out = c_for("L = {{ a: int, b: int }}" +
+                " f(l: L) -> int => match l {{ {{ a, b }} => b - a }}")
 
     assert(out.index_of("a = ") >= 0 && out.index_of("b = ") >= 0,
            "the names in the pattern are what the body reads")
@@ -433,8 +433,8 @@ test_a_record_pattern_binds_the_fields_it_names() {
 }
 
 test_a_caught_failure_hands_back_its_message_and_carries_on() {
-    out = c_for("boom() -> int {{ fail \"kaboom\" 0 }}"
-                ++ " f() -> str => try boom()")
+    out = c_for("boom() -> int {{ fail \"kaboom\" 0 }}" +
+                " f() -> str => try boom()")
 
     assert(out.index_of("setjmp(*_jb)") >= 0,
            "the handler is what makes a failure recoverable")

@@ -5,11 +5,11 @@ Stamp = str(now_ms())
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-build-cache"
+    dir = env_or("TMPDIR", "/tmp") + "/maca-build-cache"
     make_dir(dir)
 
     dir
@@ -21,8 +21,8 @@ scratch() -> str {
 fixture(name: str, says: str) -> str {
     path = "{scratch()}/{name}"
 
-    write_file(path, "main() -> int \{\n    info(\"{says} {Stamp}\")\n"
-                         ++ "    0\n\}\n")
+    write_file(path, "main() -> int \{\n    info(\"{says} {Stamp}\")\n" +
+                         "    0\n\}\n")
 
     path
 }
@@ -37,10 +37,10 @@ built(src: str, out: str) -> int {
 }
 
 racing(src: str, prefix: str) -> str {
-    line = "rm -f '{scratch()}'/race.*; for i in 1 2 3 4; do "
-               ++ "{prefix}'{maca_bin()}' run '{src}' "
-               ++ "> '{scratch()}'/race.$i 2>&1 & done; wait; "
-               ++ "cat '{scratch()}'/race.*"
+    line = "rm -f '{scratch()}'/race.*; for i in 1 2 3 4; do " +
+               "{prefix}'{maca_bin()}' run '{src}' " +
+               "> '{scratch()}'/race.$i 2>&1 & done; wait; " +
+               "cat '{scratch()}'/race.*"
 
     output("sh", ["-c", line])
 }
@@ -74,8 +74,8 @@ test_the_second_build_of_a_program_is_a_copy_and_not_a_compile() {
                  "{scratch()}/cost3"])
 
     assert(warm * 2 < cold,
-           "a repeated build took {str(warm)}ms against {str(cold)}ms cold, "
-               ++ "so nothing was cached")
+           "a repeated build took {str(warm)}ms against {str(cold)}ms cold, " +
+               "so nothing was cached")
     assert(now_ms() - off > warm * 2,
            "MACA_NO_CACHE=1 was answered out of the cache anyway")
 }
@@ -86,8 +86,8 @@ test_the_second_build_of_a_program_is_a_copy_and_not_a_compile() {
 embedding(name: str, note: str) -> str {
     src = "{scratch()}/{name}"
 
-    write_file(src, "note: str = data(\"{note}\")\n\nmain() -> int \{\n"
-                        ++ "    info(note)\n    0\n\}\n")
+    write_file(src, "note: str = data(\"{note}\")\n\nmain() -> int \{\n" +
+                        "    info(note)\n    0\n\}\n")
 
     src
 }
@@ -100,8 +100,8 @@ test_a_program_that_embeds_a_file_is_still_cached() {
     warm = built(src, "keeper2")
 
     assert(warm * 2 < cold,
-           "a repeated build took {str(warm)}ms against {str(cold)}ms cold, "
-               ++ "so embedding a file turned the cache off")
+           "a repeated build took {str(warm)}ms against {str(cold)}ms cold, " +
+               "so embedding a file turned the cache off")
 }
 
 test_one_character_of_an_embedded_file_is_a_binary_of_its_own() {
@@ -109,7 +109,7 @@ test_one_character_of_an_embedded_file_is_a_binary_of_its_own() {
     src = embedding("edits_a_note.maca", "edited_note.txt")
     out = "{scratch()}/edits_a_note"
 
-    remove_file(note ++ ".local")
+    remove_file(note + ".local")
     remove_file("{scratch()}/edited_note.local.txt")
     write_file(note, "one {Stamp}")
     exec(maca_bin(), ["build", src, "-o", out])
@@ -121,8 +121,8 @@ test_one_character_of_an_embedded_file_is_a_binary_of_its_own() {
 
     assert_eq(first, "one {Stamp}", "the built program says what it embedded")
     assert_eq(capture(out, []).trim(), "two {Stamp}",
-              "an edited embedded file is compiled again, not served from "
-                  ++ "the cache")
+              "an edited embedded file is compiled again, not served from " +
+                  "the cache")
 }
 
 test_a_local_companion_appearing_beside_a_file_is_a_binary_of_its_own() {
@@ -142,8 +142,8 @@ test_a_local_companion_appearing_beside_a_file_is_a_binary_of_its_own() {
 
     assert_eq(first, "committed {Stamp}", "the committed file is what it read")
     assert_eq(capture(out, []).trim(), "private {Stamp}",
-              "the .local companion appearing beside it is a build of its "
-                  ++ "own, not a cache hit")
+              "the .local companion appearing beside it is a build of its " +
+                  "own, not a cache hit")
     remove_file(private)
 }
 

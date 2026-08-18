@@ -4,17 +4,17 @@ import std/text
 Nl = "\n"
 
 scratch() -> str =>
-    env_or("TMPDIR", "/tmp") ++ "/maca-cli-commands"
+    env_or("TMPDIR", "/tmp") + "/maca-cli-commands"
 
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 fixture(name: str, src: str) -> str {
     make_dir(scratch())
-    at = scratch() ++ "/" ++ name
+    at = scratch() + "/" + name
     write_file(at, src)
 
     at
@@ -22,7 +22,7 @@ fixture(name: str, src: str) -> str {
 
 project(tag: str) -> str {
     make_dir(scratch())
-    dir = scratch() ++ "/" ++ tag
+    dir = scratch() + "/" + tag
     remove_dir(dir)
     make_dir(dir)
 
@@ -70,9 +70,9 @@ test_run_hands_back_the_programs_own_exit_code() {
 
 test_test_runs_every_function_and_counts_the_failures() {
     at = fixture("t.maca",
-        "test_one_holds() {{\n    assert_eq(\"a\", \"a\", \"same\")\n}}\n\n"
-            ++ "test_one_does_not() {{\n"
-            ++ "    assert_eq(\"a\", \"b\", \"different\")\n}}\n")
+        "test_one_holds() {{\n    assert_eq(\"a\", \"a\", \"same\")\n}}\n\n" +
+            "test_one_does_not() {{\n" +
+            "    assert_eq(\"a\", \"b\", \"different\")\n}}\n")
 
     assert_eq(str(exec(maca_bin(), ["test", at])), "1",
               "one of the two failed, so the count is one")
@@ -91,14 +91,14 @@ test_check_reports_the_count_of_what_it_found() {
     assert(capture(maca_bin(), ["check", bad])
                .contains("expected int, found str"),
            "and the message names both types")
-    assert(!file_exists(scratch() ++ "/bad"),
+    assert(!file_exists(scratch() + "/bad"),
            "check reports, it does not build")
 }
 
 test_a_file_that_does_not_scan_is_not_checked_as_well() {
-    torn = fixture("torn.maca", "main() -> int {{" ++ Nl
-                                    ++ "    info(\"a {{ b\")" ++ Nl
-                                    ++ "    0" ++ Nl ++ "}}" ++ Nl)
+    torn = fixture("torn.maca", "main() -> int {{" + Nl +
+                                    "    info(\"a {{ b\")" + Nl +
+                                    "    0" + Nl + "}}" + Nl)
     said = capture(maca_bin(), ["check", torn])
 
     assert_eq(str(exec(maca_bin(), ["check", torn])), "1",
@@ -138,10 +138,10 @@ test_fmt_check_reports_without_writing_and_then_settles() {
 
 test_init_scaffolds_a_project_that_runs() {
     root = project("init")
-    at = root ++ "/fresh"
+    at = root + "/fresh"
 
     assert_eq(str(exec(maca_bin(), ["init", at])), "0", "init succeeds")
-    assert(read_file(at ++ "/maca.toml").contains("name = \"fresh\""),
+    assert(read_file(at + "/maca.toml").contains("name = \"fresh\""),
            "the project is named for its own directory")
     assert_eq(str(rc_in(at, ["run", "main.maca"])), "0",
               "a scaffold that does not run is not a scaffold")
@@ -151,17 +151,17 @@ test_init_scaffolds_a_project_that_runs() {
 
 test_the_target_flag_picks_the_back_end() {
     at = fixture("tg.maca", "main() -> int {{\n    info(\"hi\")\n    7\n}}\n")
-    out = scratch() ++ "/tg"
+    out = scratch() + "/tg"
 
-    remove_file(out ++ ".rs")
+    remove_file(out + ".rs")
 
     code = exec(maca_bin(), ["build", at, "-o", out, "--target", "rust"])
 
-    assert(read_file(out ++ ".rs").starts_with("use std::rc::Rc;"),
+    assert(read_file(out + ".rs").starts_with("use std::rc::Rc;"),
            "the rust target writes rust, beside the binary rather than at -o")
     assert_eq(str(code), have("rustc") ? "0" : "2",
               "a target that cannot compile says so rather than exiting clean")
-    assert_eq(str(exec(maca_bin(), ["build", at, "-o", scratch() ++ "/tg.x",
+    assert_eq(str(exec(maca_bin(), ["build", at, "-o", scratch() + "/tg.x",
                                     "--target", "nowhere"])), "2",
               "a target nobody serves is a usage error")
 }
@@ -173,7 +173,7 @@ test_the_rust_target_compiles_what_it_emits() {
 
     at = fixture("rc.maca",
                  "main() -> int {{\n    info(\"rust drive\")\n    7\n}}\n")
-    out = scratch() ++ "/rc"
+    out = scratch() + "/rc"
 
     remove_file(out)
 
@@ -187,11 +187,11 @@ test_the_rust_target_compiles_what_it_emits() {
 test_a_browser_module_reaches_no_target_but_js() {
     dir = project("browser")
 
-    make_dir(dir ++ "/modules")
-    write_file(dir ++ "/modules/glass.maca",
-        "kept(key: str) -> str\n\nimport \"kept.js\" \"\"\"\n"
-            ++ "maca.provide({{ kept: k => k }})\n\"\"\"\n")
-    write_file(dir ++ "/main.maca",
+    make_dir(dir + "/modules")
+    write_file(dir + "/modules/glass.maca",
+        "kept(key: str) -> str\n\nimport \"kept.js\" \"\"\"\n" +
+            "maca.provide({{ kept: k => k }})\n\"\"\"\n")
+    write_file(dir + "/main.maca",
         "import glass\n\nmain() -> int {{\n    info(kept(\"x\"))\n    0\n}}\n")
 
     said = out_in(dir, ["build", "main.maca"])
@@ -207,8 +207,8 @@ test_a_browser_module_reaches_no_target_but_js() {
 rust_project(tag: str, src: str, deps: str) -> str {
     dir = project(tag)
 
-    write_file(dir ++ "/maca.toml", "[package]\nname = \"p\"\n" ++ deps)
-    write_file(dir ++ "/main.maca", src)
+    write_file(dir + "/maca.toml", "[package]\nname = \"p\"\n" + deps)
+    write_file(dir + "/main.maca", src)
 
     dir
 }
@@ -231,22 +231,22 @@ test_the_rust_target_refuses_a_crate_no_manifest_declared() {
 
 test_a_declared_crate_is_built_through_cargo() {
     dir = rust_project("rustdep-ok",
-        "import \"tiny\"\n\nmain() -> int {{\n"
-            ++ "    info(\"cargo drive\")\n    7\n}}\n",
+        "import \"tiny\"\n\nmain() -> int {{\n" +
+            "    info(\"cargo drive\")\n    7\n}}\n",
         "\n[rust-dependencies]\ntiny = {{ path = \"../vendor/tiny\" }}\n")
     built = ["build", "main.maca", "--target", "rust", "-o", "app"]
 
-    make_dir(dir ++ "/vendor/tiny/src")
-    write_file(dir ++ "/vendor/tiny/Cargo.toml",
-        "[package]\nname = \"tiny\"\nversion = \"0.1.0\"\n"
-            ++ "edition = \"2021\"\n")
-    write_file(dir ++ "/vendor/tiny/src/lib.rs",
+    make_dir(dir + "/vendor/tiny/src")
+    write_file(dir + "/vendor/tiny/Cargo.toml",
+        "[package]\nname = \"tiny\"\nversion = \"0.1.0\"\n" +
+            "edition = \"2021\"\n")
+    write_file(dir + "/vendor/tiny/src/lib.rs",
                "pub fn tiny() -> i64 {{ 7 }}\n")
 
     assert(!out_in(dir, built).contains("[rust-dependencies]"),
            "a crate the manifest declared is not refused")
 
-    toml = read_file(dir ++ "/app-cargo/Cargo.toml")
+    toml = read_file(dir + "/app-cargo/Cargo.toml")
 
     assert(toml.contains("tiny = {{ path = \"../vendor/tiny\" }}"),
            "an inline table reaches Cargo as the manifest wrote it")
@@ -255,14 +255,14 @@ test_a_declared_crate_is_built_through_cargo() {
 
     if !have("cargo") {
         assert(err_in(dir, built).contains("no cargo on PATH"),
-               "a build that cannot reach cargo says so, and does not exit"
-                   ++ " clean")
+               "a build that cannot reach cargo says so, and does not exit" +
+                   " clean")
 
         return
     }
 
     assert_eq(str(rc_in(dir, built)), "0", "cargo built it")
-    assert_eq(str(exec(dir ++ "/app", [])), "7",
+    assert_eq(str(exec(dir + "/app", [])), "7",
               "and -o is the binary cargo made")
 }
 
@@ -278,16 +278,16 @@ test_the_rust_target_refuses_a_foreign_import_it_cannot_bridge() {
 test_two_packages_may_each_name_one_function() {
     dir = project("scope")
 
-    make_dir(dir ++ "/pa")
-    make_dir(dir ++ "/pb")
-    write_file(dir ++ "/pa/one.maca", "count(s: str) -> int => s.length()\n")
-    write_file(dir ++ "/pb/two.maca",
-        "count(n: int) -> int => n + 1\n"
-            ++ "twice(n: int) -> int => count(n) + count(n)\n")
-    write_file(dir ++ "/main.maca",
-        "import pa/one\nimport pb/two\n\nmain() -> int {{\n"
-            ++ "    info(str(count(\"abc\")))\n"
-            ++ "    info(str(twice(1)))\n    0\n}}\n")
+    make_dir(dir + "/pa")
+    make_dir(dir + "/pb")
+    write_file(dir + "/pa/one.maca", "count(s: str) -> int => s.length()\n")
+    write_file(dir + "/pb/two.maca",
+        "count(n: int) -> int => n + 1\n" +
+            "twice(n: int) -> int => count(n) + count(n)\n")
+    write_file(dir + "/main.maca",
+        "import pa/one\nimport pb/two\n\nmain() -> int {{\n" +
+            "    info(str(count(\"abc\")))\n" +
+            "    info(str(twice(1)))\n    0\n}}\n")
 
     said = out_in(dir, ["run", "main.maca"])
     assert_eq(str(rc_in(dir, ["run", "main.maca"])), "0",
@@ -304,10 +304,10 @@ test_a_suite_resolves_its_imports_from_its_own_directory() {
 test_a_lone_binary_is_the_entry_the_manifest_gives() {
     dir = project("solo")
 
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"solo\"\n\n[[bin]]\n"
-            ++ "name = \"solo\"\npath = \"app.maca\"\n")
-    write_file(dir ++ "/app.maca",
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"solo\"\n\n[[bin]]\n" +
+            "name = \"solo\"\npath = \"app.maca\"\n")
+    write_file(dir + "/app.maca",
         "main() -> int {{\n    info(\"from the manifest\")\n    0\n}}\n")
 
     assert_eq(str(rc_in(dir, ["run"])), "0", "the single [[bin]] is the entry")
@@ -326,11 +326,11 @@ test_no_manifest_and_no_file_is_a_usage_error_that_says_so() {
 test_a_declared_cflag_reaches_the_c_compiler() {
     dir = project("cflags")
 
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"solo\"\n\n[build]\n"
-            ++ "cflags = \"-lnosuchlibrary\"\n\n[[bin]]\n"
-            ++ "name = \"solo\"\npath = \"app.maca\"\n")
-    write_file(dir ++ "/app.maca", "main() -> int => 0\n")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"solo\"\n\n[build]\n" +
+            "cflags = \"-lnosuchlibrary\"\n\n[[bin]]\n" +
+            "name = \"solo\"\npath = \"app.maca\"\n")
+    write_file(dir + "/app.maca", "main() -> int => 0\n")
 
     assert(rc_in(dir, ["run"]) != 0,
            "[build] cflags reach the linker, so a library nobody has fails")
@@ -371,7 +371,7 @@ starter_of(said: str) -> str {
 
     for line in lines(said) {
         if line.starts_with("    ") {
-            found = found ++ line.trim() ++ "\n"
+            found = found + line.trim() + "\n"
         }
     }
 
@@ -380,17 +380,17 @@ starter_of(said: str) -> str {
 
 test_dev_writes_the_flake_its_own_starter_describes() {
     dir = project("dev")
-    said = err_in(dir, ["dev"]) ++ out_in(dir, ["dev"])
+    said = err_in(dir, ["dev"]) + out_in(dir, ["dev"])
     starter = starter_of(said)
 
     assert(rc_in(dir, ["dev"]) != 0, "there is no dev.maca here yet")
     assert(starter.contains("dev.packages"),
            "the message carries a starter the reader can paste: {said}")
-    write_file(dir ++ "/dev.maca", starter)
+    write_file(dir + "/dev.maca", starter)
     code = rc_in(dir, ["dev"])
     why = err_in(dir, ["dev"])
     assert_eq(str(code), "0", "the printed starter must compile: {why}")
-    flake = read_file(dir ++ "/flake.nix")
+    flake = read_file(dir + "/flake.nix")
     assert(flake.contains("pkgs.mkShell"), "the flake carries a shell")
     assert(flake.contains("pkgs.rustc"),
            "and the packages the config declared: {flake}")
@@ -399,9 +399,9 @@ test_dev_writes_the_flake_its_own_starter_describes() {
 test_a_script_alias_hands_back_the_code_the_line_exits_with() {
     dir = project("scripts")
 
-    write_file(dir ++ "/maca.toml",
-        "[package]\nname = \"scripted\"\n\n[scripts]\n"
-            ++ "greet = \"echo hi-from-scripts\"\nboom = \"exit 3\"\n")
+    write_file(dir + "/maca.toml",
+        "[package]\nname = \"scripted\"\n\n[scripts]\n" +
+            "greet = \"echo hi-from-scripts\"\nboom = \"exit 3\"\n")
 
     assert_eq(out_in(dir, ["greet"]).trim(), "hi-from-scripts",
               "the table names a command, and the command runs")
@@ -412,11 +412,11 @@ test_a_script_alias_hands_back_the_code_the_line_exits_with() {
 test_a_module_function_is_run_by_the_name_an_import_would_find() {
     dir = project("moduled")
 
-    make_dir(dir ++ "/src")
-    write_file(dir ++ "/src/greeter.maca",
-        "greet(args: str[]) -> int {{\n"
-            ++ "    info(\"greeted {{str(args.length())}}\")\n    7\n}}\n\n"
-            ++ "greeter() -> int => 3\n")
+    make_dir(dir + "/src")
+    write_file(dir + "/src/greeter.maca",
+        "greet(args: str[]) -> int {{\n" +
+            "    info(\"greeted {{str(args.length())}}\")\n    7\n}}\n\n" +
+            "greeter() -> int => 3\n")
 
     assert_eq(str(rc_in(dir, ["-m", "greeter.greet", "a", "b"])), "7",
               "the function's own answer is the exit code")
@@ -436,14 +436,14 @@ test_profile_counts_a_run_and_draws_where_its_instructions_went() {
         assert(true, "profile needs valgrind, which this host has not got")
     } else {
         dir = project("profile")
-        at = dir ++ "/hot.maca"
-        svg = dir ++ "/hot.svg"
+        at = dir + "/hot.maca"
+        svg = dir + "/hot.svg"
 
         write_file(at,
-            "spin(n: int, acc: int) -> int {{\n"
-                ++ "    n <= 0 ? acc : spin(n - 1, acc + n)\n}}\n\n"
-                ++ "main() -> int {{\n    info(\"{{str(spin(20000, 0))}}\")\n"
-                ++ "    0\n}}\n")
+            "spin(n: int, acc: int) -> int {{\n" +
+                "    n <= 0 ? acc : spin(n - 1, acc + n)\n}}\n\n" +
+                "main() -> int {{\n    info(\"{{str(spin(20000, 0))}}\")\n" +
+                "    0\n}}\n")
 
         table = out_in(dir, ["profile", at, "-o", svg])
         assert_eq(str(rc_in(dir, ["profile", at, "-o", svg])), "0",
@@ -458,19 +458,19 @@ test_profile_counts_a_run_and_draws_where_its_instructions_went() {
 
 test_a_build_with_no_target_named_reads_it_off_the_source() {
     make_dir(scratch())
-    made = scratch() ++ "/detected"
+    made = scratch() + "/detected"
 
     assert(capture_err(maca_bin(), ["build", "apps/examples/system.maca",
-                                    "-o", made ++ ".nix"])
+                                    "-o", made + ".nix"])
                .contains("source imports nixpkgs"),
            "a config file names nixpkgs, so config mode is the target")
-    assert(read_file(made ++ ".nix").contains("stateVersion"),
+    assert(read_file(made + ".nix").contains("stateVersion"),
            "and what it wrote is a NixOS module")
     assert(capture_err(maca_bin(), ["build", "apps/examples/counter.maca",
-                                    "-o", made ++ "-web"])
+                                    "-o", made + "-web"])
                .contains("a view returns Element"),
            "a view answers an Element, so a page is the target")
-    assert(file_exists(made ++ "-web/index.html"),
+    assert(file_exists(made + "-web/index.html"),
            "and a page is a directory a browser opens")
     assert(!capture_err(maca_bin(), ["build", "apps/examples/hello.maca",
                                      "-o", made]).contains("--target"),
@@ -479,20 +479,20 @@ test_a_build_with_no_target_named_reads_it_off_the_source() {
 
 test_the_c_compiler_the_build_uses_can_be_named() {
     at = fixture("named_cc.maca", "main() -> int => 0\n")
-    out = scratch() ++ "/named_cc.bin"
-    refused = scratch() ++ "/refuses_cc"
+    out = scratch() + "/named_cc.bin"
+    refused = scratch() + "/refuses_cc"
 
     write_file(refused, "#!/bin/sh\nexit 3\n")
     exec("chmod", ["+x", refused])
     exec("rm", ["-f", out])
 
-    assert_eq(exec("sh", ["-c", "MACA_NO_CACHE=1 MACA_CC='{refused}'"
-                                    ++ " '{maca_bin()}' build '{at}' -o '{out}'"
-                                    ++ " >/dev/null 2>&1"]), 3,
-        "the compiler named by MACA_CC is the one that runs, which is what "
-            ++ "lets one machine build for another")
+    assert_eq(exec("sh", ["-c", "MACA_NO_CACHE=1 MACA_CC='{refused}'" +
+                                    " '{maca_bin()}' build '{at}' -o '{out}'" +
+                                    " >/dev/null 2>&1"]), 3,
+        "the compiler named by MACA_CC is the one that runs, which is what " +
+            "lets one machine build for another")
     assert(!file_exists(out), "and nothing else wrote the binary behind it")
-    assert_eq(exec("sh", ["-c", "MACA_NO_CACHE=1 '{maca_bin()}' build '{at}'"
-                                    ++ " -o '{out}' >/dev/null 2>&1"]), 0,
+    assert_eq(exec("sh", ["-c", "MACA_NO_CACHE=1 '{maca_bin()}' build '{at}'" +
+                                    " -o '{out}' >/dev/null 2>&1"]), 0,
         "with none named the build uses `cc`")
 }

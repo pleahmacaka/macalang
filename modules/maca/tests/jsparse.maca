@@ -3,7 +3,7 @@ import std/proc
 maca_bin() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 scratch(name: str) -> str {
@@ -26,17 +26,17 @@ emitted(src: str, name: str) -> str {
     out = scratch(name)
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o", out])
 
-    assert(file_exists(out ++ "/app.js"), "{src} did not build to JS: {said}")
+    assert(file_exists(out + "/app.js"), "{src} did not build to JS: {said}")
 
     out
 }
 
 parses(src: str, name: str) {
-    at = emitted(src, name) ++ "/app.js"
+    at = emitted(src, name) + "/app.js"
 
     assert_eq(str(exec("node", ["--check", at])), "0",
-              "node refused the JS emitted for {src}:\n"
-                  ++ capture_err("node", ["--check", at]))
+              "node refused the JS emitted for {src}:\n" +
+                  capture_err("node", ["--check", at]))
 }
 
 test_every_page_this_repository_ships_is_javascript_node_accepts() {
@@ -56,13 +56,13 @@ test_the_playground_parses_where_the_module_it_carries_can_be_found() {
 
     root = scratch("play")
 
-    make_dir(root ++ "/apps/playground")
-    make_dir(root ++ "/apps/npm")
-    write_file(root ++ "/apps/playground/playground.maca",
+    make_dir(root + "/apps/playground")
+    make_dir(root + "/apps/npm")
+    write_file(root + "/apps/playground/playground.maca",
                read_file("apps/playground/playground.maca"))
-    write_file(root ++ "/apps/npm/maca_wasm.wasm", "not the compiler")
+    write_file(root + "/apps/npm/maca_wasm.wasm", "not the compiler")
 
-    parses(root ++ "/apps/playground/playground.maca", "playground")
+    parses(root + "/apps/playground/playground.maca", "playground")
 }
 
 test_the_control_flow_fixture_computes_the_same_thing_natively() {
@@ -70,15 +70,15 @@ test_the_control_flow_fixture_computes_the_same_thing_natively() {
                        ["test",
                         "tests/programs/js_control_flow.maca"])),
               "0",
-              "the file the JS backend has its own run of answers the same "
-                  ++ "way when it is compiled natively")
+              "the file the JS backend has its own run of answers the same " +
+                  "way when it is compiled natively")
 }
 
 /** A suite on the JS target runs the way a native one does: the entry answers
  * with its failure count.
  */
 holds_on_the_js_target(src: str, name: str) {
-    at = emitted(src, name) ++ "/app.js"
+    at = emitted(src, name) + "/app.js"
     said = capture_err("node", [at])
 
     assert_eq(str(exec("node", [at])), "0",
@@ -109,16 +109,16 @@ test_an_arrow_block_body_is_a_block_on_the_js_target() {
     }
 
     at = emitted("tests/programs/arrow_records.maca",
-                 "arrow_records") ++ "/app.js"
-    probe = "const m = require(\"{at}\");"
-        ++ " if (m.several() !== 41) throw new Error(\"several: \" +"
-        ++ " m.several());"
-        ++ " if (m.one() !== 42) throw new Error(\"one: \" + m.one());"
-        ++ " console.log(\"ok\")"
+                 "arrow_records") + "/app.js"
+    probe = "const m = require(\"{at}\");" +
+        " if (m.several() !== 41) throw new Error(\"several: \" +" +
+        " m.several());" +
+        " if (m.one() !== 42) throw new Error(\"one: \" + m.one());" +
+        " console.log(\"ok\")"
 
     assert_eq(capture("node", ["-e", probe]).trim(), "ok",
-              "the arrow block came out as a record: "
-                  ++ capture_err("node", ["-e", probe]))
+              "the arrow block came out as a record: " +
+                  capture_err("node", ["-e", probe]))
 }
 
 Store = """
@@ -131,9 +131,9 @@ globalThis.localStorage = {
 };
 """
 
-PageWithStorage = "import web/storage\n\nnote = stored(\"page.note\", \"hello\")"
-    ++ "\n\nrename(v: str) -> int {{\n    note = v\n    0\n}}\n\n"
-    ++ "main() -> Element => div(span(note))\n"
+PageWithStorage = "import web/storage\n\nnote = stored(\"page.note\", \"hello\")" +
+    "\n\nrename(v: str) -> int {{\n    note = v\n    0\n}}\n\n" +
+    "main() -> Element => div(span(note))\n"
 
 /** Every `<script>` the page holds, in the order a browser would run them. */
 page_scripts(at: str) -> str {
@@ -145,7 +145,7 @@ page_scripts(at: str) -> str {
     while rest.index_of("<script>") >= 0 {
         opened = rest.slice(rest.index_of("<script>") + 8, rest.length())
         shut = opened.index_of("</script>")
-        out = out ++ opened.slice(0, shut) ++ "\n"
+        out = out + opened.slice(0, shut) + "\n"
         rest = opened.slice(shut + 9, opened.length())
         i = i + 1
     }
@@ -159,39 +159,39 @@ test_a_module_that_supplies_a_function_reaches_the_page_that_uses_it() {
     }
 
     dir = scratch("storage")
-    src = dir ++ "/home.maca"
+    src = dir + "/home.maca"
 
     write_file(src, PageWithStorage)
 
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
-                                    dir ++ "/out"])
+                                    dir + "/out"])
 
-    assert(file_exists(dir ++ "/out/index.html"),
+    assert(file_exists(dir + "/out/index.html"),
            "the page did not build: {said}")
     assert(!read_file(src).contains("local_start"),
            "the program writes no read of its own")
-    assert(read_file(dir ++ "/out/app.js").contains("local_start("),
+    assert(read_file(dir + "/out/app.js").contains("local_start("),
            "and the page it becomes is written in terms of one")
 
-    fresh = dir ++ "/fresh.js"
-    kept = dir ++ "/kept.js"
+    fresh = dir + "/fresh.js"
+    kept = dir + "/kept.js"
 
-    write_file(fresh, FakeDom ++ Store ++ page_scripts(dir ++ "/out/index.html")
-        ++ "\nconsole.log(_root.text);\n")
-    write_file(kept, FakeDom
-        ++ "const _seed = [[\"page.note\", JSON.stringify("
-        ++ "\"kept\")]];\n" ++ Store
-        ++ page_scripts(dir ++ "/out/index.html")
-        ++ "\nrename(\"written\");\n"
-        ++ "console.log(_root.text + \" \" + store.get("
-        ++ "\"page.note\"));\n")
+    write_file(fresh, FakeDom + Store + page_scripts(dir + "/out/index.html") +
+        "\nconsole.log(_root.text);\n")
+    write_file(kept, FakeDom +
+        "const _seed = [[\"page.note\", JSON.stringify(" +
+        "\"kept\")]];\n" + Store +
+        page_scripts(dir + "/out/index.html") +
+        "\nrename(\"written\");\n" +
+        "console.log(_root.text + \" \" + store.get(" +
+        "\"page.note\"));\n")
 
     assert_eq(capture("node", [fresh]).trim(), "hello",
-              "a slot the browser has nothing under starts at what the "
-                  ++ "program declared: " ++ capture_err("node", [fresh]))
-    assert_eq(capture("node", [kept]).trim(), "kept " ++ "\"written\"",
-              "a slot starts at what was saved, and assigning it saves again: "
-                  ++ capture_err("node", [kept]))
+              "a slot the browser has nothing under starts at what the " +
+                  "program declared: " + capture_err("node", [fresh]))
+    assert_eq(capture("node", [kept]).trim(), "kept " + "\"written\"",
+              "a slot starts at what was saved, and assigning it saves again: " +
+                  capture_err("node", [kept]))
 }
 
 test_a_view_is_put_on_the_page_rather_than_computed_and_dropped() {
@@ -200,25 +200,25 @@ test_a_view_is_put_on_the_page_rather_than_computed_and_dropped() {
     }
 
     dir = scratch("mount")
-    src = dir ++ "/home.maca"
+    src = dir + "/home.maca"
 
-    write_file(src, "main() -> Element =>\n"
-        ++ "    div(span(\"hello\"))\n")
+    write_file(src, "main() -> Element =>\n" +
+        "    div(span(\"hello\"))\n")
 
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
-                                    dir ++ "/out"])
+                                    dir + "/out"])
 
-    assert(file_exists(dir ++ "/out/index.html"),
+    assert(file_exists(dir + "/out/index.html"),
            "the page did not build: {said}")
 
-    write_file(dir ++ "/paint.js",
-        FakeDom ++ page_scripts(dir ++ "/out/index.html")
-            ++ "\nconsole.log(_root.kids.length + \":\" + "
-            ++ "_root.kids[0].tag + \":\" + _root.text);\n")
+    write_file(dir + "/paint.js",
+        FakeDom + page_scripts(dir + "/out/index.html") +
+            "\nconsole.log(_root.kids.length + \":\" + " +
+            "_root.kids[0].tag + \":\" + _root.text);\n")
 
-    assert_eq(capture("node", [dir ++ "/paint.js"]).trim(), "1:div:hello",
-              "a view nobody puts on screen is a blank page: "
-                  ++ capture_err("node", [dir ++ "/paint.js"]))
+    assert_eq(capture("node", [dir + "/paint.js"]).trim(), "1:div:hello",
+              "a view nobody puts on screen is a blank page: " +
+                  capture_err("node", [dir + "/paint.js"]))
 }
 
 test_a_handler_is_attached_to_the_node_and_runs_when_it_fires() {
@@ -227,30 +227,30 @@ test_a_handler_is_attached_to_the_node_and_runs_when_it_fires() {
     }
 
     dir = scratch("click")
-    src = dir ++ "/home.maca"
+    src = dir + "/home.maca"
 
-    write_file(src, "hits = 0\n\nbump() -> int {{\n"
-        ++ "    hits = hits + 1\n    0\n}}\n\n"
-        ++ "main() -> Element =>\n"
-        ++ "    div(button(onclick=bump \"press\") span("
-        ++ "\"{{hits}}\"))\n")
+    write_file(src, "hits = 0\n\nbump() -> int {{\n" +
+        "    hits = hits + 1\n    0\n}}\n\n" +
+        "main() -> Element =>\n" +
+        "    div(button(onclick=bump \"press\") span(" +
+        "\"{{hits}}\"))\n")
 
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
-                                    dir ++ "/out"])
+                                    dir + "/out"])
 
-    assert(file_exists(dir ++ "/out/index.html"),
+    assert(file_exists(dir + "/out/index.html"),
            "the page did not build: {said}")
 
-    write_file(dir ++ "/click.js",
-        FakeDom ++ page_scripts(dir ++ "/out/index.html")
-            ++ "\n_root.kids[0].kids[0].on.click[0]();\n"
-            ++ "_root.kids[0].kids[0].on.click[0]();\n"
-            ++ "console.log(_root.text);\n")
+    write_file(dir + "/click.js",
+        FakeDom + page_scripts(dir + "/out/index.html") +
+            "\n_root.kids[0].kids[0].on.click[0]();\n" +
+            "_root.kids[0].kids[0].on.click[0]();\n" +
+            "console.log(_root.text);\n")
 
-    assert_eq(capture("node", [dir ++ "/click.js"]).trim(), "press2",
-              "a handler belongs on the node, and what it writes is on screen "
-                  ++ "when it returns: " ++ capture_err("node",
-                                                        [dir ++ "/click.js"]))
+    assert_eq(capture("node", [dir + "/click.js"]).trim(), "press2",
+              "a handler belongs on the node, and what it writes is on screen " +
+                  "when it returns: " + capture_err("node",
+                                                        [dir + "/click.js"]))
 }
 
 /** A page needs somewhere to put nodes, and this is the least of one that still
@@ -275,22 +275,22 @@ test_a_nested_definition_writes_the_scope_it_was_written_in() {
     }
 
     dir = scratch("nested")
-    src = dir ++ "/board.maca"
+    src = dir + "/board.maca"
 
-    write_file(src, "board() -> str {{\n    held = 0\n\n"
-        ++ "    grab(n: int) {{\n        held = n\n    }}\n\n"
-        ++ "    grab(7)\n\n    \"{{held}}\"\n}}\n\n"
-        ++ "main() -> Element => div(span(board()))\n")
+    write_file(src, "board() -> str {{\n    held = 0\n\n" +
+        "    grab(n: int) {{\n        held = n\n    }}\n\n" +
+        "    grab(7)\n\n    \"{{held}}\"\n}}\n\n" +
+        "main() -> Element => div(span(board()))\n")
 
     said = capture_err(maca_bin(), ["build", "--target", "js", src, "-o",
-                                    dir ++ "/out"])
+                                    dir + "/out"])
 
-    assert(file_exists(dir ++ "/out/app.js"), "the page did not build: {said}")
+    assert(file_exists(dir + "/out/app.js"), "the page did not build: {said}")
 
     probe = "console.log(require(\"{dir}/out/app.js\").board())"
 
     assert_eq(capture("node", ["-e", probe]).trim(), "7",
-              "a definition lifted out of the scope it was written in writes "
-                  ++ "a name of its own, and the answer is the old one: "
-                  ++ capture_err("node", ["-e", probe]))
+              "a definition lifted out of the scope it was written in writes " +
+                  "a name of its own, and the answer is the old one: " +
+                  capture_err("node", ["-e", probe]))
 }

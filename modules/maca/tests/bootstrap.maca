@@ -5,7 +5,7 @@ Run = str(now_ms())
 Entry = "apps/maca1/main.maca"
 
 scratch() -> str {
-    dir = env_or("TMPDIR", "/tmp") ++ "/maca-bootstrap-" ++ Run
+    dir = env_or("TMPDIR", "/tmp") + "/maca-bootstrap-" + Run
     make_dir(dir)
 
     dir
@@ -14,21 +14,21 @@ scratch() -> str {
 compiler() -> str {
     named = env_or("MACA", "target/release/maca")
 
-    named.starts_with("/") ? named : cwd() ++ "/" ++ named
+    named.starts_with("/") ? named : cwd() + "/" + named
 }
 
 /** A cached binary would answer for a compiler that is not the one under test,
  * which is the one thing a bootstrap gate cannot allow.
  */
 fresh(by: str, args: str[]) -> int =>
-    exec("env", ["MACA_NO_CACHE=1", by] ++ args)
+    exec("env", ["MACA_NO_CACHE=1", by] + args)
 
 /** Every round writes the same output name in a directory of its own, because
  * `cc` records the name it was handed in the binary it writes.
  */
 rebuilt(dir: str, by: str) -> str {
-    out = dir ++ "/maca"
-    src = cwd() ++ "/" ++ Entry
+    out = dir + "/maca"
+    src = cwd() + "/" + Entry
 
     if !file_exists(out) {
         make_dir(dir)
@@ -44,11 +44,11 @@ rebuilt(dir: str, by: str) -> str {
     out
 }
 
-round_one() -> str => rebuilt(scratch() ++ "/one", compiler())
+round_one() -> str => rebuilt(scratch() + "/one", compiler())
 
-round_two() -> str => rebuilt(scratch() ++ "/two", round_one())
+round_two() -> str => rebuilt(scratch() + "/two", round_one())
 
-round_three() -> str => rebuilt(scratch() ++ "/three", round_two())
+round_three() -> str => rebuilt(scratch() + "/three", round_two())
 
 resolved_markers() -> str[] =>
     ["Token mk_token(", "Lexed lex_all(", "Module parse_module(",
@@ -56,54 +56,54 @@ resolved_markers() -> str[] =>
      "const char* remit_module(", "Unit unit_of("]
 
 program() -> str =>
-    "Shape = Circle(int) | Rect(int, int)\n"
-        ++ "area(s: Shape) -> int => match s "
-        ++ "\{ Circle(r) => r * r Rect(w, h) => w * h \}\n"
-        ++ "label(n: int) -> str => \"area = \{n\}\"\n"
-        ++ "main() -> int \{\n"
-        ++ "    a = area(Rect(6, 7))\n"
-        ++ "    info(label(a))\n"
-        ++ "    a\n"
-        ++ "\}\n"
+    "Shape = Circle(int) | Rect(int, int)\n" +
+        "area(s: Shape) -> int => match s " +
+        "\{ Circle(r) => r * r Rect(w, h) => w * h \}\n" +
+        "label(n: int) -> str => \"area = \{n\}\"\n" +
+        "main() -> int \{\n" +
+        "    a = area(Rect(6, 7))\n" +
+        "    info(label(a))\n" +
+        "    a\n" +
+        "\}\n"
 
 test_the_compiler_resolves_its_own_imports() {
-    c = read_file(round_two() ++ ".c")
+    c = read_file(round_two() + ".c")
 
     for marker in resolved_markers() {
         assert(c.contains(marker),
-            "the emitted unit holds no `{marker}`, so a file the entry "
-                ++ "imports was never reached through the import graph")
+            "the emitted unit holds no `{marker}`, so a file the entry " +
+                "imports was never reached through the import graph")
     }
 
     kind = c.index_of("\} Kind;")
     ty = c.index_of("\} Ty;")
 
     assert(kind >= 0 && ty > kind,
-        "an imported file is emitted ahead of the file that imports it, and "
-            ++ "the token enum came out at {str(kind)} against {str(ty)}")
+        "an imported file is emitted ahead of the file that imports it, and " +
+            "the token enum came out at {str(kind)} against {str(ty)}")
 }
 
 test_the_c_the_compiler_emits_for_itself_is_a_fixed_point() {
-    two = read_file(round_two() ++ ".c")
-    three = read_file(round_three() ++ ".c")
+    two = read_file(round_two() + ".c")
+    three = read_file(round_three() + ".c")
 
     assert(two == three,
-        "the compiler emits different C from the C it was built from: "
-            ++ "{str(two.length())} bytes against {str(three.length())}. "
-            ++ "`cmp {round_two()}.c {round_three()}.c` says where")
+        "the compiler emits different C from the C it was built from: " +
+            "{str(two.length())} bytes against {str(three.length())}. " +
+            "`cmp {round_two()}.c {round_three()}.c` says where")
 }
 
 test_the_binary_the_compiler_builds_is_a_fixed_point() {
     assert_eq(exec("cmp", ["-s", round_two(), round_three()]), 0,
-        "{round_two()} and {round_three()} are different binaries, built "
-            ++ "from one source under one output name, so the compiler the "
-            ++ "compiler builds is not the compiler that built it")
+        "{round_two()} and {round_three()} are different binaries, built " +
+            "from one source under one output name, so the compiler the " +
+            "compiler builds is not the compiler that built it")
 }
 
 test_two_compilers_make_the_same_program_of_one_source() {
-    src = scratch() ++ "/prog.maca"
-    mine = scratch() ++ "/by-the-runner"
-    theirs = scratch() ++ "/by-the-rebuild"
+    src = scratch() + "/prog.maca"
+    mine = scratch() + "/by-the-runner"
+    theirs = scratch() + "/by-the-rebuild"
 
     write_file(src, program())
 
