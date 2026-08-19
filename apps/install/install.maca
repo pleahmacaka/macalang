@@ -9,16 +9,15 @@ Options = {
     done:    bool
 }
 
+/** Windows answers first: under git-bash a `uname` exists and says
+ * MINGW64_NT, which is still Windows and not a platform of its own.
+ */
 platform() -> str {
-    named = capture("uname", ["-sm"]).trim()
-
-    if named != "" {
-        named
-    } else if env("OS") != "" {
-        "Windows x86_64"
-    } else {
-        ""
+    if env("OS") != "" {
+        return "Windows x86_64"
     }
+
+    capture("uname", ["-sm"]).trim()
 }
 
 asset_for(uname: str) -> str {
@@ -154,8 +153,32 @@ one_arg(args: str[], i: int, o: Options) -> Options {
 fetch(url: str, into: str) -> bool =>
     exec("curl", ["-fsSL", "-o", into, url]) == 0
 
-unpack(archive: str, into: str) -> bool =>
-    exec("tar", ["-xf", archive, "-C", into]) == 0
+/** Windows gets its own tar named by full path: the System32 bsdtar reads
+ * zip, while the GNU tar a git-bash puts first on PATH does not, and reads
+ * the colon of a drive-letter path as a remote host besides. Extraction
+ * runs inside the directory on bare names so no path carries a colon.
+ */
+unpack(archive: str, into: str) -> bool {
+    back = cwd()
+
+    if !chdir(into) {
+        return false
+    }
+
+    code = exec(tar_bin(), ["-xf", tail_name(archive)])
+    chdir(back)
+
+    code == 0
+}
+
+tar_bin() -> str =>
+    on_windows() ? env("SystemRoot") + "/System32/tar.exe" : "tar"
+
+tail_name(path: str) -> str {
+    cut = last_index_of(path, "/")
+
+    cut < 0 ? path : path.slice(cut + 1, path.length())
+}
 
 place(from: str, to: str) -> bool {
     remove_file(to)

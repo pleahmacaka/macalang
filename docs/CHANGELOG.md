@@ -2,6 +2,17 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.3
+
+* **The installer installs on Windows, verified by running it there.** Two faults, both
+  found by executing the shipped binary rather than reading it: `uname` under a git-bash
+  answers `MINGW64_NT`, which is still Windows, so the platform asks `OS` first; and the
+  extraction now names `System32	ar.exe` by full path, because the GNU tar a git-bash
+  puts first on PATH cannot read zip and reads the colon of a drive-letter path as a
+  remote host. Extraction runs inside the directory on bare names, so no path carries a
+  colon. On a machine with no C compiler the installer still installs and says plainly
+  what `maca run` will need; `maca check` works as installed.
+
 ## 0.5.2
 
 * **Quipu is verified on a desktop, not just a linker.** The 0.5.1 window opened
