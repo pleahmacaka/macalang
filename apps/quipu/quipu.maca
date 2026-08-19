@@ -29,10 +29,31 @@ Shell : Render = {
         view(self.ide).into_any_element()
 }
 
+import "boot.rs" """
+pub fn quipu_boot() -> i64 {
+    use gpui::AppContext as _;
+    gpui::Application::new().run(|cx: &mut gpui::App| {
+        let bounds = gpui::Bounds::centered(
+            None, gpui::size(gpui::px(1200.0), gpui::px(800.0)), cx);
+        cx.open_window(
+            gpui::WindowOptions {
+                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                ..Default::default()
+            },
+            |_, cx| cx.new(|_| Shell { ide: opened(".".to_string()) }),
+        )
+        .unwrap();
+        cx.activate(true);
+    });
+    0
+}
+"""
+
 main() -> int {
     ide = opened(".")
 
-    info("{str(ide.files.length())} files under {ide.root}")
-    info("target: {ide.target}, panel: {panel_for(ide.target)}")
-    0
+    info("quipu: {str(ide.files.length())} files under {ide.root}, "
+        + "target {ide.target} via {panel_for(ide.target)}")
+
+    quipu_boot()
 }
