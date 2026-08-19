@@ -1,5 +1,6 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
+         Span, line_spans, footing,
          flame_frames, declared, house_rules,
          asked, knobs, reading, Pick, picks, matching,
          Bind, keymap, bound_to, rebound, clash,
@@ -10,7 +11,7 @@ import std/proc
 blank() -> Ide =>
     Ide { root = ".", files = [], open = "", text = "", target = "native",
           panel = "rust", output = "", breaks = [], menu = false, seek = "",
-          pick = 0 }
+          pick = 0, line = 0, col = 0, dirty = false }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
@@ -279,4 +280,78 @@ test_keys_do_nothing_while_the_menu_is_shut() {
 
     assert_eq(struck(ide, "a").seek, "", "typing goes nowhere")
     assert_eq(struck(ide, "enter").open, "", "and enter opens nothing")
+}
+
+scripted(text: str) -> Ide =>
+    blank() with { open = "mem.maca", text = text }
+
+test_typing_lands_at_the_cursor_and_marks_the_buffer() {
+    ide = struck(struck(scripted("ab"), "right"), "x")
+
+    assert_eq(ide.text, "axb", "the character went in at the cursor")
+    assert_eq(str(ide.col), "2", "and the cursor moved past it")
+    assert(ide.dirty, "an edited buffer says so")
+}
+
+test_enter_splits_and_backspace_joins_back() {
+    cut = struck(struck(scripted("abcd"), "right"), "enter")
+
+    assert_eq(cut.text, "a\nbcd", "enter cuts the line at the cursor")
+    assert_eq(str(cut.line), "1", "and the cursor opens the new line")
+
+    whole = struck(cut, "backspace")
+
+    assert_eq(whole.text, "abcd", "backspace at column zero joins up")
+    assert_eq(str(whole.col), "1", "at the seam it closed")
+}
+
+test_the_cursor_stays_inside_the_file() {
+    ide = scripted("ab\ncdef")
+
+    assert_eq(str(struck(ide, "up").line), "0", "no line above the first")
+    assert_eq(str(struck(struck(ide, "down"), "down").line), "1",
+              "no line below the last")
+
+    hop = struck(struck(ide, "down"), "up")
+
+    assert_eq(str(hop.col), "0", "the column survives the round trip")
+}
+
+test_left_and_right_walk_across_line_ends() {
+    ide = struck(struck(struck(scripted("ab\ncd"), "right"),
+                        "right"), "right")
+
+    assert_eq("{str(ide.line)}:{str(ide.col)}", "1:0",
+              "right at the end of a line steps onto the next")
+
+    back = struck(ide, "left")
+
+    assert_eq("{str(back.line)}:{str(back.col)}", "0:2",
+              "and left steps back to its end")
+}
+
+test_a_line_is_cut_into_coloured_spans() {
+    got = line_spans("import x = \"hi\" + 42")
+
+    assert_eq(str(got.length() > 3 ? 1 : 0), "1", "several spans came back")
+    assert_eq(got.get(0).said, "import", "the keyword is its own span")
+    assert(got.get(0).hue != got.get(got.length() - 1).hue,
+           "and a keyword is not the colour of a number")
+}
+
+test_a_comment_line_is_one_quiet_span() {
+    got = line_spans("    // a note")
+
+    assert_eq(str(got.length()), "1", "the whole line is one span")
+}
+
+test_saving_clears_the_mark_and_writes_the_file() {
+    at = env_or("TMPDIR", "/tmp") + "/maca-ide-save.maca"
+    ide = (blank() with { open = at, text = "x" })
+    done = struck(struck(ide, "y"), "ctrl-s")
+
+    assert(!done.dirty, "a saved buffer is clean")
+    assert_eq(read_file(at), "yx", "and the file holds what was typed")
+
+    remove_file(at)
 }

@@ -2,6 +2,17 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.9
+
+- Quipu edits: the cursor is a block you steer with the arrows, typing inserts
+  at it, Enter splits, Backspace deletes and joins, Tab indents, and Ctrl+S
+  writes the file back; the tab and the status bar say when the buffer is
+  unsaved. All of it is `Ide -> Ide` functions a suite runs without a window.
+- Quipu highlights: a small scanner cuts each line into coloured spans: keywords,
+  strings, numbers, comments, calls, capitalised types, under a
+  One-Dark-ish palette, with the open file, the picked hit and the active
+  panel tab marked by their backgrounds, and a status bar underneath.
+
 ## 0.5.8
 
 - `await` on a foreign future blocks on the future itself, through a

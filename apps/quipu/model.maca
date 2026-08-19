@@ -32,6 +32,9 @@ Ide = {
     menu:   bool,
     seek:   str,
     pick:   int,
+    line:   int,
+    col:    int,
+    dirty:  bool,
 }
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
@@ -81,7 +84,8 @@ skipped_dir(name: str) -> bool =>
 opened(root: str) -> Ide {
     bare = Ide { root = root, files = sources(root), open = "", text = "",
                  target = "", panel = "rust", output = "", breaks = [],
-                 menu = false, seek = "", pick = 0 }
+                 menu = false, seek = "", pick = 0, line = 0, col = 0,
+                 dirty = false }
 
     bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
 }
@@ -91,7 +95,7 @@ opened_file(ide: Ide, path: str) -> Ide {
     body = read_file(path)
 
     ide with { open = path, text = body, target = target_of(body),
-               output = "", breaks = [] }
+               output = "", breaks = [], line = 0, col = 0, dirty = false }
 }
 
 /** What `maca build` would pick with no `--target`: a config imports nixpkgs, a
@@ -326,13 +330,13 @@ picked(ide: Ide, name: str) -> Ide =>
     Panels.index_of(name) < 0 ? ide : ide with { panel = name }
 
 /** One key, struck: Ctrl+P opens the quick menu, and while it is open the keys
- * type the query, move the pick, and choose.
+ * type the query, move the pick, and choose; shut, they edit the buffer.
  */
 struck(ide: Ide, key: str) -> Ide {
     if key == "ctrl-p" {
         ide with { menu = !ide.menu, seek = "", pick = 0 }
     } else if !ide.menu {
-        ide
+        edited(ide, key)
     } else if key == "escape" {
         ide with { menu = false }
     } else if key == "enter" {
@@ -783,4 +787,276 @@ tail(path: str) -> str {
     cut = last_index_of(path.replace(chr(92), "/"), "/")
 
     cut < 0 ? path : path.slice(cut + 1, path.length())
+}
+
+/** The buffer under one key: the cursor moves, the text takes the character,
+ * and Ctrl+S writes the file back.
+ */
+edited(ide: Ide, key: str) -> Ide {
+    if ide.open == "" {
+        ide
+    } else if key == "ctrl-s" {
+        saved(ide)
+    } else if key == "up" {
+        placed_at(ide, ide.line - 1, ide.col)
+    } else if key == "down" {
+        placed_at(ide, ide.line + 1, ide.col)
+    } else if key == "left" {
+        stepped_back(ide)
+    } else if key == "right" {
+        stepped_on(ide)
+    } else if key == "enter" {
+        split_line(ide)
+    } else if key == "backspace" {
+        rubbed(ide)
+    } else if key == "tab" {
+        put(ide, "    ")
+    } else if key.length() == 1 {
+        put(ide, key)
+    } else {
+        ide
+    }
+}
+
+saved(ide: Ide) -> Ide {
+    write_file(ide.open, ide.text)
+
+    ide with { dirty = false }
+}
+
+rows_of(ide: Ide) -> str[] =>
+    ide.text.split(chr(10))
+
+row_at(ide: Ide, n: int) -> str {
+    rs = rows_of(ide)
+
+    n < 0 || n >= rs.length() ? "" : rs.get(n)
+}
+
+/** The cursor lands where it can: the line clamped to the file, the column to
+ * that line.
+ */
+placed_at(ide: Ide, line: int, col: int) -> Ide {
+    rs = rows_of(ide)
+    ln = line < 0 ? 0 : (line >= rs.length() ? rs.length() - 1 : line)
+    said = rs.get(ln)
+    at = col < 0 ? 0 : (col > said.length() ? said.length() : col)
+
+    ide with { line = ln, col = at }
+}
+
+stepped_back(ide: Ide) -> Ide {
+    if ide.col > 0 {
+        ide with { col = ide.col - 1 }
+    } else if ide.line > 0 {
+        placed_at(ide, ide.line - 1, row_at(ide, ide.line - 1).length())
+    } else {
+        ide
+    }
+}
+
+stepped_on(ide: Ide) -> Ide {
+    if ide.col < row_at(ide, ide.line).length() {
+        ide with { col = ide.col + 1 }
+    } else if ide.line < rows_of(ide).length() - 1 {
+        placed_at(ide, ide.line + 1, 0)
+    } else {
+        ide
+    }
+}
+
+put(ide: Ide, said: str) -> Ide {
+    row = row_at(ide, ide.line)
+    grown = row.slice(0, ide.col) + said + row.slice(ide.col, row.length())
+
+    (ide with { text = swapped_row(ide, grown), dirty = true,
+                col = ide.col + said.length() })
+}
+
+split_line(ide: Ide) -> Ide {
+    row = row_at(ide, ide.line)
+    cut = row.slice(0, ide.col) + chr(10) + row.slice(ide.col, row.length())
+
+    (ide with { text = swapped_row(ide, cut), dirty = true,
+                line = ide.line + 1, col = 0 })
+}
+
+/** Backspace deletes to the left, or joins this line onto the one above. */
+rubbed(ide: Ide) -> Ide {
+    row = row_at(ide, ide.line)
+
+    if ide.col > 0 {
+        cut = row.slice(0, ide.col - 1) + row.slice(ide.col, row.length())
+
+        (ide with { text = swapped_row(ide, cut), dirty = true,
+                    col = ide.col - 1 })
+    } else if ide.line > 0 {
+        above = row_at(ide, ide.line - 1)
+
+        (joined_up(ide, above + row) with { line = ide.line - 1,
+                                            col = above.length() })
+    } else {
+        ide
+    }
+}
+
+swapped_row(ide: Ide, grown: str) -> str {
+    out: str[] = []
+    i = 0
+
+    for r in rows_of(ide) {
+        out = out.push(i == ide.line ? grown : r)
+        i = i + 1
+    }
+
+    out.join(chr(10))
+}
+
+joined_up(ide: Ide, whole: str) -> Ide {
+    out: str[] = []
+    i = 0
+
+    for r in rows_of(ide) {
+        if i == ide.line - 1 {
+            out = out.push(whole)
+        } else if i != ide.line {
+            out = out.push(r)
+        }
+        i = i + 1
+    }
+
+    ide with { text = out.join(chr(10)), dirty = true }
+}
+
+/** One coloured stretch of a line, as the highlighter cut it. */
+Span = {
+    hue:  int
+    said: str
+}
+
+Keywords = ["import", "from", "if", "else", "match", "while", "for", "in",
+            "return", "with", "use", "true", "false", "spawn", "await",
+            "fail", "try", "break", "continue", "main", "assert",
+            "assert_eq", "info"]
+
+HueInk = 11252415
+HueKey = 13138141
+HueStr = 10012537
+HueNum = 13736550
+HueNote = 6055792
+HueCall = 6402031
+HueType = 15057275
+
+/** The line cut into coloured spans by a small scan: comments whole, strings
+ * to their close, numbers, names against the keyword list, capitals as types.
+ */
+line_spans(said: str) -> Span[] {
+    if said.trim().starts_with("//") || said.trim().starts_with("*") ||
+            said.trim().starts_with("/*") {
+        return [Span { hue = HueNote, said = said }]
+    }
+
+    span_scan(said.chars(), 0, "", [])
+}
+
+span_scan(cs: str[], i: int, held: str, acc: Span[]) -> Span[] {
+    if i >= cs.length() {
+        return held == "" ? acc : acc.push(Span { hue = HueInk, said = held })
+    }
+
+    c = cs.get(i)
+
+    if c == "\"" {
+        shut = string_close(cs, i + 1)
+        lit = piece(cs, i, shut + 1)
+
+        span_scan(cs, shut + 1, "",
+                  plained(acc, held).push(Span { hue = HueStr, said = lit }))
+    } else if c.is_ascii_digit() && !word_tail(cs, i) {
+        stop = number_close(cs, i)
+
+        span_scan(cs, stop, "",
+                  plained(acc, held).push(Span { hue = HueNum,
+                                                 said = piece(cs, i, stop) }))
+    } else if c.is_alpha() || c == "_" {
+        stop = word_close(cs, i)
+        word = piece(cs, i, stop)
+
+        span_scan(cs, stop, "",
+                  plained(acc, held).push(Span { hue = word_hue(cs, word, stop),
+                                                 said = word }))
+    } else {
+        span_scan(cs, i + 1, held + c, acc)
+    }
+}
+
+word_hue(cs: str[], word: str, stop: int) -> int {
+    if Keywords.index_of(word) >= 0 {
+        HueKey
+    } else if word.slice(0, 1).upper() == word.slice(0, 1) &&
+            word.slice(0, 1).is_alpha() {
+        HueType
+    } else if stop < cs.length() && cs.get(stop) == "(" {
+        HueCall
+    } else {
+        HueInk
+    }
+}
+
+word_tail(cs: str[], i: int) -> bool =>
+    i > 0 && (cs.get(i - 1).is_alpha() || cs.get(i - 1) == "_")
+
+plained(acc: Span[], held: str) -> Span[] =>
+    held == "" ? acc : acc.push(Span { hue = HueInk, said = held })
+
+piece(cs: str[], a: int, b: int) -> str {
+    out = "".chars()
+    i = a
+
+    while i < b && i < cs.length() {
+        out = out.push(cs.get(i))
+        i = i + 1
+    }
+
+    out.join("")
+}
+
+string_close(cs: str[], i: int) -> int {
+    if i >= cs.length() {
+        cs.length() - 1
+    } else if cs.get(i) == "\"" {
+        i
+    } else if cs.get(i) == "\\" && i + 1 < cs.length() {
+        string_close(cs, i + 2)
+    } else {
+        string_close(cs, i + 1)
+    }
+}
+
+number_close(cs: str[], i: int) -> int {
+    if i >= cs.length() || (!cs.get(i).is_ascii_digit() && cs.get(i) != ".") {
+        i
+    } else {
+        number_close(cs, i + 1)
+    }
+}
+
+word_close(cs: str[], i: int) -> int {
+    if i >= cs.length() ||
+            (!cs.get(i).is_alpha() && !cs.get(i).is_ascii_digit() &&
+                 cs.get(i) != "_") {
+        i
+    } else {
+        word_close(cs, i + 1)
+    }
+}
+
+/** What the status bar says, which is where the file and the cursor are. */
+footing(ide: Ide) -> str {
+    name = ide.open == "" ? "no file" : tail(ide.open)
+    mark = ide.dirty ? " (unsaved)" : ""
+
+    "{name}{mark}   ln {str(ide.line + 1)}, col {str(ide.col + 1)}   " +
+        "{str(ide.files.length())} files   {ide.target} via " +
+        panel_for(ide.target)
 }

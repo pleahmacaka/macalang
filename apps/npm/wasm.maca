@@ -7,7 +7,7 @@ import maca/emit_nix
 import maca/interp
 import std/json
 
-PgVersion = "0.5.8"
+PgVersion = "0.5.9"
 
 /** The playground's whole answer for one source, as the JSON its glue reads. */
 pg_compile(src: str, mode: int) -> str {
