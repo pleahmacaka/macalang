@@ -1,0 +1,5 @@
+[package]
+name = "examples"
+
+[rust-dependencies]
+gpui = "0.2"

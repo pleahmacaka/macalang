@@ -2425,9 +2425,15 @@ element_attrs(env: Env, cs: Expr[], i: int, acc: Expr) -> Expr {
 
 one_attribute(env: Env, a: Expr) -> Expr {
     value = a.children.get(0)
-    flag = resolve(env.infer, type_in(env, value).ty).kind == KBool
-    made = flag ? e_call("maca_flag", [e_str(a.text), value])
-                : e_call("maca_attr", [e_str(a.text), attr_value(env, value)])
+    held = resolve(env.infer, type_in(env, value).ty).kind
+
+    if held == KFn && env.target != "js" {
+        return e_str("")
+    }
+
+    made = held == KBool ? e_call("maca_flag", [e_str(a.text), value])
+                         : e_call("maca_attr", [e_str(a.text),
+                                                attr_value(env, value)])
 
     env.target == "js" ? e_list([made]) : made
 }
@@ -2589,8 +2595,15 @@ lifted(m: Module) -> Module {
  * scope around it declared; a browser closure can, so there it stays where it
  * was written.
  */
-lifted_on(m: Module, target: str) -> Module =>
-    target == "js" || target == "wasm" ? m : lifted(m)
+lifted_on(m: Module, target: str) -> Module {
+    if target == "js" || target == "wasm" {
+        m
+    } else if target == "rust" {
+        named_anons(m)
+    } else {
+        lifted(m)
+    }
+}
 
 top_names(items: Stmt[], i: int, acc: str[]) -> str[] {
     out = acc
@@ -4124,7 +4137,7 @@ target_errors(m: Module, target: str) -> Diagnostic[] =>
  * targets carry no such thing.
  */
 nested_errors(m: Module, target: str) -> Diagnostic[] {
-    if target != "rust" && target != "jvm" {
+    if target != "jvm" {
         []
     } else {
         nested_faults(m.items, target, 0, [])
@@ -4176,6 +4189,8 @@ handler_errors(m: Module, target: str) -> Diagnostic[] {
 handler_faults(items: Stmt[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
     if i >= items.length() {
         acc
+    } else if items.get(i).ret == "Element" {
+        handler_faults(items, i + 1, acc)
     } else {
         s = items.get(i)
 

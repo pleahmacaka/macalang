@@ -1,5 +1,5 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
-         gutter, gutter_text, stops, tabs, picked,
+         gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
          flame_frames, declared, house_rules,
          asked, knobs, reading, Pick, picks, matching,
          Bind, keymap, bound_to, rebound, clash,
@@ -9,7 +9,8 @@ import std/proc
 
 blank() -> Ide =>
     Ide { root = ".", files = [], open = "", text = "", target = "native",
-          panel = "rust", output = "", breaks = [] }
+          panel = "rust", output = "", breaks = [], menu = false, seek = "",
+          pick = 0 }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
@@ -240,4 +241,42 @@ main() -> int {
     test_a_version_is_compared_by_its_numbers_and_not_its_letters()
     test_the_editor_says_the_truth_about_updating_in_every_case()
     failures()
+}
+
+test_the_quick_menu_types_seeks_and_opens() {
+    ide = blank() with { files = ["a/fib.maca", "b/lex.maca"] }
+    m = struck(ide, "ctrl-p")
+
+    assert(m.menu, "ctrl-p opens the menu")
+
+    m = struck(struck(struck(m, "l"), "e"), "x")
+
+    assert_eq(m.seek, "lex", "typing builds the query")
+    assert_eq(str(hits(m).length()), "1", "and narrows the hits")
+
+    done = struck(m, "enter")
+
+    assert(!done.menu, "enter closes the menu")
+    assert_eq(done.open, "b/lex.maca", "and opens the pick")
+}
+
+test_the_menu_leaves_on_escape_and_the_pick_stays_in_bounds() {
+    ide = blank() with { files = ["x.maca", "y.maca"], menu = true }
+
+    assert(!struck(ide, "escape").menu, "escape closes the menu")
+
+    down = struck(struck(struck(ide, "down"), "down"), "down")
+
+    assert_eq(str(down.pick), "1", "the pick stops at the last hit")
+    assert_eq(str(struck(down, "up").pick), "0", "and walks back up")
+    assert_eq(struck(struck(ide, "backspace"), "q").seek, "q",
+              "backspace on nothing stays put, and typing appends")
+    assert_eq(str(sought(ide).length()), "2", "the menu shows every hit")
+}
+
+test_keys_do_nothing_while_the_menu_is_shut() {
+    ide = blank() with { files = ["x.maca"] }
+
+    assert_eq(struck(ide, "a").seek, "", "typing goes nowhere")
+    assert_eq(struck(ide, "enter").open, "", "and enter opens nothing")
 }

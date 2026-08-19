@@ -29,6 +29,9 @@ Ide = {
     panel:  str,
     output: str,
     breaks: int[],
+    menu:   bool,
+    seek:   str,
+    pick:   int,
 }
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
@@ -77,7 +80,8 @@ skipped_dir(name: str) -> bool =>
  */
 opened(root: str) -> Ide {
     bare = Ide { root = root, files = sources(root), open = "", text = "",
-                 target = "", panel = "rust", output = "", breaks = [] }
+                 target = "", panel = "rust", output = "", breaks = [],
+                 menu = false, seek = "", pick = 0 }
 
     bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
 }
@@ -320,6 +324,91 @@ tab_row(ps: str[], i: int, on: str, acc: str) -> str {
  */
 picked(ide: Ide, name: str) -> Ide =>
     Panels.index_of(name) < 0 ? ide : ide with { panel = name }
+
+/** One key, struck: Ctrl+P opens the quick menu, and while it is open the keys
+ * type the query, move the pick, and choose.
+ */
+struck(ide: Ide, key: str) -> Ide {
+    if key == "ctrl-p" {
+        ide with { menu = !ide.menu, seek = "", pick = 0 }
+    } else if !ide.menu {
+        ide
+    } else if key == "escape" {
+        ide with { menu = false }
+    } else if key == "enter" {
+        chosen(ide)
+    } else if key == "backspace" {
+        ide with { seek = shorn(ide.seek), pick = 0 }
+    } else if key == "up" {
+        ide with { pick = ide.pick > 0 ? ide.pick - 1 : 0 }
+    } else if key == "down" {
+        ide with { pick = below(ide.pick + 1, hits(ide).length()) }
+    } else if key.length() == 1 {
+        ide with { seek = ide.seek + key, pick = 0 }
+    } else {
+        ide
+    }
+}
+
+/** The files the query matches, every one of them when it is empty. */
+hits(ide: Ide) -> str[] {
+    out: str[] = []
+    q = ide.seek.lower()
+
+    for f in ide.files {
+        if q == "" || f.lower().contains(q) {
+            out = out.push(f)
+        }
+    }
+
+    out
+}
+
+/** One row of the quick menu, numbered so the view can mark the pick. */
+Hit = {
+    at:   int
+    path: str
+}
+
+sought(ide: Ide) -> Hit[] {
+    out: Hit[] = []
+    i = 0
+
+    for f in hits(ide) {
+        if i < 20 {
+            out = out.push(Hit { at = i, path = f })
+        }
+        i = i + 1
+    }
+
+    out
+}
+
+/** The picked hit opens and the menu closes; a menu with nothing to pick just
+ * closes.
+ */
+chosen(ide: Ide) -> Ide {
+    all = hits(ide)
+    shut = ide with { menu = false }
+
+    at = below(ide.pick, all.length())
+
+    all.length() == 0 ? shut : opened_file(shut, all.get(at))
+}
+
+chosen_at(ide: Ide, at: int) -> Ide =>
+    chosen(ide with { pick = at })
+
+shorn(s: str) -> str =>
+    s.length() == 0 ? s : s.slice(0, s.length() - 1)
+
+below(n: int, count: int) -> int {
+    if count == 0 {
+        return 0
+    }
+
+    n >= count ? count - 1 : n
+}
 
 /** What the open file declares, read by the compiler's own parser, so the list
  * is exact rather than guessed at.

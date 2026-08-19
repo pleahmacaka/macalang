@@ -126,6 +126,13 @@ it, and a hand-written shim does not scale past a few dozen flat functions.
 * A local passed by value to a user call is cloned, so Maca's value semantics
   survive the move checker. That is a real cost in a hot loop, and the native
   target is the answer.
+* A function declared `-> Element` is gpui rather than markup. `class` names
+  become the styling methods spelled the same way, `id=`/`font=`/`bg=`/`fg=`
+  their methods, a `xs.map(x => …)` child becomes `.children(…)` built in the
+  render pass, and `click=` becomes `.on_click`, applying the attribute's
+  `Ide -> Ide` function through the entity that owns the window. A
+  function-valued attribute never reaches a text target, which has no node to
+  attach it to.
 
 No borrow checker, no lifetimes, no trait definitions, no generic bounds, no
 proc macros, no `unsafe`, and no Rust parser. The back end emits Rust and lets

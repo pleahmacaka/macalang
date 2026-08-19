@@ -2,6 +2,29 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.7
+
+- Quipu is an editor to use, not to look at: clicking a file opens it,
+  clicking a tab switches the panel, the columns scroll, and Ctrl+P opens a
+  quick menu that filters as you type and opens on Enter.
+- `click=` on an element lowers to gpui's `.on_click`, closing over clones of
+  what it reads and applying its `Ide -> Ide` function through the window's
+  entity. A function-valued attribute never reaches a text target.
+- The Rust back end grew up about mutation and closures: a parameter the body
+  writes is declared `mut`, an assignment's left side is a place and never a
+  clone, and a lambda stays where it was written because Rust has closures of
+  its own; nothing is lifted to a name nobody wrote.
+- A written string handed to a foreign method is lent as the `&str` it is, so
+  `div().id("inc")` satisfies gpui's own conversions.
+- `Element` erases to `gpui::AnyElement` at every element literal, so a row
+  with a handler and a row without are the same type to a list.
+- The unlowered-expression fallback in the Rust back end is a `compile_error!`
+  rather than a silent `0`.
+- `apps/examples/gpui_counter.maca` compiles again, is written in gpui's own
+  listener idiom, and is gated by the editor workflow.
+- Main CI carries rustc, so the rust suites' compile gates run rather than
+  passing vacuously.
+
 ## 0.5.6
 
 - The editor's window no longer opens frozen: the workspace scan skips VCS and

@@ -1,4 +1,8 @@
 import "gpui::div"
+import "gpui::Styled"
+import "gpui::ParentElement"
+import "gpui::InteractiveElement"
+import "gpui::StatefulInteractiveElement"
 import "gpui::Render"
 import "gpui::IntoElement"
 import "gpui::AnyElement"
@@ -19,7 +23,10 @@ Counter : Render = {
                 div()
                     .id("inc")
                     .child("increment")
-                    .on_click(ev => self.count = self.count + 1)
+                    .on_click(cx.listener((this, ev, win, cx) => {
+                        this.count = this.count + 1
+                        cx.notify()
+                    }))
             )
             .into_any_element()
 }

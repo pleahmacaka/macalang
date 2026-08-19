@@ -8,8 +8,58 @@
 
 import "boot.rs" """
 #![windows_subsystem = "windows"]
+use gpui::AppContext as _;
+
+pub struct Host {
+    ide: Ide,
+    focus: gpui::FocusHandle,
+}
+
+thread_local! {
+    static SHELL: std::cell::RefCell<Option<gpui::Entity<Host>>> =
+        std::cell::RefCell::new(None);
+}
+
+pub fn quipu_apply(app: &mut gpui::App, f: &dyn Fn(Ide) -> Ide) {
+    let kept = SHELL.with(|s| s.borrow().clone());
+    if let Some(host) = kept {
+        host.update(app, |h, cx| {
+            h.ide = f(h.ide.clone());
+            cx.notify();
+        });
+    }
+}
+
+fn quipu_key(ev: &gpui::KeyDownEvent) -> String {
+    let ks = &ev.keystroke;
+    if ks.modifiers.control {
+        format!("ctrl-{}", ks.key)
+    } else if let Some(ch) = &ks.key_char {
+        ch.clone()
+    } else {
+        ks.key.clone()
+    }
+}
+
+impl gpui::Render for Host {
+    fn render(
+        &mut self,
+        _win: &mut gpui::Window,
+        cx: &mut gpui::Context<Host>,
+    ) -> impl gpui::IntoElement {
+        gpui::div()
+            .id("host")
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|h, ev: &gpui::KeyDownEvent, _w, cx| {
+                h.ide = struck(h.ide.clone(), quipu_key(ev));
+                cx.notify();
+            }))
+            .size_full()
+            .child(view(self.ide.clone()))
+    }
+}
+
 pub fn quipu_boot() -> i64 {
-    use gpui::AppContext as _;
     gpui::Application::new().run(|cx: &mut gpui::App| {
         let bounds = gpui::Bounds::centered(
             None, gpui::size(gpui::px(1200.0), gpui::px(800.0)), cx);
@@ -22,7 +72,16 @@ pub fn quipu_boot() -> i64 {
                 }),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| Shell { ide: opened(".".to_string()) }),
+            |win, cx| {
+                let host = cx.new(|cx| Host {
+                    ide: opened(".".to_string()),
+                    focus: cx.focus_handle(),
+                });
+                SHELL.with(|s| *s.borrow_mut() = Some(host.clone()));
+                let keys = host.read(cx).focus.clone();
+                win.focus(&keys);
+                host
+            },
         )
         .unwrap();
         cx.activate(true);
@@ -36,23 +95,10 @@ import "gpui::Div"
 import "gpui::Styled"
 import "gpui::ParentElement"
 import "gpui::InteractiveElement"
-import "gpui::Render"
-import "gpui::IntoElement"
-import "gpui::AnyElement"
-import "gpui::Context"
-import "gpui::Window"
+import "gpui::StatefulInteractiveElement"
 
-import { Ide, opened } from apps/quipu/model
+import { Ide, opened, struck } from apps/quipu/model
 import { view } from apps/quipu/view
-
-Shell = {
-    ide: Ide
-}
-
-Shell : Render = {
-    render = (self, window: Window, cx: Context Shell) -> AnyElement =>
-        view(self.ide).into_any_element()
-}
 
 main() -> int =>
     quipu_boot()

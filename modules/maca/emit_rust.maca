@@ -7,6 +7,9 @@ rust_int(n: int) -> str =>
 rust_str(s: str) -> str =>
     "\"" + s + "\".to_string()"
 
+rust_str_raw(s: str) -> str =>
+    "\"" + s + "\""
+
 RustReserved = " as async await become box break const continue crate do dyn else enum extern false final fn for if impl in let loop macro match mod move mut override priv pub ref return Self static struct super trait true try type typeof union unsafe unsized use virtual where while yield "
 
 rid(name: str) -> str {
@@ -55,7 +58,8 @@ remit_expr(e: Expr) -> str =>
         EWhile   => remit_while(e)
         EFor     => remit_for(e)
         ELambda  => remit_lambda(e)
-        _        => "0i64"
+        _        => "compile_error!(\"maca: an expression this back end" +
+            " never lowered; report the source line\")"
     }
 
 /** A field read off `self` in a trait method is cloned even untyped:
@@ -324,7 +328,7 @@ rstr_index(e: Expr) -> bool =>
     (e.text == "at" || e.text == "get") && e.children.get(0).ty == "str"
 
 remit_method(e: Expr) -> str {
-    recv = remit_expr(e.children.get(0))
+    recv = rreceiver(e.children.get(0))
 
     if rstr_helper(e.text) {
         remit_str_method(e, recv)
@@ -375,7 +379,7 @@ remit_method(e: Expr) -> str {
     } else if rforeign_recv(e.children.get(0)) {
         "{e.children.get(0).text}::{e.text}({rbare_args(e.children, 1)})"
     } else {
-        "{recv}.{e.text}({remit_args(e.children, 1)})"
+        "{recv}.{e.text}({rlent_args(e.children, 1)})"
     }
 }
 
@@ -516,6 +520,8 @@ remit_binary(e: Expr) -> str {
 
     if e.text == "=" && lhs.kind == EMethod && lhs.text == "get" {
         rstore(lhs, r)
+    } else if e.text == "=" {
+        "{rplace(lhs)} = {r}"
     } else if e.text == ".." {
         "Rc::new((({l})..({r})).collect::<Vec<i64>>())"
     } else if rjoins(e) && on_list {
@@ -645,11 +651,20 @@ rstored_into(e: Expr, name: str) -> bool {
     if e.kind != EBinary || e.text != "=" {
         false
     } else {
-        lhs = e.children.get(0)
+        rroot_name(e.children.get(0)) == name
+    }
+}
 
-        lhs.kind == EMethod && lhs.text == "get"
-            && lhs.children.get(0).kind == EIdent
-            && lhs.children.get(0).text == name
+/** The binding an assignment lands in, however many fields or `get`s deep. */
+rroot_name(e: Expr) -> str {
+    if e.kind == EIdent {
+        e.text
+    } else if e.kind == EField {
+        rroot_name(e.children.get(0))
+    } else if e.kind == EMethod && e.text == "get" {
+        rroot_name(e.children.get(0))
+    } else {
+        ""
     }
 }
 
@@ -741,7 +756,7 @@ rtype(ty: str) -> str {
     } else if ty == "float" {
         "f64"
     } else if ty == "Element" {
-        "Div"
+        "gpui::AnyElement"
     } else if ty == "str" {
         "String"
     } else if ty == "bool" {
@@ -772,13 +787,30 @@ remit_fn(s: Stmt) -> str {
     if s.body.length() == 0 {
         rforeign(s)
     } else if s.name == "main" {
-        params = s.params.map(remit_param).join(", ")
+        params = rparam_list(s.params, s.body, 0)
         "fn __maca_main({params}) -> i64 {{ {body} }}\n" +
             "fn main() {{ std::process::exit(__maca_main(" +
             "{rust_argv(s.params)}) as i32); }}"
     } else {
-        params = s.params.map(remit_param).join(", ")
+        params = rparam_list(s.params, s.body, 0)
         "fn {rid(s.name)}({params}) -> {rret(s)} {{ {body} }}"
+    }
+}
+
+/** A parameter the body writes, whole or field by field, is `mut`; Maca
+ * parameters are owned values, so the write is local and Rust only wants it
+ * declared.
+ */
+rparam_list(ps: Expr[], body: Stmt[], i: int) -> str {
+    if i >= ps.length() {
+        ""
+    } else {
+        name = binder_name(ps.get(i))
+        kept = rassigned_in(body, 0, name) ? "mut {remit_param(ps.get(i))}"
+                                           : remit_param(ps.get(i))
+        rest = rparam_list(ps, body, i + 1)
+
+        rest == "" ? kept : "{kept}, {rest}"
     }
 }
 
@@ -1122,13 +1154,97 @@ gpui_texts(cs: Expr[], i: int, acc: Expr[]) -> Expr[] {
     }
 }
 
+/** What a handler reads from around it, cloned into the closure so the row it
+ * came from keeps its own values.
+ */
+rfree_in(e: Expr, bound: str[]) -> str[] {
+    if e.kind == EIdent {
+        bound.index_of(e.text) < 0 && e.text != "" ? [e.text] : []
+    } else if e.kind == ELambda {
+        rfree_kids(lambda_body(e).children, 0,
+                   bound + lambda_params(e).map(binder_name),
+                   rfree_one(lambda_body(e),
+                             bound + lambda_params(e).map(binder_name)))
+    } else {
+        rfree_kids(e.children, 0, bound, [])
+    }
+}
+
+rfree_one(e: Expr, bound: str[]) -> str[] {
+    if e.kind == EIdent {
+        bound.index_of(e.text) < 0 && e.text != "" ? [e.text] : []
+    } else {
+        []
+    }
+}
+
+rfree_kids(cs: Expr[], i: int, bound: str[], acc: str[]) -> str[] {
+    if i >= cs.length() {
+        acc
+    } else {
+        rfree_kids(cs, i + 1, bound, rjoined(acc, rfree_in(cs.get(i), bound)))
+    }
+}
+
+rjoined(a: str[], b: str[]) -> str[] {
+    out = a
+
+    for name in b {
+        if out.index_of(name) < 0 {
+            out = out.push(name)
+        }
+    }
+
+    out
+}
+
+rheld_clones(names: str[], i: int) -> str {
+    if i >= names.length() {
+        ""
+    } else {
+        "let {rid(names.get(i))} = {rid(names.get(i))}.clone(); " +
+            rheld_clones(names, i + 1)
+    }
+}
+
 /** Maca's tag syntax is gpui's, because gpui names its style methods the way a
  * class names Tailwind.
  */
 gpui_element(e: Expr) -> str =>
+    "gpui::IntoElement::into_any_element({gpui_element_raw(e)})"
+
+gpui_element_raw(e: Expr) -> str =>
     gpui_box(e.children.get(0).text) +
         gpui_attrs(e.children.get(3).children, 0) +
         gpui_kids(e.children.get(4).children, 0)
+
+/** A foreign method takes a written literal as the `&str` it is, because the
+ * crate's own types (`ElementId`, `SharedString`) convert from that and not
+ * from an owned `String`.
+ */
+rlent_args(cs: Expr[], i: int) -> str {
+    if i >= cs.length() {
+        ""
+    } else {
+        here = cs.get(i).kind == EStr ? rust_str_raw(cs.get(i).text)
+                                      : remit_expr(cs.get(i))
+        rest = rlent_args(cs, i + 1)
+
+        rest == "" ? here : "{here}, {rest}"
+    }
+}
+
+/** A method chained straight onto an element keeps the concrete box, because
+ * the erased form has no style methods; the chain ends wherever the author
+ * takes it.
+ */
+rreceiver(e: Expr) -> str {
+    if e.kind == ECall && e.text == "maca_element" && e.children.length() == 5 {
+        gpui_element_raw(e)
+    } else {
+        remit_expr(e)
+    }
+}
 
 /** gpui builds one box, and keeps the names of the few tags it has of its own.
  */
@@ -1152,13 +1268,18 @@ gpui_attr(a: Expr) -> str {
     if a.text == "class" {
         gpui_classes(gpui_words(a.children.get(0)), 0)
     } else if a.text == "id" {
-        ".id({remit_expr(a.children.get(0))})"
+        ".id(gpui::SharedString::from({remit_expr(a.children.get(0))}))"
     } else if a.text == "font" {
         ".font_family({remit_expr(a.children.get(0))})"
     } else if a.text == "bg" {
         ".bg(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
     } else if a.text == "fg" {
         ".text_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
+    } else if a.text == "click" {
+        held = rfree_in(a.children.get(0), [])
+
+        ".on_click({{ {rheld_clones(held, 0)}move |_ev, _win, _app|" +
+            " quipu_apply(_app, &{remit_expr(a.children.get(0))}) }})"
     } else {
         ""
     }

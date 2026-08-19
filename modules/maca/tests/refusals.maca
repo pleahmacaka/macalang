@@ -616,6 +616,23 @@ test_a_handler_has_nowhere_to_attach_in_markup() {
     }
 }
 
+test_a_handler_sits_on_an_element_for_a_target_with_nodes() {
+    dir = scratch() + "/handlers"
+    make_dir(scratch())
+    make_dir(dir)
+    at = dir + "/element.maca"
+
+    write_file(at, "open_it(i: int) -> int => i\n\n" +
+        "view() -> Element => div(id=\"a\", click=(i => open_it(i)), \"hi\")\n")
+
+    assert_eq(str(exec(maca_bin(), ["check", at, "--target", "rust"])), "0",
+        "gpui has a node to attach to, so an Element function may hold one: " +
+            capture(maca_bin(), ["check", at, "--target", "rust"]))
+    assert_eq(str(exec(maca_bin(), ["check", at])), "0",
+        "and a component is a component on every target; a text rendering" +
+            " simply draws it without the handler")
+}
+
 test_a_quoted_handler_is_an_ordinary_attribute() {
     dir = scratch() + "/handlers"
     make_dir(scratch())
@@ -642,9 +659,10 @@ test_a_nested_definition_is_named_by_the_targets_that_cannot_carry_it() {
     assert_eq(exec(maca_bin(), ["run", at]), 42,
         "the native back end holds the local in a cell, so the write lands")
 
-    for target in ["rust", "jvm"] {
-        refused_on(at, target, "`add` is defined inside another function")
-    }
+    assert_eq(str(exec(maca_bin(), ["check", at, "--target", "rust"])), "0",
+        "Rust has closures of its own, so the definition stays where it was" +
+            " written")
+    refused_on(at, "jvm", "`add` is defined inside another function")
 }
 
 test_a_slot_the_browser_keeps_is_refused_when_it_cannot_be_named() {

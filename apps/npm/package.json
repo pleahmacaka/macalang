@@ -1,6 +1,6 @@
 {
   "name": "@pleahmacaka/macalang",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Compile and import Maca (.maca) from JavaScript: the Maca compiler front-end as WebAssembly.",
   "type": "module",
   "main": "./index.js",

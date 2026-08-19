@@ -4,8 +4,9 @@
  * this, so the editor is the same components either way.
  */
 
-import { Ide, Line, lines_of, tail, panel_for, shown, stops, tabs,
-         knobs } from apps/quipu/model
+import { Ide, Line, Hit, lines_of, tail, panel_for, shown, stops,
+         knobs, opened_file, picked, chosen_at, sought,
+         Panels } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
 
@@ -25,12 +26,14 @@ view(ide: Ide) -> Element =>
 Shade = 921102
 
 tree(ide: Ide) -> Element =>
-    div(class="flex flex-col w-64 p-3 gap-2", bg=Shade,
+    div(id="tree", class="flex flex-col w-64 p-3 gap-2 overflow-y-scroll",
+        bg=Shade,
         div(class="text-xs", "FILES  ({str(ide.files.length())})"),
         div(class="flex flex-col gap-1", ide.files.map(f => file_row(ide, f))))
 
 file_row(ide: Ide, f: str) -> Element =>
-    div(class="text-xs", f == ide.open ? "> {tail(f)}" : "  {tail(f)}")
+    div(id=f, click=(i => opened_file(i, f)), class="text-xs",
+        f == ide.open ? "> {tail(f)}" : "  {tail(f)}")
 
 line_row(l: Line) -> Element =>
     div(class="flex flex-row gap-3",
@@ -41,11 +44,25 @@ line_row(l: Line) -> Element =>
  * the runner is told about.
  */
 buffer(ide: Ide) -> Element =>
+    ide.menu ? seeker(ide) : script(ide)
+
+script(ide: Ide) -> Element =>
     div(class="flex flex-col grow p-3 gap-2",
         div(class="text-xs", ide.open == "" ? "no file open" : tail(ide.open)),
-        div(class="flex flex-col grow", lines_of(ide).map(l => line_row(l))),
+        div(id="lines", class="flex flex-col grow overflow-y-scroll",
+            lines_of(ide).map(l => line_row(l))),
         div(class="text-xs", "stops: {stops(ide)}"),
         asked_controls(ide))
+
+/** Ctrl+P: the buffer becomes the quick menu until a file is chosen. */
+seeker(ide: Ide) -> Element =>
+    div(class="flex flex-col grow p-3 gap-2",
+        div(class="text-xs", "OPEN  {ide.seek}_"),
+        div(class="flex flex-col gap-1", sought(ide).map(h => hit_row(ide, h))))
+
+hit_row(ide: Ide, h: Hit) -> Element =>
+    div(id="hit-{str(h.at)}", click=(i => chosen_at(i, h.at)), class="text-xs",
+        h.at == ide.pick ? "> {tail(h.path)}" : "  {tail(h.path)}")
 
 /** A `@param` in a doc comment is a control, drawn beside the buffer that asked
  * for it.
@@ -66,10 +83,16 @@ asked_controls(ide: Ide) -> Element {
  * has to be chosen.
  */
 panel(ide: Ide) -> Element =>
-    div(class="flex flex-col w-96 p-3 gap-2", bg=Shade,
-        div(class="text-xs", tabs(ide)),
+    div(id="panel", class="flex flex-col w-96 p-3 gap-2 overflow-y-scroll",
+        bg=Shade,
+        div(class="flex flex-row flex-wrap gap-2",
+            Panels.map(p => tab(ide, p))),
         div(class="text-xs", "{ide.target} via {panel_for(ide.target)}"),
         div(class="text-sm", shown(ide)))
+
+tab(ide: Ide, p: str) -> Element =>
+    div(id="tab-{p}", click=(i => picked(i, p)), class="text-xs",
+        p == ide.panel ? "[{p}]" : p)
 
 /** A control a doc comment asked for, drawn the way the tag syntax draws
  * anything else.

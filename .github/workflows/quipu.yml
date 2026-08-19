@@ -62,6 +62,11 @@ jobs:
       - name: Build the editor
         run: MACA=$PWD/bin/maca ./bin/maca build apps/quipu/quipu.maca --target rust -o quipu
         shell: bash
+      # The one gpui example is gated here, where gpui is already paid for.
+      - name: Build the counter example
+        if: matrix.os == 'ubuntu-latest'
+        run: MACA=$PWD/bin/maca ./bin/maca build apps/examples/gpui_counter.maca --target rust -o counter
+        shell: bash
       - name: Name it for the platform it was built on
         run: mv "quipu${{ matrix.ext }}" "${{ matrix.asset }}${{ matrix.ext }}"
         shell: bash

@@ -15,7 +15,7 @@ Sample = "greet(who: str) -> str => \"hi {{who}}\"\n\nmain() -> int {{\n    info
 shown_state() -> Ide =>
     Ide { root = "maca.dev", files = ["greet.maca"], open = "greet.maca",
           text = Sample, target = "native", panel = "names", output = "",
-          breaks = [2] }
+          breaks = [2], menu = false, seek = "", pick = 0 }
 
 main() -> Element =>
     view(shown_state())

@@ -403,8 +403,11 @@ test_a_raw_block_is_pasted_as_the_rust_it_was_written_in() {
     assert(made.index_of("fn apply(f: impl Fn(i64) -> i64, x: i64) -> i64")
                >= 0,
            "the block reaches the unit as the source it was, braces and all")
-    assert(made.index_of("apply(maca_lambda") >= 0,
-           "and the call the program wrote reaches it")
+    assert(made.index_of("apply(|n| (n + 1i64)") >= 0,
+           "and the lambda stays where it was written, because Rust has" +
+               " closures of its own")
+    assert(made.index_of("maca_lambda") < 0,
+           "so nothing is lifted to a name nobody wrote")
 }
 
 test_a_call_into_a_raw_block_is_not_an_undefined_function() {
@@ -434,10 +437,10 @@ test_a_trait_a_raw_block_declared_is_implemented_for_a_record() {
 test_what_a_function_returns_picks_between_gpui_and_text() {
     made = gpui_rust("view() -> Element =>\n    div(class=\"flex gap-2\", id=\"root\", span(\"hi\"))\n\nshell(body: str) -> str => div(class=\"wrap\", body)\n")
 
-    assert(made.index_of("fn view() -> Div {{ div().flex().gap_2()") >= 0,
+    assert(made.index_of("fn view() -> gpui::AnyElement {{ gpui::IntoElement::into_any_element(div().flex().gap_2()") >= 0,
            "an Element is gpui's box, styled by the class it was written with: {made}")
-    assert(made.index_of(".child(div()") >= 0,
-           "and a child is a child, every tag gpui lacks being a div: {made}")
+    assert(made.index_of(".child(gpui::IntoElement::into_any_element(div()") >= 0,
+           "and a child is a child, boxed the way every element is: {made}")
     assert(made.index_of("fn shell(body: String) -> String {{ maca_element") >= 0,
            "while a function that says it answers text still builds text, which is what the declared result is for: {made}")
 }
@@ -449,6 +452,33 @@ test_an_if_nested_in_a_then_branch_keeps_its_braces() {
            "the outer then is braced, so the inner if is inside it: {out}")
     assert(out.index_of("if a if") < 0,
            "bare, it would read as the else-if form: {out}")
+}
+
+test_a_written_parameter_is_declared_mut() {
+    made = gate_rust("Counter = {{ count: int }}\n" +
+                     "bump(c: Counter) -> int {{ c.count = c.count + 1\n" +
+                     "    c.count }}\n" +
+                     "read(c: Counter) -> int => c.count")
+
+    assert(made.index_of("fn bump(mut c: Counter) -> i64") >= 0,
+           "the body writes c, so Rust wants the parameter declared: {made}")
+    assert(made.index_of("c.count = (") >= 0,
+           "and the write is a bare place: {made}")
+    assert(made.index_of(".clone() = ") < 0,
+           "a clone is a value, and a value is no place to assign into: {made}")
+    assert(made.index_of("fn read(c: Counter)") >= 0,
+           "while a parameter only read stays unannotated: {made}")
+}
+
+test_a_click_attribute_is_a_gpui_handler_applied_to_the_ide() {
+    made = gpui_rust("open_it(i: int, f: str) -> int => i\n\n" +
+                     "view(f: str) -> Element =>\n" +
+                     "    div(id=f, click=(i => open_it(i, f)), \"hi\")\n")
+
+    assert(made.index_of(".on_click({{ let f = f.clone(); move |_ev, _win, _app| quipu_apply(_app, &|i| open_it(i, f.clone())) }})") >= 0,
+           "a click closes over clones, so the row it came from keeps its own values: {made}")
+    assert(made.index_of("maca_attr(\"click\"") < 0,
+           "and it never becomes markup text, which has no node to attach to: {made}")
 }
 
 test_a_map_child_becomes_children_built_in_the_render_pass() {
