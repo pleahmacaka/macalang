@@ -2,6 +2,15 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.1
+
+* **Quipu opens its window.** 0.5.0's editor binaries compiled the view against gpui but
+  `main` printed the workspace state and exited; a raw Rust block now boots
+  `gpui::Application`, opens a centered 1200x800 window and hands it `Shell` as the root
+  view, so the binary on this page is an editor and not a report. An ordinary comment also
+  settled its shape: `//` for one line, `/* ... */` past that, with the doc form `/** ... */`
+  untouched, and MacaDoc, the spec index and the editor's reader all read the block blurb.
+
 ## 0.5.0
 
 * **Joining is `+`, and `++` is only the bump.** `"a" + b` and `xs + ys` concatenate;
