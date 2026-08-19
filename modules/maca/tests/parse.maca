@@ -828,8 +828,8 @@ test_a_lambda_body_may_set_a_field_rather_than_answer_one() {
                       .length()), "0",
               "the `=` after the arrow is the setter form, not a stray binding")
     assert(annotated_rust("f(c: int) -> int {{ g(ev => c = c + 1) 0 }}")
-               .index_of("|ev| (c = (c + 1i64))") >= 0,
-           "and Rust assigns inside the closure")
+               .index_of("|ev| c = (c + 1i64)") >= 0,
+           "and Rust assigns inside the closure, into a place and not a clone")
 }
 
 test_a_lambda_argument_is_counted_as_one_argument() {
