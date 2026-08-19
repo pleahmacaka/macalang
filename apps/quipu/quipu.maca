@@ -38,6 +38,10 @@ pub fn quipu_boot() -> i64 {
         cx.open_window(
             gpui::WindowOptions {
                 window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some("Quipu".into()),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             |_, cx| cx.new(|_| Shell { ide: opened(".".to_string()) }),

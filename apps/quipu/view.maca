@@ -12,8 +12,12 @@ import { between } from std/text
 Face = "JetBrains Mono Nerd Font"
 
 /** Three columns: what there is to open, what is open, and what it becomes. */
+Ink = 15263976
+
+Paper = 1710622
+
 view(ide: Ide) -> Element =>
-    div(class="flex flex-row size-full", font=Face,
+    div(class="flex flex-row size-full", font=Face, bg=Paper, fg=Ink,
         tree(ide),
         buffer(ide),
         panel(ide))
