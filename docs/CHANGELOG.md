@@ -2,6 +2,15 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.2
+
+* **Quipu is verified on a desktop, not just a linker.** The 0.5.1 window opened
+  transparent and untitled: nothing painted the root, so the desktop showed through the
+  editor. The gpui lowering gained `bg=` and `fg=` attributes (`.bg(gpui::rgb(...))` /
+  `.text_color(...)`), the root paints its paper once and the colours inherit, and the
+  window says Quipu in its title bar. Confirmed by launching the shipped Windows binary
+  and reading its own pixels: three columns, dark paper, the tab row and the file count.
+
 ## 0.5.1
 
 * **Quipu opens its window.** 0.5.0's editor binaries compiled the view against gpui but

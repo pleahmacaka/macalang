@@ -1,7 +1,7 @@
 # Maca self-manifest, dogfooded as features land.
 [package]
 name = "maca"
-version = "0.5.1"
+version = "0.5.2"
 
 [workspace]
 members = [
