@@ -4,7 +4,7 @@
  * this, so the editor is the same components either way.
  */
 
-import { Ide, panel_for, shown, stops, gutter_text, tabs,
+import { Ide, Line, lines_of, tail, panel_for, shown, stops, tabs,
          knobs } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
@@ -22,21 +22,28 @@ view(ide: Ide) -> Element =>
         buffer(ide),
         panel(ide))
 
+Shade = 921102
+
 tree(ide: Ide) -> Element =>
-    div(class="flex flex-col w-64 p-2 gap-1",
-        div(class="text-xs", "FILES"),
-        div(class="text-sm", ide.root),
-        div(class="text-xs", "{str(ide.files.length())} in the workspace"))
+    div(class="flex flex-col w-64 p-3 gap-2", bg=Shade,
+        div(class="text-xs", "FILES  ({str(ide.files.length())})"),
+        div(class="flex flex-col gap-1", ide.files.map(f => file_row(ide, f))))
+
+file_row(ide: Ide, f: str) -> Element =>
+    div(class="text-xs", f == ide.open ? "> {tail(f)}" : "  {tail(f)}")
+
+line_row(l: Line) -> Element =>
+    div(class="flex flex-row gap-3",
+        div(class="text-xs w-8", str(l.n)),
+        div(class="text-xs grow", l.said))
 
 /** The gutter runs down the left, a mark a line, and a marked line is a stop
  * the runner is told about.
  */
 buffer(ide: Ide) -> Element =>
-    div(class="flex flex-col grow p-2 gap-1",
-        div(class="text-xs", ide.open),
-        div(class="flex flex-row gap-2",
-            div(class="text-sm w-8", gutter_text(ide)),
-            div(class="text-sm grow", ide.text)),
+    div(class="flex flex-col grow p-3 gap-2",
+        div(class="text-xs", ide.open == "" ? "no file open" : tail(ide.open)),
+        div(class="flex flex-col grow", lines_of(ide).map(l => line_row(l))),
         div(class="text-xs", "stops: {stops(ide)}"),
         asked_controls(ide))
 
@@ -59,7 +66,7 @@ asked_controls(ide: Ide) -> Element {
  * has to be chosen.
  */
 panel(ide: Ide) -> Element =>
-    div(class="flex flex-col w-96 p-2 gap-1",
+    div(class="flex flex-col w-96 p-3 gap-2", bg=Shade,
         div(class="text-xs", tabs(ide)),
         div(class="text-xs", "{ide.target} via {panel_for(ide.target)}"),
         div(class="text-sm", shown(ide)))

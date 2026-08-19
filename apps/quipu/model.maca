@@ -39,8 +39,15 @@ maca_bin() -> str {
     named.starts_with("/") ? named : cwd() + "/" + named
 }
 
-/** Every `.maca` file under the tree, which is what the file list shows. */
+/** Every `.maca` file under the tree, which is what the file list shows; a
+ * directory with no manifest is not a workspace, and walking one from a Start
+ * Menu launch would mean crawling a whole home directory.
+ */
 sources(root: str) -> str[] {
+    if !file_exists("{root}/maca.toml") {
+        return []
+    }
+
     out: str[] = []
 
     for path in walk(root) {
@@ -52,9 +59,15 @@ sources(root: str) -> str[] {
     out
 }
 
-opened(root: str) -> Ide =>
-    Ide { root = root, files = sources(root), open = "", text = "",
-          target = "", panel = "rust", output = "", breaks = [] }
+/** The editor opens on the first file it can see, because an editor showing
+ * nothing is a report and not an editor.
+ */
+opened(root: str) -> Ide {
+    bare = Ide { root = root, files = sources(root), open = "", text = "",
+                 target = "", panel = "rust", output = "", breaks = [] }
+
+    bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
+}
 
 /** Opening a file reads it and decides what building it would produce. */
 opened_file(ide: Ide, path: str) -> Ide {
@@ -644,4 +657,28 @@ update_said(here: str, there: str) -> str {
 
     newer(here, there) ? "{there} is out, and this is {here}"
                        : "{here} is the latest"
+}
+
+/** One line of the open file, numbered for the gutter. */
+Line = {
+    n:    int
+    said: str
+}
+
+lines_of(ide: Ide) -> Line[] {
+    out: Line[] = []
+    i = 0
+
+    for said in ide.text.split(chr(10)) {
+        i = i + 1
+        out = out.push(Line { n = i, said = said })
+    }
+
+    out
+}
+
+tail(path: str) -> str {
+    cut = last_index_of(path.replace(chr(92), "/"), "/")
+
+    cut < 0 ? path : path.slice(cut + 1, path.length())
 }

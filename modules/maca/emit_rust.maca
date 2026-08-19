@@ -1184,6 +1184,23 @@ gpui_kids(cs: Expr[], i: int) -> str {
     if i >= cs.length() {
         ""
     } else {
-        ".child({remit_expr(cs.get(i))})" + gpui_kids(cs, i + 1)
+        "{gpui_kid(cs.get(i))}" + gpui_kids(cs, i + 1)
+    }
+}
+
+/** A `xs.map(x => element)` child becomes `.children(...)` built inside the
+ * render pass, which is gpui's own idiom and never clones a built element.
+ */
+gpui_kid(e: Expr) -> str {
+    if e.kind == EMethod && e.text == "map" && e.children.length() == 2
+            && e.children.get(1).kind == ELambda {
+        recv = remit_expr(e.children.get(0))
+        lam = e.children.get(1)
+        bound = binder_name(lambda_params(lam).get(0))
+
+        ".children(({recv}).iter().cloned().map(|{bound}|" +
+            " {remit_expr(lambda_body(lam))}))"
+    } else {
+        ".child({remit_expr(e)})"
     }
 }

@@ -2,6 +2,19 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.5
+
+- Quipu launches without a console window: the emitted crate opens with
+  `#![windows_subsystem = "windows"]`, hoisted from the raw boot block to the
+  crate's first line.
+- A Start Menu launch no longer dies walking a home directory: a folder with
+  no `maca.toml` is not a workspace, so the editor opens on it without
+  crawling it.
+- The editor opens on the first file of the workspace, and the view is built
+  from real elements: one per file in the tree, one per line in the buffer. A
+  `xs.map(x => element)` child now lowers to gpui's `.children(...)`, built
+  inside the render pass.
+
 ## 0.5.4
 
 * **The installer installs the editor too, and Windows search finds it.** Where a Quipu

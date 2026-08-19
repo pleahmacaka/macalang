@@ -1462,6 +1462,7 @@ MacaList gpui_words(Expr e);
 const char* gpui_classes(MacaList ws, long long i);
 const char* gpui_method(const char* w);
 const char* gpui_kids(MacaList cs, long long i);
+const char* gpui_kid(Expr e);
 const char* jid(const char* name);
 const char* js_str(const char* s);
 long long js_list(const char* ty);
@@ -3705,7 +3706,8 @@ const char* gpui_attr(Expr a) { return ((strcmp(a.text, "class") == 0) ? gpui_cl
 MacaList gpui_words(Expr e) { return ((e.kind == EStr) ? maca_split(e.text, " ") : maca_listv(0));  }
 const char* gpui_classes(MacaList ws, long long i) { return ((i >= (ws.len)) ? "" : ((strcmp(((const char*)ws.data[i]), "") == 0) ? gpui_classes(ws, (i + 1)) : maca_cat(maca_cat(maca_cat(".", gpui_method(((const char*)ws.data[i]))), "()"), gpui_classes(ws, (i + 1)))));  }
 const char* gpui_method(const char* w) { return ((strcmp(w, "grow") == 0) ? "flex_grow" : maca_replace(maca_replace(w, "-", "_"), "/", "_"));  }
-const char* gpui_kids(MacaList cs, long long i) { return ((i >= (cs.len)) ? "" : maca_cat(maca_cat(maca_cat(".child(", remit_expr((*(Expr*)cs.data[i]))), ")"), gpui_kids(cs, (i + 1))));  }
+const char* gpui_kids(MacaList cs, long long i) { return ((i >= (cs.len)) ? "" : maca_cat(maca_cat("", gpui_kid((*(Expr*)cs.data[i]))), gpui_kids(cs, (i + 1))));  }
+const char* gpui_kid(Expr e) { return (((((e.kind == EMethod) && (strcmp(e.text, "map") == 0)) && ((e.children.len) == 2)) && ((*(Expr*)e.children.data[1]).kind == ELambda)) ? ({ const char* recv = remit_expr((*(Expr*)e.children.data[0])); Expr lam = (*(Expr*)e.children.data[1]); const char* bound = binder_name((*(Expr*)lambda_params(lam).data[0])); maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(".children((", recv), ").iter().cloned().map(|"), bound), "|"), maca_cat(maca_cat(" ", remit_expr(lambda_body(lam))), "))")); }) : maca_cat(maca_cat(".child(", remit_expr(e)), ")"));  }
 const char* jid(const char* name) { return ((maca_str_index_of(JsReserved, maca_cat(maca_cat(" ", name), " ")) >= 0) ? maca_cat(name, "_") : name);  }
 const char* js_str(const char* s) { return maca_cat(maca_cat("\"", s), "\"");  }
 long long js_list(const char* ty) { return ((((int)strlen(ty)) > 2) && (strcmp(maca_str_slice(ty, (((int)strlen(ty)) - 2), ((int)strlen(ty))), "[]") == 0));  }

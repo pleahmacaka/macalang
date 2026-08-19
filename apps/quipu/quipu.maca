@@ -6,30 +6,8 @@
  * showing what the file becomes on the target the compiler would pick for it.
  */
 
-import "gpui::div"
-import "gpui::Div"
-import "gpui::Styled"
-import "gpui::ParentElement"
-import "gpui::InteractiveElement"
-import "gpui::Render"
-import "gpui::IntoElement"
-import "gpui::AnyElement"
-import "gpui::Context"
-import "gpui::Window"
-
-import { Ide, opened, panel_for } from apps/quipu/model
-import { view } from apps/quipu/view
-
-Shell = {
-    ide: Ide
-}
-
-Shell : Render = {
-    render = (self, window: Window, cx: Context Shell) -> AnyElement =>
-        view(self.ide).into_any_element()
-}
-
 import "boot.rs" """
+#![windows_subsystem = "windows"]
 pub fn quipu_boot() -> i64 {
     use gpui::AppContext as _;
     gpui::Application::new().run(|cx: &mut gpui::App| {
@@ -52,6 +30,29 @@ pub fn quipu_boot() -> i64 {
     0
 }
 """
+
+import "gpui::div"
+import "gpui::Div"
+import "gpui::Styled"
+import "gpui::ParentElement"
+import "gpui::InteractiveElement"
+import "gpui::Render"
+import "gpui::IntoElement"
+import "gpui::AnyElement"
+import "gpui::Context"
+import "gpui::Window"
+
+import { Ide, opened, panel_for } from apps/quipu/model
+import { view } from apps/quipu/view
+
+Shell = {
+    ide: Ide
+}
+
+Shell : Render = {
+    render = (self, window: Window, cx: Context Shell) -> AnyElement =>
+        view(self.ide).into_any_element()
+}
 
 main() -> int {
     ide = opened(".")

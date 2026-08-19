@@ -442,6 +442,15 @@ test_what_a_function_returns_picks_between_gpui_and_text() {
            "while a function that says it answers text still builds text, which is what the declared result is for: {made}")
 }
 
+test_a_map_child_becomes_children_built_in_the_render_pass() {
+    made = gpui_rust("row(f: str) -> Element => div(class=\"text-xs\", f)\n\nview(fs: str[]) -> Element =>\n    div(class=\"flex\", fs.map(f => row(f)))\n")
+
+    assert(made.index_of(".children((fs.clone()).iter().cloned().map(|f| row(f.clone())))") >= 0,
+           "a list child is gpui's .children, each element built inside the map and never cloned as a Div: {made}")
+    assert(made.index_of(".child(fs") < 0,
+           "and never a .child of the list itself, which a Div cannot take: {made}")
+}
+
 test_a_gpui_method_reaches_a_box_the_way_it_reaches_any_foreign_value() {
     made = gpui_rust("view() -> Element => div(class=\"flex\")\n\nboxed() -> AnyElement => view().into_any_element()\n")
 
