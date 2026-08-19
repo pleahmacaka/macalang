@@ -283,8 +283,74 @@ settle(o: Options, work: str, bin: str, asset: str) -> int {
         1
     } else {
         report_placed(placed, bin, 0)
+        editor_too(o, bin)
 
         finish(work, bin, placed.get(0))
+    }
+}
+
+/** The editor rides along where a build of it exists for this desktop, and a
+ * miss is said out loud rather than failing the toolchain underneath it.
+ */
+editor_too(o: Options, bin: str) -> int {
+    asset = editor_asset(platform())
+
+    if asset == "" {
+        info("no Quipu build exists for {platform()} yet, so only the " +
+            "toolchain was installed")
+
+        return 0
+    }
+
+    to = on_windows() ? "{bin}/quipu.exe" : "{bin}/quipu"
+
+    if !fetch(download_url(o.version, asset), to) {
+        info("maca-install: the editor at {download_url(o.version, asset)} " +
+            "could not be downloaded; the toolchain is installed without it")
+
+        return 0
+    }
+
+    if !on_windows() {
+        exec("chmod", ["755", to])
+    }
+
+    info("installed {asset} -> {to}")
+
+    on_windows() ? start_menu(to) : 0
+}
+
+editor_asset(uname: str) -> str {
+    if uname.starts_with("Windows") {
+        "quipu-x86_64-windows.exe"
+    } else if uname.starts_with("Linux") && arch_of(uname) == "x86_64" {
+        "quipu-x86_64-linux"
+    } else if uname.starts_with("Darwin") && arch_of(uname) == "aarch64" {
+        "quipu-aarch64-macos"
+    } else {
+        ""
+    }
+}
+
+/** A Start Menu shortcut is what makes typing `qui` into Windows search find
+ * the editor; the shell object that writes `.lnk` files is reached through
+ * powershell, which every Windows this installer runs on carries.
+ */
+start_menu(exe: str) -> int {
+    script = "$s = (New-Object -ComObject WScript.Shell).CreateShortcut(" +
+        "([Environment]::GetFolderPath('Programs') + " +
+        "[IO.Path]::DirectorySeparatorChar + 'Quipu.lnk')); " +
+        "$s.TargetPath = '{exe}'; $s.Save()"
+
+    if exec("powershell", ["-NoProfile", "-Command", script]) == 0 {
+        info("added Quipu to the Start Menu")
+
+        0
+    } else {
+        info("maca-install: could not add a Start Menu entry; run {exe} " +
+            "directly")
+
+        0
     }
 }
 

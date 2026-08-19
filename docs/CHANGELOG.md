@@ -2,6 +2,16 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.4
+
+* **The installer installs the editor too, and Windows search finds it.** Where a Quipu
+  build exists for the desktop the installer runs on, it rides along into the same bin
+  directory, and on Windows a Start Menu shortcut is written through the shell object
+  powershell carries, which is what makes typing `qui` into the search box find Quipu.
+  A desktop with no editor build, or a download that fails, is said out loud and never
+  fails the toolchain underneath it. Verified by running the installer on a Windows
+  desktop and reading the shortcut back.
+
 ## 0.5.3
 
 * **The installer installs on Windows, verified by running it there.** Two faults, both
