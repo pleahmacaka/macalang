@@ -42,7 +42,7 @@ import "gpui::AnyElement"
 import "gpui::Context"
 import "gpui::Window"
 
-import { Ide, opened, panel_for } from apps/quipu/model
+import { Ide, opened } from apps/quipu/model
 import { view } from apps/quipu/view
 
 Shell = {
@@ -54,11 +54,5 @@ Shell : Render = {
         view(self.ide).into_any_element()
 }
 
-main() -> int {
-    ide = opened(".")
-
-    info("quipu: {str(ide.files.length())} files under {ide.root}, "
-        + "target {ide.target} via {panel_for(ide.target)}")
-
+main() -> int =>
     quipu_boot()
-}

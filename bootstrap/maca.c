@@ -223,7 +223,7 @@ static const const char* EmbedStartup = "\n/* ---- Cortex-M startup ---- */\next
 static const const char* JavaReserved = " abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try var void volatile while ";
 static const const char* ExReserved = " after and catch cond do else end false fn in nil not or rescue true when quote unquote alias require import use def defp defmodule defstruct case if unless receive try raise throw ";
 static const const char* Indent = "    ";
-static const const char* Version = "0.5.4";
+static const const char* Version = "0.5.6";
 static const long long WatchPollMs = 300;
 static const const char* EntryDir = ".maca";
 static const const char* CargoName = "maca_app";
@@ -1358,6 +1358,7 @@ const char* remit_unary(Expr e);
 const char* remit_ternary(Expr e);
 long long rmissing_else(Expr e);
 const char* rif_stmt(Expr e);
+const char* rthen(Expr e);
 const char* rbranch(Expr e);
 const char* r_tail(Expr e);
 const char* remit_match(Expr e);
@@ -3602,7 +3603,8 @@ const char* remit_for(Expr e) { return maca_cat(maca_cat(maca_cat(maca_cat(maca_
 const char* remit_unary(Expr e) { return ((strcmp(e.text, "fail") == 0) ? maca_cat(maca_cat("panic!(\"{}\", ", remit_expr((*(Expr*)e.children.data[0]))), ")") : ((strcmp(e.text, "try") == 0) ? maca_cat(maca_cat("maca_try(|| { let _ = ", remit_expr((*(Expr*)e.children.data[0]))), "; })") : ((strcmp(e.text, "spawn") == 0) ? maca_cat(maca_cat("std::thread::spawn(move || ", remit_expr((*(Expr*)e.children.data[0]))), ")") : ((strcmp(e.text, "await") == 0) ? maca_cat(maca_cat("(", remit_expr((*(Expr*)e.children.data[0]))), ").join().unwrap()") : maca_cat(maca_cat(maca_cat("(", e.text), remit_expr((*(Expr*)e.children.data[0]))), ")")))));  }
 const char* remit_ternary(Expr e) { return (rmissing_else((*(Expr*)e.children.data[2])) ? rif_stmt(e) : ({ const char* cond = remit_expr((*(Expr*)e.children.data[0])); const char* then = remit_expr((*(Expr*)e.children.data[1])); const char* els = remit_expr((*(Expr*)e.children.data[2])); maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("(if ", cond), " { "), then), " } else { "), els), " })"); }));  }
 long long rmissing_else(Expr e) { return ((e.kind == EIdent) && (strcmp(e.text, "?") == 0));  }
-const char* rif_stmt(Expr e) { const char* cond = remit_expr((*(Expr*)e.children.data[0])); const char* then = rbranch((*(Expr*)e.children.data[1])); Expr els = (*(Expr*)e.children.data[2]); return (rmissing_else(els) ? maca_cat(maca_cat(maca_cat("if ", cond), " "), then) : maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("if ", cond), " "), then), " else "), rbranch(els)));  }
+const char* rif_stmt(Expr e) { const char* cond = remit_expr((*(Expr*)e.children.data[0])); const char* then = rthen((*(Expr*)e.children.data[1])); Expr els = (*(Expr*)e.children.data[2]); return (rmissing_else(els) ? maca_cat(maca_cat(maca_cat("if ", cond), " "), then) : maca_cat(maca_cat(maca_cat(maca_cat(maca_cat("if ", cond), " "), then), " else "), rbranch(els)));  }
+const char* rthen(Expr e) { return ((e.kind == EIf) ? maca_cat(maca_cat("{ ", rif_stmt(e)), " }") : rbranch(e));  }
 const char* rbranch(Expr e) { return ((e.kind == EIf) ? rif_stmt(e) : ((e.kind == EBlock) ? maca_cat(maca_cat(maca_cat("{ ", rblock_stmts(e.stmts, 0)), r_tail((*(Expr*)e.children.data[0]))), " }") : maca_cat(maca_cat("{ ", r_tail(e)), " }")));  }
 const char* r_tail(Expr e) { return ((e.kind == EIf) ? rif_stmt(e) : maca_cat(maca_cat("", remit_expr(e)), ";"));  }
 const char* remit_match(Expr e) { return maca_cat(maca_cat(maca_cat("match ", remit_match_on(e)), " {"), maca_cat(maca_cat(" ", remit_arms(e.children, 1, remit_expr((*(Expr*)e.children.data[0])))), " }"));  }

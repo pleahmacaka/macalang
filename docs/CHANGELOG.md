@@ -2,6 +2,14 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.6
+
+- The editor's window no longer opens frozen: the workspace scan skips VCS and
+  build trees (`.git` alone cost twenty seconds), and the workspace is read
+  once rather than twice.
+- The Rust backend braces a `then` branch that is itself an `if`; bare, it
+  emitted `if a if b`, which Rust reads as a missing block.
+
 ## 0.5.5
 
 - Quipu launches without a console window: the emitted crate opens with

@@ -442,6 +442,15 @@ test_what_a_function_returns_picks_between_gpui_and_text() {
            "while a function that says it answers text still builds text, which is what the declared result is for: {made}")
 }
 
+test_an_if_nested_in_a_then_branch_keeps_its_braces() {
+    out = gate_rust("f(a: bool, b: bool) -> int {{ c = 0 if a {{ if b {{ c = 1 }} }} c }}")
+
+    assert(out.index_of("if a {{ if b {{") >= 0,
+           "the outer then is braced, so the inner if is inside it: {out}")
+    assert(out.index_of("if a if") < 0,
+           "bare, it would read as the else-if form: {out}")
+}
+
 test_a_map_child_becomes_children_built_in_the_render_pass() {
     made = gpui_rust("row(f: str) -> Element => div(class=\"text-xs\", f)\n\nview(fs: str[]) -> Element =>\n    div(class=\"flex\", fs.map(f => row(f)))\n")
 

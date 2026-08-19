@@ -15,7 +15,7 @@ import maca/parser
 import maca/ast
 import std/proc
 import std/text
-import { walk } from std/fs
+import { list_dir, is_dir } from std/fs
 
 /** One open editor: the tree it was opened on, the buffer, and the panel beside
  * it.
@@ -41,23 +41,36 @@ maca_bin() -> str {
 
 /** Every `.maca` file under the tree, which is what the file list shows; a
  * directory with no manifest is not a workspace, and walking one from a Start
- * Menu launch would mean crawling a whole home directory.
+ * Menu launch would mean crawling a whole home directory. Build and VCS trees
+ * hold no sources, and crawling `.git` once cost the window twenty seconds.
  */
 sources(root: str) -> str[] {
     if !file_exists("{root}/maca.toml") {
         return []
     }
 
-    out: str[] = []
+    scan(root, [])
+}
 
-    for path in walk(root) {
-        if path.ends_with(".maca") {
-            out = out.push(path)
+scan(root: str, acc: str[]) -> str[] {
+    out = acc
+
+    for name in list_dir(root) {
+        at = "{root}/{name}"
+
+        if is_dir(at) && !skipped_dir(name) {
+            out = scan(at, out)
+        } else if !is_dir(at) && name.ends_with(".maca") {
+            out = out.push(at)
         }
     }
 
     out
 }
+
+skipped_dir(name: str) -> bool =>
+    name.starts_with(".") || name == "target" || name == "node_modules"
+        || name == "bin" || name == "_build" || name == "deps"
 
 /** The editor opens on the first file it can see, because an editor showing
  * nothing is a report and not an editor.

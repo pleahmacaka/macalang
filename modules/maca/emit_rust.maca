@@ -131,7 +131,7 @@ rmissing_else(e: Expr) -> bool =>
 
 rif_stmt(e: Expr) -> str {
     cond = remit_expr(e.children.get(0))
-    then = rbranch(e.children.get(1))
+    then = rthen(e.children.get(1))
     els = e.children.get(2)
 
     if rmissing_else(els) {
@@ -140,6 +140,12 @@ rif_stmt(e: Expr) -> str {
         "if {cond} {then} else {rbranch(els)}"
     }
 }
+
+/** A then branch that is itself an `if` still needs its own braces; bare, it
+ * would read as `if a if b`, which is the `else if` form and not this one.
+ */
+rthen(e: Expr) -> str =>
+    e.kind == EIf ? "{{ {rif_stmt(e)} }}" : rbranch(e)
 
 rbranch(e: Expr) -> str {
     if e.kind == EIf {
