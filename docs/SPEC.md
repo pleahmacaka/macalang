@@ -286,7 +286,10 @@ and which manifest answers.
 - **A page's assets and its identity.** A quoted `"…"` *names* something and
   carries no language word: the extension says what a file is, and a package
   says what it is itself. A raw `"""…"""` block is named the same way, by the
-  string in front of it, so no import anywhere carries a language word. So
+  string in front of it, so no import anywhere carries a language word. What
+  stands between the fences is carried verbatim: no interpolation, and no
+  escape processing, so a `	` written for the foreign language reaches it as
+  the two characters written. So
   `import "page.css" """…"""` carries inline CSS while
   `import "vendor/daisyui.css"` embeds that file's bytes in a `<style>`
   ahead of the generated one, `import "vendor/x.js"` embeds a `<script>`

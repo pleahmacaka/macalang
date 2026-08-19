@@ -2,6 +2,21 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.5.8
+
+- `await` on a foreign future blocks on the future itself, through a
+  dependency-free parked waker in the runtime; `await` on a `spawn` still
+  joins the thread it started. `sqlx`- and `reqwest`-shaped crates are
+  reachable without a shim around every call.
+- `click=` applies through `maca_apply`, a name any host's raw block defines,
+  rather than through a function named after one editor.
+- A raw block is carried verbatim: `"	"` written for the foreign language
+  reaches it as the two characters written, instead of being cooked by the
+  string lexer's escape order.
+- The one gpui example is gated on every run of the examples suite: it must
+  emit Rust that `rustc` reads whole, unresolved gpui imports aside, so it can
+  no longer rot between releases.
+
 ## 0.5.7
 
 - Quipu is an editor to use, not to look at: clicking a file opens it,

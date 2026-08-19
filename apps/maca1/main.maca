@@ -144,7 +144,7 @@ run_script(cmd: str) -> int {
     }
 }
 
-Version = "0.5.7"
+Version = "0.5.8"
 
 check_only(src: str, target: str) -> int {
     unit = unit_of(src)
@@ -3539,12 +3539,41 @@ rust_item(spec: str) -> str {
 rust_source(spec: str) -> str =>
     raw_text(spec).replace("{{{{", "{{").replace("}}}}", "}}").trim()
 
-raw_text(s: str) -> str =>
-    s.replace("\\n", "\n")
-     .replace("\\r", "\r")
-     .replace("\\t", "\t")
-     .replace("\\\"", "\"")
-     .replace("\\\\", "\\")
+raw_text(s: str) -> str {
+    cs = s.chars()
+    out = "".chars()
+    i = 0
+
+    while i < cs.length() {
+        c = cs.get(i)
+
+        if c == "\\" && i + 1 < cs.length() {
+            out = out.push(unslashed(cs.get(i + 1)))
+            i = i + 2
+        } else {
+            out = out.push(c)
+            i = i + 1
+        }
+    }
+
+    out.join("")
+}
+
+unslashed(c: str) -> str {
+    if c == "n" {
+        "\n"
+    } else if c == "r" {
+        "\r"
+    } else if c == "t" {
+        "\t"
+    } else if c == "\"" {
+        "\""
+    } else if c == "\\" {
+        "\\"
+    } else {
+        "\\" + c
+    }
+}
 
 /** A crate the rust target calls must be one the manifest declared, and no
  * other language reaches that target at all.

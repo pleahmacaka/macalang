@@ -20,7 +20,7 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
-pub fn quipu_apply(app: &mut gpui::App, f: &dyn Fn(Ide) -> Ide) {
+pub fn maca_apply(app: &mut gpui::App, f: &dyn Fn(Ide) -> Ide) {
     let kept = SHELL.with(|s| s.borrow().clone());
     if let Some(host) = kept {
         host.update(app, |h, cx| {

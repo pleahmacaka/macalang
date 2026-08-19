@@ -111,8 +111,10 @@ remit_unary(e: Expr) -> str {
         "maca_try(|| {{ let _ = {remit_expr(e.children.get(0))}; }})"
     } else if e.text == "spawn" {
         "std::thread::spawn(move || {remit_expr(e.children.get(0))})"
-    } else if e.text == "await" {
+    } else if e.text == "await" && e.children.get(0).ty == "Future" {
         "({remit_expr(e.children.get(0))}).join().unwrap()"
+    } else if e.text == "await" {
+        "maca_block_on({remit_expr(e.children.get(0))})"
     } else {
         "({e.text}{remit_expr(e.children.get(0))})"
     }
@@ -975,6 +977,7 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_substr(s: String, at: i64, n: i64) -> String {{ let a = (at.max(0) as usize).min(s.len()); let b = (a + n.max(0) as usize).min(s.len()); s.get(a..b).unwrap_or(\"\").to_string() }}\n" +
     "#[allow(dead_code)]\nfn maca_pad_start(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", \" \".repeat(w - s.len()), s) }} }}\n" +
     "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n" +
+    "#[allow(dead_code)]\nfn maca_block_on<F: std::future::Future>(fut: F) -> F::Output {{ use std::sync::{{Arc, Mutex, Condvar}}; use std::task::{{Context, Poll, Wake, Waker}}; struct Flag(Mutex<bool>, Condvar); impl Wake for Flag {{ fn wake(self: Arc<Self>) {{ *self.0.lock().unwrap() = true; self.1.notify_one(); }} }} let flag = Arc::new(Flag(Mutex::new(false), Condvar::new())); let waker = Waker::from(flag.clone()); let mut cx = Context::from_waker(&waker); let mut fut = std::pin::pin!(fut); loop {{ match fut.as_mut().poll(&mut cx) {{ Poll::Ready(v) => return v, Poll::Pending => {{ let mut ready = flag.0.lock().unwrap(); while !*ready {{ ready = flag.1.wait(ready).unwrap(); }} *ready = false; }} }} }} }}\n" +
     "#[allow(dead_code)]\nfn maca_try<F: FnOnce()>(f: F) -> String {{ let hushed = std::panic::take_hook(); std::panic::set_hook(Box::new(|_| {{}})); let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)); std::panic::set_hook(hushed); match out {{ Ok(_) => String::new(), Err(e) => e.downcast_ref::<String>().cloned().unwrap_or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()).unwrap_or_default()) }} }}\n" +
     "#[allow(dead_code)]\nfn maca_is_tty() -> bool {{ false }}\n" +
     "#[allow(dead_code)]\nfn maca_chdir(p: String) -> bool {{ std::env::set_current_dir(p).is_ok() }}\n" +
@@ -1279,7 +1282,7 @@ gpui_attr(a: Expr) -> str {
         held = rfree_in(a.children.get(0), [])
 
         ".on_click({{ {rheld_clones(held, 0)}move |_ev, _win, _app|" +
-            " quipu_apply(_app, &{remit_expr(a.children.get(0))}) }})"
+            " maca_apply(_app, &{remit_expr(a.children.get(0))}) }})"
     } else {
         ""
     }

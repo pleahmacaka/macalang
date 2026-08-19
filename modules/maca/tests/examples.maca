@@ -497,3 +497,38 @@ test_a_constant_two_files_both_name_still_compiles() {
     assert_eq(ran(src), "alpha beta",
         "a top level constant is renamed on the loser, like a function")
 }
+
+rustc_reads(path: str) -> str =>
+    output("sh", ["-c", "rustc --edition 2021 --crate-type lib" +
+                            " --emit=metadata -o /dev/null '{path}' 2>&1"])
+
+foreign_misses_only(said: str) -> bool {
+    for line in said.split("\n") {
+        if line.starts_with("error[") && !line.contains("E0432") &&
+                !line.contains("E0433") {
+            return false
+        }
+    }
+
+    true
+}
+
+test_the_gpui_example_still_emits_rust_a_compiler_reads() {
+    out = scratch("gpui") + "/gpui_counter"
+
+    remove_file("{out}.rs")
+    exec(maca_bin(), ["build", example("gpui_counter"), "--target", "rust",
+                      "-o", out])
+
+    assert(file_exists("{out}.rs"),
+           "the one gpui example emits even where cargo is absent, or it rots" +
+               " between releases")
+
+    if output("sh", ["-c", "rustc --version 2>/dev/null"]).trim() == "" {
+        assert(true, "reading it back needs rustc, which this host has not got")
+    } else {
+        assert(foreign_misses_only(rustc_reads("{out}.rs")),
+               "and rustc reads it whole, unresolved gpui imports aside: " +
+                   rustc_reads("{out}.rs"))
+    }
+}

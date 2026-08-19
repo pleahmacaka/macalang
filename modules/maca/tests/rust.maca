@@ -229,6 +229,12 @@ emitted_rust(name: str, src: str) -> str {
     read_file("{scratch()}/{name}.rs")
 }
 
+TabSrc = "import \"shim.rs\" \"\"\"\npub fn tabby() -> String {{ \"a\\tb\".to_string() }}\n\"\"\"\n\n" +
+    "main() -> int {{\n    info(tabby())\n    0\n}}\n"
+
+FutSrc = "import \"shim.rs\" \"\"\"\npub async fn double(n: i64) -> i64 {{ n * 2 }}\n\"\"\"\n\n" +
+    "main() -> int {{\n    v = await double(21)\n    info(\"got {{v}}\")\n    v\n}}\n"
+
 ClosureSrc = "import \"shim.rs\" \"\"\"\nfn apply(f: impl Fn(i64) -> i64, x: i64)" +
     " -> i64 {{ f(x) }}\n\"\"\"\n\n" +
     "main() -> int {{\n    r = apply(n => n + 1, 41)\n" +
@@ -388,6 +394,49 @@ test_a_foreign_argument_is_lent_at_the_call_site_as_well() {
     }
 }
 
+test_a_raw_block_keeps_its_backslashes_as_written() {
+    made = emitted_rust("raw_tab", TabSrc)
+
+    assert(made.index_of("\"a\\tb\".to_string()") >= 0,
+           "what stands between the fences is carried verbatim, escapes" +
+               " included: {made}")
+    assert(made.index_of("a\tb") < 0,
+           "and never cooked into the character the escape names: {made}")
+
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
+    } else {
+        assert_eq(str(built_rust("raw_tab", TabSrc)), "0",
+                  "rustc reads the escape the foreign language meant")
+        assert(capture("{scratch()}/raw_tab", []).contains("a\tb"),
+               "and the tab comes out of the run, not out of the lexer")
+    }
+}
+
+test_a_foreign_future_is_awaited_by_blocking_on_it() {
+    made = emitted_rust("fut_block", FutSrc)
+
+    assert(made.index_of("maca_block_on(double(21i64))") >= 0,
+           "a foreign future has no thread to join, so the caller blocks on" +
+               " the future itself: {made}")
+    assert(made.index_of("double(21i64)).join()") < 0,
+           "a join belongs to a spawned thread, which this never was: {made}")
+
+    if !rustc_here() {
+        assert(true, "running what was emitted needs rustc, which this host " +
+                         "has not got")
+    } else {
+        assert_eq(str(built_rust("fut_block", FutSrc)), "0",
+                  "the emitted program builds with rustc alone")
+        assert_eq(str(exec("{scratch()}/fut_block", [])), "42",
+                  "a plain async fn is a coroutine, and blocking on it needs" +
+                      " no runtime at all")
+        assert(capture("{scratch()}/fut_block", []).contains("got 42"),
+               "and the value came through the block")
+    }
+}
+
 test_a_crate_path_import_is_written_back_as_a_use_item() {
     made = emitted_rust("use_item",
                         "import \"std::time::Duration\"\n\n" +
@@ -475,7 +524,7 @@ test_a_click_attribute_is_a_gpui_handler_applied_to_the_ide() {
                      "view(f: str) -> Element =>\n" +
                      "    div(id=f, click=(i => open_it(i, f)), \"hi\")\n")
 
-    assert(made.index_of(".on_click({{ let f = f.clone(); move |_ev, _win, _app| quipu_apply(_app, &|i| open_it(i, f.clone())) }})") >= 0,
+    assert(made.index_of(".on_click({{ let f = f.clone(); move |_ev, _win, _app| maca_apply(_app, &|i| open_it(i, f.clone())) }})") >= 0,
            "a click closes over clones, so the row it came from keeps its own values: {made}")
     assert(made.index_of("maca_attr(\"click\"") < 0,
            "and it never becomes markup text, which has no node to attach to: {made}")
