@@ -1,6 +1,6 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
-         Span, line_spans, footing,
+         Span, line_spans, footing, selected_text, pasted, sel_on,
          flame_frames, declared, house_rules,
          asked, knobs, reading, Pick, picks, matching,
          Bind, keymap, bound_to, rebound, clash,
@@ -11,7 +11,8 @@ import std/proc
 blank() -> Ide =>
     Ide { root = ".", files = [], open = "", text = "", target = "native",
           panel = "rust", output = "", breaks = [], menu = false, seek = "",
-          pick = 0, line = 0, col = 0, dirty = false }
+          pick = 0, line = 0, col = 0, dirty = false, marking = false,
+          mark_line = 0, mark_col = 0 }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
@@ -354,4 +355,54 @@ test_saving_clears_the_mark_and_writes_the_file() {
     assert_eq(read_file(at), "yx", "and the file holds what was typed")
 
     remove_file(at)
+}
+
+test_shifted_arrows_stretch_a_selection() {
+    ide = struck(struck(scripted("abcd"), "shift-right"), "shift-right")
+
+    assert(ide.marking, "a shifted arrow starts marking")
+    assert_eq(selected_text(ide), "ab", "and the stretch is what it walked")
+    assert(!struck(ide, "right").marking, "a plain arrow lets go")
+}
+
+test_a_selection_spans_lines_and_copies_whole() {
+    ide = struck(struck(struck(scripted("ab\ncd"), "shift-down"),
+                        "shift-right"), "shift-right")
+
+    assert_eq(selected_text(ide), "ab\ncd", "the stretch crosses the line")
+    assert(sel_on(ide, 0) && sel_on(ide, 1), "and both lines know it")
+}
+
+test_typing_over_a_selection_replaces_it() {
+    ide = struck(struck(struck(scripted("abcd"), "shift-right"),
+                        "shift-right"), "x")
+
+    assert_eq(ide.text, "xcd", "the selection went first, the key went in")
+    assert_eq(str(ide.col), "1", "and the cursor sits after it")
+}
+
+test_cut_takes_the_selection_out() {
+    ide = struck(struck(scripted("abcd"), "shift-right"), "ctrl-x")
+
+    assert_eq(ide.text, "bcd", "what was marked is gone")
+    assert(!ide.marking, "and nothing stays marked")
+}
+
+test_paste_drops_lines_at_the_cursor() {
+    one = pasted(scripted("ab"), "XY")
+
+    assert_eq(one.text, "XYab", "a one-line paste is an insert")
+
+    many = pasted(struck(scripted("ab"), "right"), "1\n2")
+
+    assert_eq(many.text, "a1\n2b", "a two-line paste cuts the line")
+    assert_eq("{str(many.line)}:{str(many.col)}", "1:1",
+              "and the cursor lands at the end of what came in")
+}
+
+test_home_and_end_jump_the_line() {
+    ide = struck(struck(scripted("abcd"), "right"), "end")
+
+    assert_eq(str(ide.col), "4", "end lands past the last character")
+    assert_eq(str(struck(ide, "home").col), "0", "and home returns")
 }

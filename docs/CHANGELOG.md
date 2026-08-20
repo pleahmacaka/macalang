@@ -2,6 +2,18 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.6.0
+
+- Selection: a shifted arrow drops an anchor and stretches a shaded selection,
+  Ctrl+C and Ctrl+X carry it to the system clipboard, Ctrl+V pastes over it
+  (however many lines the clipboard brought), typing replaces it, and Home and
+  End jump the line. The stretch logic is model functions a suite runs.
+- The window keeps its keyboard: clicking a row used to steal focus and every
+  key after it went nowhere; the host refocuses itself each frame.
+- Everything clickable says so: a pointer cursor and a hover shade on file
+  rows, panel tabs and quick-menu hits, via a `hover_bg=` attribute lowering
+  to gpui's `.hover`.
+
 ## 0.5.9
 
 - Quipu edits: the cursor is a block you steer with the arrows, typing inserts

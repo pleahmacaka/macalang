@@ -35,6 +35,9 @@ Ide = {
     line:   int,
     col:    int,
     dirty:  bool,
+    marking: bool,
+    mark_line: int,
+    mark_col: int,
 }
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
@@ -85,7 +88,7 @@ opened(root: str) -> Ide {
     bare = Ide { root = root, files = sources(root), open = "", text = "",
                  target = "", panel = "rust", output = "", breaks = [],
                  menu = false, seek = "", pick = 0, line = 0, col = 0,
-                 dirty = false }
+                 dirty = false, marking = false, mark_line = 0, mark_col = 0 }
 
     bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
 }
@@ -95,7 +98,8 @@ opened_file(ide: Ide, path: str) -> Ide {
     body = read_file(path)
 
     ide with { open = path, text = body, target = target_of(body),
-               output = "", breaks = [], line = 0, col = 0, dirty = false }
+               output = "", breaks = [], line = 0, col = 0, dirty = false,
+               marking = false }
 }
 
 /** What `maca build` would pick with no `--target`: a config imports nixpkgs, a
@@ -797,26 +801,176 @@ edited(ide: Ide, key: str) -> Ide {
         ide
     } else if key == "ctrl-s" {
         saved(ide)
+    } else if key.starts_with("shift-") {
+        stretched(ide, key.slice(6, key.length()))
+    } else if key == "ctrl-x" {
+        cut_out(ide)
     } else if key == "up" {
-        placed_at(ide, ide.line - 1, ide.col)
+        placed_at(let_go(ide), ide.line - 1, ide.col)
     } else if key == "down" {
-        placed_at(ide, ide.line + 1, ide.col)
+        placed_at(let_go(ide), ide.line + 1, ide.col)
     } else if key == "left" {
-        stepped_back(ide)
+        stepped_back(let_go(ide))
     } else if key == "right" {
-        stepped_on(ide)
+        stepped_on(let_go(ide))
     } else if key == "enter" {
-        split_line(ide)
+        split_line(cleared(ide))
     } else if key == "backspace" {
-        rubbed(ide)
+        ide.marking ? cleared(ide) : rubbed(ide)
+    } else if key == "home" {
+        let_go(ide) with { col = 0 }
+    } else if key == "end" {
+        let_go(ide) with { col = row_at(ide, ide.line).length() }
     } else if key == "tab" {
-        put(ide, "    ")
+        put(cleared(ide), "    ")
     } else if key.length() == 1 {
-        put(ide, key)
+        put(cleared(ide), key)
     } else {
         ide
     }
 }
+
+/** A shifted arrow drops an anchor where the cursor stood and walks on; the
+ * stretch between them is the selection.
+ */
+stretched(ide: Ide, way: str) -> Ide {
+    held = ide.marking
+        ? ide
+        : ide with { marking = true, mark_line = ide.line, mark_col = ide.col }
+
+    if way == "up" {
+        placed_at(held, held.line - 1, held.col)
+    } else if way == "down" {
+        placed_at(held, held.line + 1, held.col)
+    } else if way == "left" {
+        stepped_back(held)
+    } else if way == "right" {
+        stepped_on(held)
+    } else {
+        held
+    }
+}
+
+let_go(ide: Ide) -> Ide =>
+    ide with { marking = false }
+
+/** Editing over a selection eats the selection first. */
+cleared(ide: Ide) -> Ide =>
+    ide.marking ? without_selection(ide) : ide
+
+/** The selection's corners, ordered so the first comes first in the file. */
+sel_a_line(ide: Ide) -> int =>
+    sel_flipped(ide) ? ide.line : ide.mark_line
+
+sel_a_col(ide: Ide) -> int =>
+    sel_flipped(ide) ? ide.col : ide.mark_col
+
+sel_b_line(ide: Ide) -> int =>
+    sel_flipped(ide) ? ide.mark_line : ide.line
+
+sel_b_col(ide: Ide) -> int =>
+    sel_flipped(ide) ? ide.mark_col : ide.col
+
+sel_flipped(ide: Ide) -> bool =>
+    ide.line < ide.mark_line ||
+        (ide.line == ide.mark_line && ide.col < ide.mark_col)
+
+/** What the selection covers, which is what Ctrl+C carries away. */
+selected_text(ide: Ide) -> str {
+    if !ide.marking {
+        return ""
+    }
+
+    rs = rows_of(ide)
+    out: str[] = []
+    i = sel_a_line(ide)
+
+    while i <= sel_b_line(ide) && i < rs.length() {
+        row = rs.get(i)
+        from = i == sel_a_line(ide) ? sel_a_col(ide) : 0
+        upto = i == sel_b_line(ide) ? sel_b_col(ide) : row.length()
+
+        out = out.push(row.slice(from, upto))
+        i = i + 1
+    }
+
+    out.join(chr(10))
+}
+
+without_selection(ide: Ide) -> Ide {
+    rs = rows_of(ide)
+    head = row_at(ide, sel_a_line(ide)).slice(0, sel_a_col(ide))
+    last = row_at(ide, sel_b_line(ide))
+    seam = head + last.slice(sel_b_col(ide), last.length())
+    out: str[] = []
+    i = 0
+
+    while i < rs.length() {
+        if i < sel_a_line(ide) || i > sel_b_line(ide) {
+            out = out.push(rs.get(i))
+        } else if i == sel_a_line(ide) {
+            out = out.push(seam)
+        }
+
+        i = i + 1
+    }
+
+    (ide with { text = out.join(chr(10)), dirty = true, marking = false,
+                line = sel_a_line(ide), col = sel_a_col(ide) })
+}
+
+cut_out(ide: Ide) -> Ide =>
+    ide.marking ? without_selection(ide) : ide
+
+/** Pasting drops the clipboard at the cursor, however many lines it brought.
+ */
+pasted(ide: Ide, said: str) -> Ide {
+    base = cleared(ide)
+    bits = said.split(chr(10))
+
+    bits.length() == 1 ? put(base, said) : pasted_lines(base, bits)
+}
+
+pasted_lines(ide: Ide, bits: str[]) -> Ide {
+    row = row_at(ide, ide.line)
+    head = row.slice(0, ide.col) + bits.get(0)
+    tail_bit = bits.get(bits.length() - 1) +
+        row.slice(ide.col, row.length())
+    out: str[] = []
+    i = 0
+
+    for r in rows_of(ide) {
+        if i == ide.line {
+            out = out.push(head)
+            j = 1
+
+            while j < bits.length() - 1 {
+                out = out.push(bits.get(j))
+                j = j + 1
+            }
+
+            out = out.push(tail_bit)
+        } else {
+            out = out.push(r)
+        }
+
+        i = i + 1
+    }
+
+    (ide with { text = out.join(chr(10)), dirty = true,
+                line = ide.line + bits.length() - 1,
+                col = bits.get(bits.length() - 1).length() })
+}
+
+/** How much of one line the selection shades: none, or a column pair. */
+sel_on(ide: Ide, n: int) -> bool =>
+    ide.marking && n >= sel_a_line(ide) && n <= sel_b_line(ide)
+
+sel_from(ide: Ide, n: int) -> int =>
+    n == sel_a_line(ide) ? sel_a_col(ide) : 0
+
+sel_upto(ide: Ide, n: int, row: str) -> int =>
+    n == sel_b_line(ide) ? sel_b_col(ide) : row.length()
 
 saved(ide: Ide) -> Ide {
     write_file(ide.open, ide.text)

@@ -33,12 +33,18 @@ pub fn maca_apply(app: &mut gpui::App, f: &dyn Fn(Ide) -> Ide) {
 fn quipu_key(ev: &gpui::KeyDownEvent) -> String {
     let ks = &ev.keystroke;
     if ks.modifiers.control {
-        format!("ctrl-{}", ks.key)
-    } else if let Some(ch) = &ks.key_char {
-        ch.clone()
-    } else {
-        ks.key.clone()
+        return format!("ctrl-{}", ks.key);
     }
+    let named = ks.key.chars().count() > 1;
+    if named && ks.modifiers.shift {
+        return format!("shift-{}", ks.key);
+    }
+    if !named {
+        if let Some(ch) = &ks.key_char {
+            return ch.clone();
+        }
+    }
+    ks.key.clone()
 }
 
 impl gpui::Render for Host {
@@ -47,11 +53,32 @@ impl gpui::Render for Host {
         _win: &mut gpui::Window,
         cx: &mut gpui::Context<Host>,
     ) -> impl gpui::IntoElement {
+        if !self.focus.is_focused(_win) {
+            _win.focus(&self.focus);
+        }
         gpui::div()
             .id("host")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|h, ev: &gpui::KeyDownEvent, _w, cx| {
-                h.ide = struck(h.ide.clone(), quipu_key(ev));
+                let k = quipu_key(ev);
+                if k == "ctrl-c" || k == "ctrl-x" {
+                    let t = selected_text(h.ide.clone());
+                    if !t.is_empty() {
+                        cx.write_to_clipboard(
+                            gpui::ClipboardItem::new_string(t));
+                    }
+                    if k == "ctrl-x" {
+                        h.ide = struck(h.ide.clone(), k);
+                    }
+                } else if k == "ctrl-v" {
+                    if let Some(item) = cx.read_from_clipboard() {
+                        if let Some(t) = item.text() {
+                            h.ide = pasted(h.ide.clone(), t.to_string());
+                        }
+                    }
+                } else {
+                    h.ide = struck(h.ide.clone(), k);
+                }
                 cx.notify();
             }))
             .size_full()
@@ -97,7 +124,7 @@ import "gpui::ParentElement"
 import "gpui::InteractiveElement"
 import "gpui::StatefulInteractiveElement"
 
-import { Ide, opened, struck } from apps/quipu/model
+import { Ide, opened, struck, selected_text, pasted } from apps/quipu/model
 import { view } from apps/quipu/view
 
 main() -> int =>

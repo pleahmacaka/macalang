@@ -6,7 +6,7 @@
 
 import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown, stops,
          knobs, opened_file, picked, chosen_at, sought, line_spans,
-         footing, Panels } from apps/quipu/model
+         footing, sel_on, sel_from, sel_upto, Panels } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
 
@@ -25,6 +25,8 @@ Select = 2896186
 
 Cursor = 5409727
 
+Marked = 4080721
+
 view(ide: Ide) -> Element =>
     div(class="flex flex-col size-full", font=Face, bg=Paper, fg=Ink,
         div(class="flex flex-row grow", tree(ide), buffer(ide), panel(ide)),
@@ -41,9 +43,10 @@ tree(ide: Ide) -> Element =>
         div(class="flex flex-col", ide.files.map(f => file_row(ide, f))))
 
 file_row(ide: Ide, f: str) -> Element =>
-    div(id=f, click=(i => opened_file(i, f)), class="text-xs px-2 py-1",
+    div(id=f, click=(i => opened_file(i, f)),
+        class="text-xs px-2 py-1 cursor-pointer",
         bg=(f == ide.open ? Select : Shade),
-        fg=(f == ide.open ? Ink : Dim),
+        fg=(f == ide.open ? Ink : Dim), hover_bg=Select,
         tail(f))
 
 /** The buffer wears a tab, and under Ctrl+P it becomes the quick menu. */
@@ -64,11 +67,34 @@ tab_bar(ide: Ide) -> Element =>
                            : (ide.dirty ? "{tail(ide.open)} *"
                                         : tail(ide.open))))
 
-/** A line is its coloured spans, and the cursor line carries the block. */
+/** A line is its coloured spans; the cursor line carries the block, and a
+ * selected line shades its stretch.
+ */
 line_row(ide: Ide, l: Line) -> Element =>
     div(class="flex flex-row gap-3",
         div(class="text-xs w-10", fg=Dim, str(l.n)),
-        l.n - 1 == ide.line ? cursor_row(ide, l.said) : spans_row(l.said))
+        picked_form(ide, l))
+
+picked_form(ide: Ide, l: Line) -> Element {
+    if sel_on(ide, l.n - 1) {
+        return sel_row(ide, l)
+    }
+
+    l.n - 1 == ide.line ? cursor_row(ide, l.said) : spans_row(l.said)
+}
+
+sel_row(ide: Ide, l: Line) -> Element {
+    from = sel_from(ide, l.n - 1)
+    upto = sel_upto(ide, l.n - 1, l.said)
+
+    div(class="flex flex-row",
+        div(class="text-xs", l.said.slice(0, from)),
+        div(class="text-xs", bg=Marked, shaded(l.said, from, upto)),
+        div(class="text-xs", l.said.slice(upto, l.said.length())))
+}
+
+shaded(said: str, from: int, upto: int) -> str =>
+    from == upto ? " " : said.slice(from, upto)
 
 spans_row(said: str) -> Element =>
     div(class="flex flex-row", line_spans(said).map(sp => span_bit(sp)))
@@ -96,7 +122,8 @@ seeker(ide: Ide) -> Element =>
 
 hit_row(ide: Ide, h: Hit) -> Element =>
     div(id="hit-{str(h.at)}", click=(i => chosen_at(i, h.at)),
-        class="text-xs px-2 py-1", bg=(h.at == ide.pick ? Select : Paper),
+        class="text-xs px-2 py-1 cursor-pointer",
+        bg=(h.at == ide.pick ? Select : Paper), hover_bg=Select,
         tail(h.path))
 
 /** A `@param` in a doc comment is a control, drawn beside the buffer that asked
@@ -126,9 +153,10 @@ panel(ide: Ide) -> Element =>
         div(class="text-sm", shown(ide)))
 
 tab(ide: Ide, p: str) -> Element =>
-    div(id="tab-{p}", click=(i => picked(i, p)), class="text-xs px-2 py-1",
+    div(id="tab-{p}", click=(i => picked(i, p)),
+        class="text-xs px-2 py-1 cursor-pointer",
         bg=(p == ide.panel ? Select : Shade),
-        fg=(p == ide.panel ? Ink : Dim),
+        fg=(p == ide.panel ? Ink : Dim), hover_bg=Select,
         p)
 
 /** A control a doc comment asked for, drawn the way the tag syntax draws
