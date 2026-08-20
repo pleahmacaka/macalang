@@ -7,7 +7,7 @@
 import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown, face,
          knobs, opened_file, picked, chosen_at, sought, line_spans,
          sel_on, sel_from, sel_upto, bar_swung, menu_hit, closed_tab,
-         setting_hit, Panels } from apps/quipu/model
+         setting_hit, t, Panels } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
 
@@ -37,15 +37,27 @@ view(ide: Ide) -> Element =>
             tree(ide), buffer(ide), panel(ide)),
         footer(ide))
 
-/** File, Edit, Help: the bar every desktop expects, with a dropdown that
- * hangs under whichever is open.
+/** The one bar at the top: the app's name, its menus, a stretch to drag the
+ * window by, and the window's own buttons, drawn by us and answered by the
+ * OS through control areas.
  */
 menubar(ide: Ide) -> Element =>
-    div(class="flex flex-row gap-1 px-2 py-1 border-b-1 items-center",
+    div(class="flex flex-row gap-1 px-2 border-b-1 items-center",
         bg=Shade, edge=Edge,
-        menu_head(ide, "file", "File"),
-        menu_head(ide, "edit", "Edit"),
-        menu_head(ide, "help", "Help"))
+        div(class="px-3 py-2 text-xs", fg=Dim, "Quipu"),
+        menu_head(ide, "file", t(ide, "file")),
+        menu_head(ide, "edit", t(ide, "edit")),
+        menu_head(ide, "help", t(ide, "help")),
+        div(id="drag", zone="drag", class="grow h-9", ""),
+        div(id="win-min", zone="min",
+            class="px-4 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
+            "_"),
+        div(id="win-max", zone="max",
+            class="px-4 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
+            "o"),
+        div(id="win-shut", zone="close",
+            class="px-4 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
+            "x"))
 
 menu_head(ide: Ide, name: str, label: str) -> Element =>
     div(class="relative",
@@ -63,35 +75,48 @@ dropdown(ide: Ide, name: str) -> Element {
     if name == "file" {
         return div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
                    bg=Shade, edge=Edge,
-                   menu_item("open", "Open...          Ctrl+P"),
-                   menu_item("save", "Save             Ctrl+S"))
+                   keyed_item(ide, "open", "open", "Ctrl+P"),
+                   keyed_item(ide, "save", "save", "Ctrl+S"),
+                   menu_item(ide, "quit", "Quit"))
     }
 
     if name == "edit" {
         return div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
                    bg=Shade, edge=Edge,
-                   menu_item("all", "Select All"),
-                   menu_item("settings", "Settings"),
-                   menu_item("keys", "Key Bindings"))
+                   menu_item(ide, "all", t(ide, "all")),
+                   menu_item(ide, "settings", t(ide, "settings")),
+                   menu_item(ide, "keys", t(ide, "keys")))
     }
 
     div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
         bg=Shade, edge=Edge,
-        menu_item("about", "About Quipu"))
+        menu_item(ide, "about", t(ide, "about")))
 }
 
-menu_item(act: str, label: str) -> Element =>
+menu_item(ide: Ide, act: str, label: str) -> Element =>
     div(id="item-{act}", click=(i => menu_hit(i, act)),
         class="px-3 py-1 text-xs cursor-pointer",
         bg=Shade, fg=Ink, hover_bg=Hover,
         label)
+
+keyed_item(ide: Ide, act: str, key: str, chord: str) -> Element {
+    word = t(ide, key)
+
+    menu_item(ide, act, "{word}   {chord}")
+}
+
+tree_head(ide: Ide) -> str {
+    word = t(ide, "explorer")
+
+    "{word}   {str(ide.files.length())}"
+}
 
 tree(ide: Ide) -> Element =>
     div(id="tree",
         class="flex flex-col w-72 border-r-1 overflow-y-scroll",
         bg=Shade, edge=Edge,
         div(class="px-4 py-2 text-xs", fg=Dim,
-            "EXPLORER   {str(ide.files.length())}"),
+            tree_head(ide)),
         div(class="flex flex-col", ide.files.map(f => file_row(ide, f))))
 
 file_row(ide: Ide, f: str) -> Element =>
@@ -115,14 +140,17 @@ buffer(ide: Ide) -> Element {
 settings(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
         div(class="px-4 py-2 text-xs border-b-1", bg=Shade, edge=Edge,
-            "SETTINGS"),
-        setting_row(ide, "ligs",
-                    ide.ligs ? "Ligatures            on"
-                             : "Ligatures            off"),
-        setting_row(ide, "thin",
-                    ide.thin ? "Cursor               bar"
-                             : "Cursor               block"),
-        setting_row(ide, "close", "Close                Esc"))
+            t(ide, "settings-title")),
+        setting_kv(ide, "ligs", "ligatures", ide.ligs ? "on" : "off"),
+        setting_kv(ide, "thin", "cursor", ide.thin ? "bar" : "block"),
+        setting_kv(ide, "lang", "lang", ide.lang),
+        setting_kv(ide, "close", "close", "Esc"))
+
+setting_kv(ide: Ide, act: str, key: str, val: str) -> Element {
+    word = t(ide, key)
+
+    setting_row(ide, act, "{word}   {val}")
+}
 
 setting_row(ide: Ide, act: str, label: str) -> Element =>
     div(id="set-{act}", click=(i => setting_hit(i, act)),
@@ -269,16 +297,22 @@ tab(ide: Ide, p: str) -> Element =>
         fg=(p == ide.panel ? Ink : Dim), hover_bg=Hover,
         p)
 
+files_said(ide: Ide) -> str {
+    word = t(ide, "files")
+
+    "{str(ide.files.length())} {word}"
+}
+
 footer(ide: Ide) -> Element =>
     div(class="flex flex-row gap-6 px-4 py-1 border-t-1 items-center",
         bg=Shade, edge=Edge,
         div(class="text-xs",
-            ide.open == "" ? "no file"
+            ide.open == "" ? t(ide, "no-file")
                            : (ide.dirty ? "{tail(ide.open)} *"
                                         : tail(ide.open))),
         div(class="text-xs", fg=Dim,
             "ln {str(ide.line + 1)}, col {str(ide.col + 1)}"),
-        div(class="text-xs", fg=Dim, "{str(ide.files.length())} files"),
+        div(class="text-xs", fg=Dim, files_said(ide)),
         div(class="text-xs", fg=Dim,
             "{ide.target} via {panel_for(ide.target)}"))
 

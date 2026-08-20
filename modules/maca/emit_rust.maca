@@ -1221,6 +1221,18 @@ gpui_element_raw(e: Expr) -> str =>
         gpui_attrs(e.children.get(3).children, 0) +
         gpui_kids(e.children.get(4).children, 0)
 
+rzone(name: str) -> str {
+    if name == "drag" {
+        "Drag"
+    } else if name == "min" {
+        "Min"
+    } else if name == "max" {
+        "Max"
+    } else {
+        "Close"
+    }
+}
+
 /** A foreign method takes a written literal as the `&str` it is, because the
  * crate's own types (`ElementId`, `SharedString`) convert from that and not
  * from an owned `String`.
@@ -1280,6 +1292,9 @@ gpui_attr(a: Expr) -> str {
         ".text_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
     } else if a.text == "edge" {
         ".border_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
+    } else if a.text == "zone" {
+        ".window_control_area(gpui::WindowControlArea::" +
+            "{rzone(a.children.get(0).text)})"
     } else if a.text == "hover_bg" {
         ".hover(|_h| _h.bg(gpui::rgb(({remit_expr(a.children.get(0))})" +
             " as u32)))"

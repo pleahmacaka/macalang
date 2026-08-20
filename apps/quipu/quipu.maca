@@ -25,6 +25,9 @@ pub fn maca_apply(app: &mut gpui::App, f: &dyn Fn(Ide) -> Ide) {
     if let Some(host) = kept {
         host.update(app, |h, cx| {
             h.ide = f(h.ide.clone());
+            if h.ide.leaving {
+                std::process::exit(0);
+            }
             cx.notify();
         });
     }
@@ -76,8 +79,13 @@ impl gpui::Render for Host {
                             h.ide = pasted(h.ide.clone(), t.to_string());
                         }
                     }
+                } else if k == "ctrl-q" {
+                    std::process::exit(0);
                 } else {
                     h.ide = struck(h.ide.clone(), k);
+                }
+                if h.ide.leaving {
+                    std::process::exit(0);
                 }
                 cx.notify();
             }))
@@ -107,6 +115,7 @@ pub fn quipu_boot() -> i64 {
                 window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("Quipu".into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()

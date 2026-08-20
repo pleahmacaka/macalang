@@ -16,6 +16,7 @@ import maca/ast
 import std/proc
 import std/text
 import { list_dir, is_dir } from std/fs
+import { Lang, said, picked_lang } from i18n/say
 
 /** One open editor: the tree it was opened on, the buffer, and the panel beside
  * it.
@@ -47,6 +48,8 @@ Ide = {
     setting: bool,
     ligs:   bool,
     thin:   bool,
+    lang:   str,
+    leaving: bool,
 }
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
@@ -100,7 +103,7 @@ opened(root: str) -> Ide {
                  dirty = false, marking = false, mark_line = 0, mark_col = 0,
                  pane = "", bar = "", opens = [], preview = "",
                  stash_k = [], stash_v = [], setting = false, ligs = true,
-                 thin = false }
+                 thin = false, lang = "en", leaving = false }
 
     bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
 }
@@ -1347,6 +1350,8 @@ menu_hit(ide: Ide, act: str) -> Ide {
         picked(shut, "keys")
     } else if act == "settings" {
         shut with { setting = true }
+    } else if act == "quit" {
+        shut with { leaving = true }
     } else if act == "all" {
         held_all(shut)
     } else {
@@ -1367,6 +1372,8 @@ held_all(ide: Ide) -> Ide {
 setting_hit(ide: Ide, act: str) -> Ide {
     if act == "ligs" {
         ide with { ligs = !ide.ligs }
+    } else if act == "lang" {
+        ide with { lang = ide.lang == "en" ? "ko" : "en" }
     } else if act == "thin" {
         ide with { thin = !ide.thin }
     } else if act == "close" {
@@ -1375,6 +1382,28 @@ setting_hit(ide: Ide, act: str) -> Ide {
         ide
     }
 }
+
+/** Every word the editor shows, in the tongue the settings picked. */
+Keys18 = ["file", "edit", "help", "open", "save", "all", "settings", "keys",
+          "about", "explorer", "settings-title", "ligatures", "cursor",
+          "close", "no-file", "files", "lang"]
+
+english() -> Lang =>
+    Lang { tag = "en", keys = Keys18,
+           words = ["File", "Edit", "Help", "Open...", "Save", "Select All",
+                    "Settings", "Key Bindings", "About Quipu", "EXPLORER",
+                    "SETTINGS", "Ligatures", "Cursor", "Close", "no file open",
+                    "files", "Language"] }
+
+korean() -> Lang =>
+    Lang { tag = "ko", keys = Keys18,
+           words = ["파일", "편집", "도움말", "열기...", "저장", "모두 선택",
+                    "설정", "키 바인딩", "Quipu 정보", "탐색기", "설정",
+                    "합자", "커서", "닫기", "열린 파일 없음", "파일",
+                    "언어"] }
+
+t(ide: Ide, key: str) -> str =>
+    said(picked_lang([english(), korean()], ide.lang), key)
 
 /** The face the buffer wears: whatever monospace the desktop actually has. */
 face(ide: Ide) -> str =>

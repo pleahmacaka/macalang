@@ -1,6 +1,6 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          shown, paneled, bar_swung, menu_hit, held_all, promoted,
-         closed_tab, stash_of, setting_hit, face,
+         closed_tab, stash_of, setting_hit, face, t,
          gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
          Span, line_spans, footing, selected_text, pasted, sel_on,
          flame_frames, declared, house_rules,
@@ -16,7 +16,7 @@ blank() -> Ide =>
           pick = 0, line = 0, col = 0, dirty = false, marking = false,
           mark_line = 0, mark_col = 0, pane = "", bar = "", opens = [],
           preview = "", stash_k = [], stash_v = [], setting = false,
-          ligs = true, thin = false }
+          ligs = true, thin = false, lang = "en", leaving = false }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
@@ -528,4 +528,21 @@ test_settings_flip_and_pick_the_face() {
     assert_eq(face(blank()), "JetBrainsMono Nerd Font",
               "ligatures on is the bundled default")
     assert(setting_hit(blank(), "thin").thin, "so does the cursor switch")
+}
+
+test_the_editor_speaks_the_picked_tongue() {
+    assert_eq(t(blank(), "save"), "Save", "english by default")
+
+    ko = setting_hit(blank(), "lang")
+
+    assert_eq(t(ko, "save"), "저장", "korean on one flip")
+    assert_eq(t(setting_hit(ko, "lang"), "save"), "Save",
+              "and back again on the next")
+    assert_eq(t(blank(), "unmapped"), "unmapped",
+              "a key nobody translated stays readable")
+}
+
+test_quit_raises_the_leaving_flag_for_the_host() {
+    assert(menu_hit(blank() with { bar = "file" }, "quit").leaving,
+           "the model only raises the flag; the host does the leaving")
 }

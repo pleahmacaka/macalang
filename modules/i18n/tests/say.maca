@@ -1,0 +1,28 @@
+import { Lang, said, picked_lang } from i18n/say
+
+en() -> Lang =>
+    Lang { tag = "en", keys = ["file", "save"], words = ["File", "Save"] }
+
+ko() -> Lang =>
+    Lang { tag = "ko", keys = ["file", "save"], words = ["\ud30c\uc77c", "\uc800\uc7a5"] }
+
+test_a_key_finds_its_word_and_a_missing_key_stays_readable() {
+    assert_eq(said(en(), "save"), "Save", "the word by its key")
+    assert_eq(said(en(), "quit"), "quit",
+              "a key nobody translated is shown as itself")
+}
+
+test_a_locale_tag_picks_by_prefix_and_falls_back_forward() {
+    both = [en(), ko()]
+
+    assert_eq(picked_lang(both, "ko-KR").tag, "ko",
+              "the region suffix does not hide the language")
+    assert_eq(picked_lang(both, "fr").tag, "en",
+              "an unoffered tongue falls back to the first offered")
+}
+
+main() -> int {
+    test_a_key_finds_its_word_and_a_missing_key_stays_readable()
+    test_a_locale_tag_picks_by_prefix_and_falls_back_forward()
+    failures()
+}

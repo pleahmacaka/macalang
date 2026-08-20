@@ -2,6 +2,17 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.6.3
+
+- `modules/i18n`: one word looked up by key in whichever tongue was picked,
+  with prefix locale matching and a readable fallback for missing keys. Quipu
+  speaks through it: every label has an English and a Korean word, switched
+  from Settings > Language.
+- Quipu draws its own title bar: the app name, the menus, a drag stretch and
+  the window buttons in one row, handed to the window system through a
+  `zone=` attribute lowering to gpui's `WindowControlArea`; the OS title bar
+  is gone. File > Quit and Ctrl+Q leave through the host.
+
 ## 0.6.2
 
 - Quipu grows the furniture: a File / Edit / Help menu bar with dropdowns,

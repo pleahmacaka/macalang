@@ -1,7 +1,7 @@
 # Maca self-manifest, dogfooded as features land.
 [package]
 name = "maca"
-version = "0.6.2"
+version = "0.6.3"
 
 [workspace]
 members = [
@@ -10,6 +10,7 @@ members = [
     "modules/chaski",
     "modules/cli",
     "modules/http",
+    "modules/i18n",
     "modules/maca",
     "modules/profile",
     "modules/signal",

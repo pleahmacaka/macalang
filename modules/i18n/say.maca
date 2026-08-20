@@ -1,0 +1,40 @@
+// i18n/say: one word looked up by key, in whichever tongue was picked.
+
+import { env_or } from std/proc
+
+/** One language: its tag, and its words by key. */
+Lang = {
+    tag:   str
+    keys:  str[]
+    words: str[]
+}
+
+/** The word this language uses for the key, or the key itself when it has
+ * none, so a missing entry stays readable instead of vanishing.
+ */
+said(l: Lang, key: str) -> str {
+    at = l.keys.index_of(key)
+
+    at < 0 ? key : l.words.get(at)
+}
+
+/** The language whose tag opens the wanted one, so "ko-KR" finds "ko"; none
+ * matching falls back to the first offered.
+ */
+picked_lang(offered: Lang[], want: str) -> Lang {
+    i = 0
+
+    while i < offered.length() {
+        if want.starts_with(offered.get(i).tag) {
+            return offered.get(i)
+        }
+
+        i = i + 1
+    }
+
+    offered.get(0)
+}
+
+/** What the desktop says it speaks, read from the usual variables. */
+locale() -> str =>
+    env_or("LC_ALL", env_or("LANG", "en"))
