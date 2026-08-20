@@ -144,7 +144,7 @@ run_script(cmd: str) -> int {
     }
 }
 
-Version = "0.6.1"
+Version = "0.6.2"
 
 check_only(src: str, target: str) -> int {
     unit = unit_of(src)
@@ -817,6 +817,7 @@ cargo_built(src: str, rs: str, out: str, deps: str[]) -> int {
     proj = out + "-cargo"
 
     make_dir(proj + "/src")
+    carried_assets(dir_of(src), proj)
     write_file("{proj}/Cargo.toml",
                cargo_toml(chain, deps, manifest_keys(chain, "[rust-patch]",
                                                      0)))
@@ -837,6 +838,23 @@ cargo_built_at(proj: str, out: str) -> int {
                           "--manifest-path", "{proj}/Cargo.toml"])
 
     code != 0 ? code : placed(proj, out) ? 0 : 1
+}
+
+/** An `assets/` directory beside the program rides into the Cargo project,
+ * so a raw block may `include_bytes!` through `CARGO_MANIFEST_DIR`.
+ */
+carried_assets(from: str, proj: str) -> bool {
+    if !is_dir(from + "/assets") {
+        return true
+    }
+
+    make_dir(proj + "/assets")
+
+    for name in list_dir(from + "/assets") {
+        copy_bytes("{from}/assets/{name}", "{proj}/assets/{name}")
+    }
+
+    true
 }
 
 /** Windows names the binary `.exe`, and what is copied out is named the

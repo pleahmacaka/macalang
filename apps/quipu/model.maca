@@ -38,6 +38,15 @@ Ide = {
     marking: bool,
     mark_line: int,
     mark_col: int,
+    pane:   str,
+    bar:    str,
+    opens:  str[],
+    preview: str,
+    stash_k: str[],
+    stash_v: str[],
+    setting: bool,
+    ligs:   bool,
+    thin:   bool,
 }
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
@@ -86,20 +95,105 @@ skipped_dir(name: str) -> bool =>
  */
 opened(root: str) -> Ide {
     bare = Ide { root = root, files = sources(root), open = "", text = "",
-                 target = "", panel = "rust", output = "", breaks = [],
+                 target = "", panel = "names", output = "", breaks = [],
                  menu = false, seek = "", pick = 0, line = 0, col = 0,
-                 dirty = false, marking = false, mark_line = 0, mark_col = 0 }
+                 dirty = false, marking = false, mark_line = 0, mark_col = 0,
+                 pane = "", bar = "", opens = [], preview = "",
+                 stash_k = [], stash_v = [], setting = false, ligs = true,
+                 thin = false }
 
     bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
 }
 
 /** Opening a file reads it and decides what building it would produce. */
 opened_file(ide: Ide, path: str) -> Ide {
-    body = read_file(path)
+    kept = stashed(ide)
+    body = stash_of(kept, path) != "" ? stash_of(kept, path) : read_file(path)
+    tabs2 = kept.opens.index_of(path) >= 0 ? kept
+                                           : kept with { preview = path }
+    held = tabs2 with { open = path, text = body, target = target_of(body),
+                        output = "", breaks = [], line = 0, col = 0,
+                        dirty = stash_of(kept, path) != "", marking = false }
 
-    ide with { open = path, text = body, target = target_of(body),
-               output = "", breaks = [], line = 0, col = 0, dirty = false,
-               marking = false }
+    held with { pane = paneled(held) }
+}
+
+/** A buffer left unsaved is stashed by path, and switching back restores it.
+ */
+stashed(ide: Ide) -> Ide {
+    if !ide.dirty || ide.open == "" {
+        return ide
+    }
+
+    dropped = unstashed(ide, ide.open)
+
+    (dropped with { stash_k = dropped.stash_k.push(ide.open),
+                    stash_v = dropped.stash_v.push(ide.text) })
+}
+
+stash_of(ide: Ide, path: str) -> str {
+    at = ide.stash_k.index_of(path)
+
+    at < 0 ? "" : ide.stash_v.get(at)
+}
+
+unstashed(ide: Ide, path: str) -> Ide {
+    ks: str[] = []
+    vs: str[] = []
+    i = 0
+
+    while i < ide.stash_k.length() {
+        if ide.stash_k.get(i) != path {
+            ks = ks.push(ide.stash_k.get(i))
+            vs = vs.push(ide.stash_v.get(i))
+        }
+
+        i = i + 1
+    }
+
+    ide with { stash_k = ks, stash_v = vs }
+}
+
+/** Editing a previewed file pins its tab, the way every editor promotes. */
+promoted(ide: Ide) -> Ide {
+    if ide.open != "" && ide.open == ide.preview {
+        (ide with { opens = ide.opens.push(ide.open), preview = "" })
+    } else {
+        ide
+    }
+}
+
+/** Closing a tab drops its stash and lands on whatever tab is left. */
+closed_tab(ide: Ide, path: str) -> Ide {
+    thinned = unstashed(ide, path) with {
+        opens = without_path(ide.opens, path),
+        preview = ide.preview == path ? "" : ide.preview }
+
+    if ide.open != path {
+        return thinned
+    }
+
+    rest = thinned.preview != ""
+        ? thinned.opens.push(thinned.preview)
+        : thinned.opens
+
+    if rest.length() == 0 {
+        return thinned with { open = "", text = "", dirty = false, pane = "" }
+    }
+
+    opened_file(thinned with { dirty = false }, rest.get(rest.length() - 1))
+}
+
+without_path(xs: str[], path: str) -> str[] {
+    out: str[] = []
+
+    for x in xs {
+        if x != path {
+            out = out.push(x)
+        }
+    }
+
+    out
 }
 
 /** What `maca build` would pick with no `--target`: a config imports nixpkgs, a
@@ -193,8 +287,14 @@ sorted_lines(xs: int[]) -> int[] {
     out
 }
 
+/** The panel reads its cache; the toolchain runs when a click filled it,
+ * never in a render.
+ */
+shown(ide: Ide) -> str =>
+    ide.pane
+
 /** The panel's text, asked of the toolchain rather than guessed at. */
-shown(ide: Ide) -> str {
+paneled(ide: Ide) -> str {
     if ide.open == "" {
         return "open a file"
     }
@@ -330,19 +430,34 @@ tab_row(ps: str[], i: int, on: str, acc: str) -> str {
 /** Which panel a click on the tab row selects, staying put when the name is not
  * one.
  */
-picked(ide: Ide, name: str) -> Ide =>
-    Panels.index_of(name) < 0 ? ide : ide with { panel = name }
+picked(ide: Ide, name: str) -> Ide {
+    if Panels.index_of(name) < 0 {
+        return ide
+    }
+
+    held = ide with { panel = name }
+
+    held with { pane = paneled(held) }
+}
 
 /** One key, struck: Ctrl+P opens the quick menu, and while it is open the keys
  * type the query, move the pick, and choose; shut, they edit the buffer.
  */
 struck(ide: Ide, key: str) -> Ide {
+    if key == "escape" && ide.bar != "" {
+        return ide with { bar = "" }
+    }
+
+    if key == "escape" && ide.setting {
+        return ide with { setting = false }
+    }
+
     if key == "ctrl-p" {
         ide with { menu = !ide.menu, seek = "", pick = 0 }
     } else if !ide.menu {
         edited(ide, key)
     } else if key == "escape" {
-        ide with { menu = false }
+        ide with { menu = false, bar = "" }
     } else if key == "enter" {
         chosen(ide)
     } else if key == "backspace" {
@@ -814,17 +929,17 @@ edited(ide: Ide, key: str) -> Ide {
     } else if key == "right" {
         stepped_on(let_go(ide))
     } else if key == "enter" {
-        split_line(cleared(ide))
+        split_line(cleared(promoted(ide)))
     } else if key == "backspace" {
-        ide.marking ? cleared(ide) : rubbed(ide)
+        ide.marking ? cleared(promoted(ide)) : rubbed(promoted(ide))
     } else if key == "home" {
         let_go(ide) with { col = 0 }
     } else if key == "end" {
         let_go(ide) with { col = row_at(ide, ide.line).length() }
     } else if key == "tab" {
-        put(cleared(ide), "    ")
+        put(cleared(promoted(ide)), "    ")
     } else if key.length() == 1 {
-        put(cleared(ide), key)
+        put(cleared(promoted(ide)), key)
     } else {
         ide
     }
@@ -1214,3 +1329,53 @@ footing(ide: Ide) -> str {
         "{str(ide.files.length())} files   {ide.target} via " +
         panel_for(ide.target)
 }
+
+/** The menu bar: one menu may hang open, and picking anything shuts it. */
+bar_swung(ide: Ide, name: str) -> Ide =>
+    ide with { bar = ide.bar == name ? "" : name }
+
+menu_hit(ide: Ide, act: str) -> Ide {
+    shut = ide with { bar = "" }
+
+    if act == "save" {
+        saved(shut)
+    } else if act == "open" {
+        shut with { menu = true, seek = "", pick = 0 }
+    } else if act == "about" {
+        picked(shut, "about")
+    } else if act == "keys" {
+        picked(shut, "keys")
+    } else if act == "settings" {
+        shut with { setting = true }
+    } else if act == "all" {
+        held_all(shut)
+    } else {
+        shut
+    }
+}
+
+/** Select All: the anchor at the top, the cursor past the last character. */
+held_all(ide: Ide) -> Ide {
+    rs = rows_of(ide)
+    last = rs.length() - 1
+
+    (ide with { marking = true, mark_line = 0, mark_col = 0, line = last,
+                col = rs.get(last).length() })
+}
+
+/** What the settings pane flips, one switch a click. */
+setting_hit(ide: Ide, act: str) -> Ide {
+    if act == "ligs" {
+        ide with { ligs = !ide.ligs }
+    } else if act == "thin" {
+        ide with { thin = !ide.thin }
+    } else if act == "close" {
+        ide with { setting = false }
+    } else {
+        ide
+    }
+}
+
+/** The face the buffer wears: whatever monospace the desktop actually has. */
+face(ide: Ide) -> str =>
+    ide.ligs ? "JetBrainsMono Nerd Font" : "JetBrainsMonoNL Nerd Font"

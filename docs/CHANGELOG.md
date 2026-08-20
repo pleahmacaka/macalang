@@ -2,6 +2,21 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.6.2
+
+- Quipu grows the furniture: a File / Edit / Help menu bar with dropdowns,
+  tabs that preview on a click and pin on an edit (each with a close cross,
+  unsaved buffers stashed and restored across switches), and a Settings pane
+  (Edit > Settings) with a ligature toggle and a block-or-bar cursor.
+- JetBrains Mono Nerd Font rides inside the binary, so the editor looks the
+  same on a desktop that never installed it; the ligature toggle swaps to the
+  NL cut. `assets/` beside a program is carried into its Cargo project for
+  `include_bytes!`.
+- The cursor line keeps its syntax colours, with the block cut into the spans
+  rather than flattening them.
+- The panel computes its text when a tab or file is clicked, never in a
+  render; the toolchain no longer runs once a frame under the pointer.
+
 ## 0.6.1
 
 - Quipu dresses like an editor: a hairline border between every region

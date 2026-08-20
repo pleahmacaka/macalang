@@ -1,4 +1,6 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
+         shown, paneled, bar_swung, menu_hit, held_all, promoted,
+         closed_tab, stash_of, setting_hit, face,
          gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
          Span, line_spans, footing, selected_text, pasted, sel_on,
          flame_frames, declared, house_rules,
@@ -12,7 +14,9 @@ blank() -> Ide =>
     Ide { root = ".", files = [], open = "", text = "", target = "native",
           panel = "rust", output = "", breaks = [], menu = false, seek = "",
           pick = 0, line = 0, col = 0, dirty = false, marking = false,
-          mark_line = 0, mark_col = 0 }
+          mark_line = 0, mark_col = 0, pane = "", bar = "", opens = [],
+          preview = "", stash_k = [], stash_v = [], setting = false,
+          ligs = true, thin = false }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
@@ -405,4 +409,123 @@ test_home_and_end_jump_the_line() {
 
     assert_eq(str(ide.col), "4", "end lands past the last character")
     assert_eq(str(struck(ide, "home").col), "0", "and home returns")
+}
+
+test_the_panel_reads_its_cache_and_a_render_runs_nothing() {
+    ide = blank() with { open = "x.maca", text = "main() -> int => 0\n" }
+
+    assert_eq(shown(ide), "", "an unfilled pane shows nothing")
+
+    on_names = picked(ide, "names")
+
+    assert(shown(on_names).contains("main"),
+           "picking a panel fills the cache once: {shown(on_names)}")
+    assert_eq(shown(on_names with { pane = "held" }), "held",
+              "and the render only ever reads it back")
+}
+
+test_a_menu_swings_open_and_any_pick_shuts_it() {
+    ide = bar_swung(blank(), "file")
+
+    assert_eq(ide.bar, "file", "the named menu hangs open")
+    assert_eq(bar_swung(ide, "file").bar, "", "the same click shuts it")
+    assert_eq(bar_swung(ide, "help").bar, "help", "another swings instead")
+    assert_eq(struck(ide, "escape").bar, "", "and escape lets go")
+}
+
+test_menu_picks_route_to_what_the_keys_already_do() {
+    ide = blank() with { files = ["a.maca"], bar = "file" }
+    opened_menu = menu_hit(ide, "open")
+
+    assert(opened_menu.menu, "File > Open is Ctrl+P")
+    assert_eq(opened_menu.bar, "", "and the menu bar shut behind it")
+    assert_eq(menu_hit(ide, "about").panel, "about",
+              "Help > About shows the about panel")
+}
+
+test_select_all_stretches_the_whole_buffer() {
+    ide = held_all(scripted("ab\ncd"))
+
+    assert(ide.marking, "everything is marked")
+    assert_eq(selected_text(ide), "ab\ncd", "and the stretch is the file")
+}
+
+test_a_click_previews_and_an_edit_pins_the_tab() {
+    at = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-a.maca"
+    write_file(at, "a() -> int => 1\n")
+
+    ide = opened_file(blank(), at)
+
+    assert_eq(ide.preview, at, "one click is a preview")
+    assert_eq(str(ide.opens.length()), "0", "and pins nothing yet")
+
+    pinned = struck(ide, "x")
+
+    assert_eq(str(pinned.opens.length()), "1", "an edit pins the tab")
+    assert_eq(pinned.preview, "", "and the preview slot frees up")
+
+    remove_file(at)
+}
+
+test_a_preview_is_replaced_by_the_next_click() {
+    a = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-b.maca"
+    b = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-c.maca"
+    write_file(a, "a() -> int => 1\n")
+    write_file(b, "b() -> int => 2\n")
+
+    ide = opened_file(opened_file(blank(), a), b)
+
+    assert_eq(ide.preview, b, "the newer preview took the slot")
+    assert_eq(str(ide.opens.length()), "0", "nothing was pinned on the way")
+
+    remove_file(a)
+    remove_file(b)
+}
+
+test_an_unsaved_buffer_survives_a_tab_switch() {
+    a = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-d.maca"
+    b = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-e.maca"
+    write_file(a, "aa")
+    write_file(b, "bb")
+
+    edited_a = struck(opened_file(blank(), a), "x")
+    on_b = opened_file(edited_a, b)
+
+    assert_eq(stash_of(on_b, a), "xaa", "what was typed waits in the stash")
+
+    back = opened_file(on_b, a)
+
+    assert_eq(back.text, "xaa", "and switching back restores it")
+    assert(back.dirty, "still unsaved")
+
+    remove_file(a)
+    remove_file(b)
+}
+
+test_closing_the_open_tab_lands_on_the_last_one_left() {
+    a = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-f.maca"
+    b = env_or("TMPDIR", "/tmp") + "/maca-ide-tab-g.maca"
+    write_file(a, "aa")
+    write_file(b, "bb")
+
+    both = struck(opened_file(struck(opened_file(blank(), a), "x"), b), "y")
+    shut = closed_tab(both, b)
+
+    assert_eq(shut.open, a, "the neighbour takes the buffer")
+    assert_eq(str(shut.opens.length()), "1", "one tab is left")
+    assert_eq(closed_tab(shut, a).open, "", "and closing the last clears it")
+
+    remove_file(a)
+    remove_file(b)
+}
+
+test_settings_flip_and_pick_the_face() {
+    ide = setting_hit(blank(), "ligs")
+
+    assert(!ide.ligs, "the ligature switch flips")
+    assert_eq(face(ide), "JetBrainsMonoNL Nerd Font",
+              "and the face follows it to the no-ligature cut")
+    assert_eq(face(blank()), "JetBrainsMono Nerd Font",
+              "ligatures on is the bundled default")
+    assert(setting_hit(blank(), "thin").thin, "so does the cursor switch")
 }

@@ -4,13 +4,12 @@
  * this, so the editor is the same components either way.
  */
 
-import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown,
+import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown, face,
          knobs, opened_file, picked, chosen_at, sought, line_spans,
-         sel_on, sel_from, sel_upto, Panels } from apps/quipu/model
+         sel_on, sel_from, sel_upto, bar_swung, menu_hit, closed_tab,
+         setting_hit, Panels } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
-
-Face = "JetBrains Mono Nerd Font"
 
 /** One Dark, near enough: paper for the buffer, a shade for the chrome, a
  * hairline between every region.
@@ -32,10 +31,60 @@ Cursor = 5409727
 Edge = 1579551
 
 view(ide: Ide) -> Element =>
-    div(class="flex flex-col size-full", font=Face, bg=Paper, fg=Ink,
+    div(class="flex flex-col size-full", font=face(ide), bg=Paper, fg=Ink,
+        menubar(ide),
         div(class="flex flex-row grow overflow-hidden",
             tree(ide), buffer(ide), panel(ide)),
         footer(ide))
+
+/** File, Edit, Help: the bar every desktop expects, with a dropdown that
+ * hangs under whichever is open.
+ */
+menubar(ide: Ide) -> Element =>
+    div(class="flex flex-row gap-1 px-2 py-1 border-b-1 items-center",
+        bg=Shade, edge=Edge,
+        menu_head(ide, "file", "File"),
+        menu_head(ide, "edit", "Edit"),
+        menu_head(ide, "help", "Help"))
+
+menu_head(ide: Ide, name: str, label: str) -> Element =>
+    div(class="relative",
+        div(id="bar-{name}", click=(i => bar_swung(i, name)),
+            class="px-3 py-1 text-xs rounded-md cursor-pointer",
+            bg=(ide.bar == name ? Marked : Shade),
+            fg=(ide.bar == name ? Ink : Dim), hover_bg=Hover,
+            label),
+        ide.bar == name ? dropdown(ide, name) : gone())
+
+gone() -> Element =>
+    div(class="h-0")
+
+dropdown(ide: Ide, name: str) -> Element {
+    if name == "file" {
+        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
+                   bg=Shade, edge=Edge,
+                   menu_item("open", "Open...          Ctrl+P"),
+                   menu_item("save", "Save             Ctrl+S"))
+    }
+
+    if name == "edit" {
+        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
+                   bg=Shade, edge=Edge,
+                   menu_item("all", "Select All"),
+                   menu_item("settings", "Settings"),
+                   menu_item("keys", "Key Bindings"))
+    }
+
+    div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
+        bg=Shade, edge=Edge,
+        menu_item("about", "About Quipu"))
+}
+
+menu_item(act: str, label: str) -> Element =>
+    div(id="item-{act}", click=(i => menu_hit(i, act)),
+        class="px-3 py-1 text-xs cursor-pointer",
+        bg=Shade, fg=Ink, hover_bg=Hover,
+        label)
 
 tree(ide: Ide) -> Element =>
     div(id="tree",
@@ -52,9 +101,33 @@ file_row(ide: Ide, f: str) -> Element =>
         fg=(f == ide.open ? Ink : Dim), hover_bg=Hover,
         tail(f))
 
-/** The buffer wears a tab, and under Ctrl+P it becomes the quick menu. */
-buffer(ide: Ide) -> Element =>
-    ide.menu ? seeker(ide) : script(ide)
+/** The buffer wears its tabs; Ctrl+P turns it into the quick menu and the
+ * settings pane borrows it too.
+ */
+buffer(ide: Ide) -> Element {
+    if ide.menu {
+        return seeker(ide)
+    }
+
+    ide.setting ? settings(ide) : script(ide)
+}
+
+settings(ide: Ide) -> Element =>
+    div(class="flex flex-col grow",
+        div(class="px-4 py-2 text-xs border-b-1", bg=Shade, edge=Edge,
+            "SETTINGS"),
+        setting_row(ide, "ligs",
+                    ide.ligs ? "Ligatures            on"
+                             : "Ligatures            off"),
+        setting_row(ide, "thin",
+                    ide.thin ? "Cursor               bar"
+                             : "Cursor               block"),
+        setting_row(ide, "close", "Close                Esc"))
+
+setting_row(ide: Ide, act: str, label: str) -> Element =>
+    div(id="set-{act}", click=(i => setting_hit(i, act)),
+        class="px-4 py-2 text-xs cursor-pointer", hover_bg=Hover,
+        label)
 
 script(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
@@ -64,11 +137,25 @@ script(ide: Ide) -> Element =>
         asked_controls(ide))
 
 tab_bar(ide: Ide) -> Element =>
-    div(class="flex flex-row border-b-1", bg=Shade, edge=Edge,
-        div(class="px-4 py-2 text-xs border-r-1", bg=Paper, edge=Edge,
-            ide.open == "" ? "no file open"
-                           : (ide.dirty ? "{tail(ide.open)} *"
-                                        : tail(ide.open))))
+    div(class="flex flex-row border-b-1 overflow-hidden", bg=Shade, edge=Edge,
+        div(class="flex flex-row",
+            ide.opens.map(t => one_tab(ide, t, false))),
+        ide.preview == "" ? gone() : one_tab(ide, ide.preview, true))
+
+/** A pinned tab sits straight, a preview leans italic, and the cross beside
+ * either closes it.
+ */
+one_tab(ide: Ide, t: str, soft: bool) -> Element =>
+    div(class="flex flex-row items-center border-r-1",
+        bg=(t == ide.open ? Paper : Shade), edge=Edge,
+        div(id="tab-open-{t}", click=(i => opened_file(i, t)),
+            class=(soft ? "pl-4 py-2 text-xs cursor-pointer italic"
+                        : "pl-4 py-2 text-xs cursor-pointer"),
+            fg=(t == ide.open ? Ink : Dim),
+            t == ide.open && ide.dirty ? "{tail(t)} *" : tail(t)),
+        div(id="tab-shut-{t}", click=(i => closed_tab(i, t)),
+            class="px-2 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
+            "x"))
 
 /** A line is a dim number and its coloured spans; the cursor line is lit, and
  * a selected line shades its stretch.
@@ -107,14 +194,24 @@ spans_row(said: str) -> Element =>
 span_bit(sp: Span) -> Element =>
     div(class="text-sm", fg=sp.hue, sp.said)
 
-cursor_row(ide: Ide, said: str) -> Element =>
+/** The cursor line keeps its colours: the spans are cut around the cursor,
+ * which sits as a block over its character or a thin bar before it.
+ */
+cursor_row(ide: Ide, said: str) -> Element {
+    if ide.thin {
+        return div(class="flex flex-row",
+                   spans_row(said.slice(0, ide.col)),
+                   div(class="w-1", bg=Cursor, ""),
+                   spans_row(said.slice(ide.col, said.length())))
+    }
+
     div(class="flex flex-row",
-        div(class="text-sm", said.slice(0, ide.col)),
+        spans_row(said.slice(0, ide.col)),
         div(class="text-sm", bg=Cursor, fg=Paper, under_cursor(ide, said)),
-        div(class="text-sm",
-            ide.col < said.length()
-                ? said.slice(ide.col + 1, said.length())
-                : ""))
+        spans_row(ide.col < said.length()
+                      ? said.slice(ide.col + 1, said.length())
+                      : ""))
+}
 
 under_cursor(ide: Ide, said: str) -> str =>
     ide.col < said.length() ? said.slice(ide.col, ide.col + 1) : " "
