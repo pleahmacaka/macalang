@@ -42,7 +42,96 @@ line_issues(path: str, no: int, line: str) -> Issue[] =>
     say(path, no, too_wide(line), "line exceeds 80 columns") +
         say(path, no, single_line_if(line),
                "single-line `if` block; break it across lines") +
+        say(path, no, unordered_classes(line),
+               "tailwind classes out of order; layout before paint," +
+                   " spacing before border, text before cursor") +
         space_issues(path, no, line)
+
+/** The canonical order a class list is written in: where a box sits, what it
+ * is, how it flexes, its size, its spacing, its skin, its text, its cursor.
+ */
+class_rank(word: str) -> int {
+    if word.starts_with("absolute") || word.starts_with("relative") ||
+            word.starts_with("fixed") || word.starts_with("top-") ||
+            word.starts_with("left-") || word.starts_with("right-") ||
+            word.starts_with("bottom-") || word.starts_with("z-") {
+        1
+    } else if word == "flex" || word == "grid" || word == "hidden" ||
+            word == "block" {
+        2
+    } else if word.starts_with("flex-") {
+        3
+    } else if word.starts_with("items-") || word.starts_with("justify-") ||
+            word.starts_with("content-") || word.starts_with("self-") {
+        4
+    } else if word == "grow" || word == "shrink" {
+        5
+    } else if word.starts_with("size-") || word.starts_with("w-") ||
+            word.starts_with("h-") || word.starts_with("min-") ||
+            word.starts_with("max-") {
+        6
+    } else if word.starts_with("m-") || word.starts_with("mx-") ||
+            word.starts_with("my-") || word.starts_with("p-") ||
+            word.starts_with("px-") || word.starts_with("py-") ||
+            word.starts_with("pl-") || word.starts_with("pr-") ||
+            word.starts_with("pt-") || word.starts_with("pb-") ||
+            word.starts_with("gap-") {
+        7
+    } else if word.starts_with("overflow-") {
+        8
+    } else if word.starts_with("border") || word.starts_with("rounded") {
+        9
+    } else if word.starts_with("text-") || word.starts_with("font-") ||
+            word == "italic" || word.starts_with("leading-") {
+        10
+    } else if word.starts_with("cursor-") {
+        11
+    } else {
+        12
+    }
+}
+
+unordered_classes(line: str) -> bool {
+    words = class_words(line)
+    i = 1
+
+    while i < words.length() {
+        if class_rank(words.get(i)) < class_rank(words.get(i - 1)) {
+            return true
+        }
+
+        i = i + 1
+    }
+
+    false
+}
+
+/** The words of a `class=\"…\"` on this line, as far as the line carries
+ * them; a list wrapped by a string continuation is checked line by line.
+ */
+class_words(line: str) -> str[] {
+    at = line.index_of("class=\"")
+
+    if at < 0 {
+        return []
+    }
+
+    rest = line.slice(at + 7, line.length())
+    shut = rest.index_of("\"")
+    inside = shut < 0 ? rest : rest.slice(0, shut)
+
+    kept_words(inside.split(" "), 0, [])
+}
+
+kept_words(xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i).trim() == "" {
+        kept_words(xs, i + 1, acc)
+    } else {
+        kept_words(xs, i + 1, acc.push(xs.get(i).trim()))
+    }
+}
 
 space_issues(path: str, no: int, line: str) -> Issue[] =>
     say(path, no, has_trailing_space(line), "trailing whitespace") +

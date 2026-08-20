@@ -214,6 +214,19 @@ and which manifest answers.
   string; `xs[i] = v` and `p.field = v` assign through the lvalue. Arrays lower
   to the runtime buffer (`arr.data[i]`), strings to `maca_str_at`; JS/JVM/embedded
   use their native subscript. (`apps/examples/indexing.maca`.)
+- **A `"…"` string may wrap to the next line.** The newline and the
+  indentation after it fold to a single space, so a long list wraps with no
+  `+` and no escape:
+
+  ```maca
+  div(class="absolute top-8 left-0 flex flex-col w-56 py-1
+             rounded-md border-1",
+      body)
+  ```
+
+  A written line break is still `\n`, and `"""…"""` still carries text
+  verbatim. A string left open at the end of the file is an error, as before.
+  (`apps/quipu/view.maca` writes its dropdown classes this way.)
 - **A string is indexed by byte.** `length`, `at`, `get`, `slice` and `chars`
   all count bytes, and `at(i)` is therefore the one-byte `str` at offset `i`,
   never a code point. That is what `maca_str_at` does and what `chr`/`ord`

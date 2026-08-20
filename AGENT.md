@@ -224,8 +224,9 @@ finishing.
   different tokens: `c ? x : y` vs `load()?`.
 - **Bracketless comma lists:** `xs = a, b, c` (not `[a, b, c]`, though `[]`
   brackets are used for empty/nested lists).
-- **A `"…"` string may not span a line.** Write `\n`, or use `"""…"""`, which
-  spans lines and does not interpolate. A `{` inside a string opens an
+- **A `"…"` string wraps across lines: the newline and the indentation after
+  it fold to one space.** A written line break is `\n`; `"""…"""` still
+  carries text verbatim and does not interpolate. A `{` inside a string opens an
   interpolation, so a literal brace is `\{` or `{{`.
 - **A binary operator may not begin a continuation line.** Put the `+` at the
   end of the line above; starting a line with one is a parse error, and in a

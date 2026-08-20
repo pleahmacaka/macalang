@@ -962,3 +962,33 @@ test_a_raw_block_is_neither_measured_nor_reindented() {
     assert_eq(out, src, "a raw block changed the file's indentation")
     assert(out.contains("\n  color: red;"), "the foreign source was reindented")
 }
+
+test_fmt_sorts_a_class_list_and_leaves_a_wrapped_one_alone() {
+    dir = scratch() + "/classes"
+    make_dir(scratch())
+    make_dir(dir)
+    at = dir + "/sorted.maca"
+
+    write_file(at, "view() -> Element =>\n" +
+        "    div(class=\"text-xs flex px-2 cursor-pointer\", \"hi\")\n")
+    exec(maca_bin(), ["fmt", at])
+
+    assert(read_file(at).contains(
+               "class=\"flex px-2 text-xs cursor-pointer\""),
+           "the formatter writes the canonical order: {read_file(at)}")
+
+    wrapped = dir + "/wrapped.maca"
+
+    write_file(wrapped, "view() -> Element =>\n" +
+        "    div(class=\"flex flex-col w-56\n" +
+        "               rounded-md border-1\", \"hi\")\n")
+    before = read_file(wrapped)
+    exec(maca_bin(), ["fmt", wrapped])
+
+    assert_eq(read_file(wrapped), before,
+              "a wrapped list is the author's layout, and fmt keeps it")
+
+    code = exec(maca_bin(), ["fmt", wrapped, "--check"])
+
+    assert_eq(str(code), "0", "and check agrees it is already formatted")
+}

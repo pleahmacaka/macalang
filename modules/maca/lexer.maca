@@ -231,10 +231,48 @@ lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
         return escaped_in_interp(cs, i, out)
     }
 
-    text = span(cs, i + 1, j)
+    text = folded(cs, i + 1, j)
     held = keep(unclosed(out, cs, i + 1, j), mk_token(TStr, text, i))
 
     moved(held, j + 1)
+}
+
+/** A newline inside a plain string continues it: the break and the
+ * indentation after it fold to one space, so a long class list wraps without
+ * a `+`.
+ */
+folded(cs: str[], a: int, b: int) -> str {
+    out = "".chars()
+    i = a
+
+    while i < b {
+        c = cs.get(i)
+
+        if c == "\\" && i + 1 < b {
+            out = out.push(c)
+            out = out.push(cs.get(i + 1))
+            i = i + 2
+        } else if c == "\n" || c == "\r" {
+            out = out.push(" ")
+            i = past_break(cs, i, b)
+        } else {
+            out = out.push(c)
+            i = i + 1
+        }
+    }
+
+    out.join("")
+}
+
+past_break(cs: str[], i: int, b: int) -> int {
+    j = cs.get(i) == "\r" && i + 1 < b && cs.get(i + 1) == "\n" ? i + 2
+                                                                 : i + 1
+
+    while j < b && (cs.get(j) == " " || cs.get(j) == "\t") {
+        j = j + 1
+    }
+
+    j
 }
 
 /** Inside `{…}` the text is code, so a backslash there is not an escape and

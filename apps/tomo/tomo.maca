@@ -128,7 +128,7 @@ code_spans(s: str) -> str {
         s
     } else {
         s.substr(0, open) +
-            code(class="bg-zinc-100 dark:bg-zinc-800 px-1" +
+            code(class="px-1 bg-zinc-100 dark:bg-zinc-800" +
                           " font-mono text-[0.88em]",
                     s.substr(open + 1, close - open - 1)) +
             code_spans(s.substr(close + 1, s.length() - close - 1))
@@ -431,7 +431,7 @@ join_range(lines: str[], at: int, stop: int) -> str {
 toc(md: str) -> str => toc_region(published(), "", toc_list(md))
 
 toc_list(md: str) -> str =>
-    "\n" + ul(class="list-none m-0 p-0",
+    "\n" + ul(class="m-0 p-0 list-none",
                "\n" + toc_lines(lines(md), 0)) + "\n"
 
 toc_class() -> str =>
@@ -688,12 +688,12 @@ sidebar(d: Dev, key: str, title: str, langs: str, cur_lang: str, chs: str[],
         titles: str[], cur: str, nav_html: str, toc_html: str) -> str =>
     div(data-tomo="side", class=side_class(),
         div(data-tomo="head", class=sh_class(),
-            a(class="font-semibold text-[0.95rem] no-underline text-inherit",
+            a(class="font-semibold text-[0.95rem] text-inherit no-underline",
               href="index.html", escape_html(title))
-            nav(data-tomo="i18n", class="relative shrink-0 text-[0.8rem]",
+            nav(data-tomo="i18n", class="relative text-[0.8rem] shrink-0",
                 lang_links(langs.split(","), 0, cur_lang, "../", cur)))
         details(data-tomo="nav", open=true,
-                summary(class="hidden max-md:block cursor-pointer py-2" +
+                summary(class="hidden max-md:block py-2 cursor-pointer" +
                               " list-none details-marker:hidden" +
                               " text-zinc-500",
                         "☰ " + nav_label(cur_lang))
@@ -749,7 +749,7 @@ search_box() -> str =>
           class="w-full my-2 px-2 py-1 border border-zinc-200" +
                 " dark:border-zinc-700 bg-white dark:bg-zinc-900" +
                 " text-[0.85rem]") +
-    ul(id="hits", class="list-none m-0 p-0") +
+    ul(id="hits", class="m-0 p-0 list-none") +
     script(src="search-index.js") +
     script(hit_styles()) +
     script(search_js())
@@ -932,7 +932,7 @@ landing(root: str, title: str, langs: str, lang: str, fallback: str,
 landing_head(title: str, langs: str, lang: str, up: str) -> str =>
     header(class=hero_class(),
            span(class="font-semibold text-[1.05rem]", escape_html(title))
-           nav(data-tomo="i18n", class="relative shrink-0 text-[0.8rem]",
+           nav(data-tomo="i18n", class="relative text-[0.8rem] shrink-0",
                lang_links(langs.split(","), 0, lang, up, "home")))
 
 landing_body(src: str, title: str, langs: str, lang: str, up: str) -> str {
@@ -960,7 +960,7 @@ first_section(lines: str[], i: int) -> int {
 
 picker(title: str, langs: str, up: str) -> str =>
     h1(class=md_class("h1"), escape_html(title)) +
-        nav(ul(class="list-none p-0",
+        nav(ul(class="p-0 list-none",
                   "\n" + root_links(langs.split(","), 0, up))) + "\n"
 
 root_links(codes: str[], i: int, up: str) -> str {
@@ -1119,12 +1119,12 @@ volume_cards(chs: str[], titles: str[], i: int, lang: str) -> str {
 }
 
 volume_card(name: str, href: str, first: str, lang: str, at: int) -> str =>
-    a(class="block no-underline text-inherit border p-5" +
+    a(class="block p-5 border text-inherit no-underline" +
             " border-zinc-200 dark:border-zinc-800" +
             "",
       href=href == "" ? "index.html" : href + ".html",
       div(class="font-semibold text-[1.1rem]", escape_html(name))
-      p(class="mt-2 mb-3 text-[0.9rem] text-zinc-600 dark:text-zinc-400",
+      p(class="text-[0.9rem] text-zinc-600 mt-2 mb-3 dark:text-zinc-400",
         volume_blurb(at, lang))
       span(class="text-[0.85rem] text-zinc-500 dark:text-zinc-400",
            starts_with_label(lang) + escape_html(first)))

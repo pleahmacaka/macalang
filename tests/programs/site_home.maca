@@ -470,7 +470,8 @@ test_the_always_dark_panel_gets_the_dark_palette() {
 test_the_wide_table_scrolls_inside_its_own_box() {
     page = bench_page()
 
-    assert(page.contains("overflow-x-auto\"><table"),
+    assert(between(page, "<div class=\"", "\"><table")
+               .contains("overflow-x-auto"),
            "the table is inside a scroller")
     assert(between(page, "<table", "</table>").contains("whitespace-nowrap"),
            "and its cells do not wrap out of it")

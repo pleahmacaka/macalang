@@ -10,6 +10,7 @@ import maca/emit_embedded
 import maca/emit_jvm
 import maca/emit_elixir
 import maca/print
+import { class_rank } from lint/rules
 import { Span, trace } from profile/trace
 import { flame_svg_in, percent } from profile/flame
 import std/json
@@ -144,7 +145,7 @@ run_script(cmd: str) -> int {
     }
 }
 
-Version = "0.6.3"
+Version = "0.7.0"
 
 check_only(src: str, target: str) -> int {
     unit = unit_of(src)
@@ -299,9 +300,9 @@ indent_width(line: str, i: int) -> int =>
 format_file(src: str, only_check: bool) -> int {
     before = read_file(src)
     unit = indent_unit(chain_of(src))
-    after = reindent(before, unit)
+    after = tidy_classes(reindent(before, unit))
 
-    if after != reindent(after, unit) {
+    if after != tidy_classes(reindent(after, unit)) {
         err("{src}: left as it is, the formatter cannot write it back")
 
         1
@@ -315,6 +316,73 @@ format_file(src: str, only_check: bool) -> int {
         write_file(src, after)
 
         0
+    }
+}
+
+/** A one-line `class=\"…\"` list is rewritten in the canonical order the
+ * linter checks; a list wrapped across lines is left as its author laid it.
+ */
+tidy_classes(text: str) -> str {
+    out: str[] = []
+
+    for line in text.split("\n") {
+        out = out.push(tidy_class_line(line))
+    }
+
+    out.join("\n")
+}
+
+tidy_class_line(line: str) -> str {
+    at = line.index_of("class=\"")
+
+    if at < 0 {
+        return line
+    }
+
+    rest = line.slice(at + 7, line.length())
+    shut = rest.index_of("\"")
+
+    if shut < 0 {
+        return line
+    }
+
+    head = line.slice(0, at + 7)
+    sorted_bit = ranked_words(rest.slice(0, shut))
+
+    head + sorted_bit + rest.slice(shut, rest.length())
+}
+
+ranked_words(inside: str) -> str {
+    words = split_words(inside.split(" "), 0, [])
+    out = words
+    i = 0
+
+    while i < out.length() {
+        j = i + 1
+
+        while j < out.length() {
+            if class_rank(out.get(j)) < class_rank(out.get(i)) {
+                held = out.get(i)
+                out = out.set(i, out.get(j))
+                out = out.set(j, held)
+            }
+
+            j = j + 1
+        }
+
+        i = i + 1
+    }
+
+    out.join(" ")
+}
+
+split_words(xs: str[], i: int, acc: str[]) -> str[] {
+    if i >= xs.length() {
+        acc
+    } else if xs.get(i).trim() == "" {
+        split_words(xs, i + 1, acc)
+    } else {
+        split_words(xs, i + 1, acc.push(xs.get(i).trim()))
     }
 }
 

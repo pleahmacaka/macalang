@@ -2,6 +2,20 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.7.0
+
+- A `"…"` string wraps across lines: the newline and the indentation after it
+  fold to a single space, so a long class list continues on the next line
+  with no `+` and no escape. A written break is still `\n`, `"""…"""` is
+  still verbatim, and a string left open at the end of the file is still an
+  error.
+- The linter learns the canonical tailwind order (position, display, flex,
+  alignment, growth, size, spacing, overflow, border, text, cursor) and flags
+  a class list written against it; `maca fmt` rewrites a one-line list into
+  that order and leaves a wrapped list as its author laid it.
+- Quipu's dropdown classes are written in the new wrapped form, and every
+  class list in the tree is in canonical order.
+
 ## 0.6.3
 
 - `modules/i18n`: one word looked up by key in whichever tongue was picked,

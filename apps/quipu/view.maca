@@ -42,7 +42,7 @@ view(ide: Ide) -> Element =>
  * OS through control areas.
  */
 menubar(ide: Ide) -> Element =>
-    div(class="flex flex-row gap-1 px-2 border-b-1 items-center",
+    div(class="flex flex-row items-center gap-1 px-2 border-b-1",
         bg=Shade, edge=Edge,
         div(class="px-3 py-2 text-xs", fg=Dim, "Quipu"),
         menu_head(ide, "file", t(ide, "file")),
@@ -62,7 +62,7 @@ menubar(ide: Ide) -> Element =>
 menu_head(ide: Ide, name: str, label: str) -> Element =>
     div(class="relative",
         div(id="bar-{name}", click=(i => bar_swung(i, name)),
-            class="px-3 py-1 text-xs rounded-md cursor-pointer",
+            class="px-3 py-1 rounded-md text-xs cursor-pointer",
             bg=(ide.bar == name ? Marked : Shade),
             fg=(ide.bar == name ? Ink : Dim), hover_bg=Hover,
             label),
@@ -73,7 +73,8 @@ gone() -> Element =>
 
 dropdown(ide: Ide, name: str) -> Element {
     if name == "file" {
-        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
+        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1
+                          rounded-md border-1",
                    bg=Shade, edge=Edge,
                    keyed_item(ide, "open", "open", "Ctrl+P"),
                    keyed_item(ide, "save", "save", "Ctrl+S"),
@@ -81,14 +82,16 @@ dropdown(ide: Ide, name: str) -> Element {
     }
 
     if name == "edit" {
-        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
+        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1
+                          rounded-md border-1",
                    bg=Shade, edge=Edge,
                    menu_item(ide, "all", t(ide, "all")),
                    menu_item(ide, "settings", t(ide, "settings")),
                    menu_item(ide, "keys", t(ide, "keys")))
     }
 
-    div(class="absolute top-8 left-0 flex flex-col w-56 py-1 rounded-md border-1",
+    div(class="absolute top-8 left-0 flex flex-col w-56 py-1
+                          rounded-md border-1",
         bg=Shade, edge=Edge,
         menu_item(ide, "about", t(ide, "about")))
 }
@@ -113,7 +116,7 @@ tree_head(ide: Ide) -> str {
 
 tree(ide: Ide) -> Element =>
     div(id="tree",
-        class="flex flex-col w-72 border-r-1 overflow-y-scroll",
+        class="flex flex-col w-72 overflow-y-scroll border-r-1",
         bg=Shade, edge=Edge,
         div(class="px-4 py-2 text-xs", fg=Dim,
             tree_head(ide)),
@@ -139,7 +142,7 @@ buffer(ide: Ide) -> Element {
 
 settings(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
-        div(class="px-4 py-2 text-xs border-b-1", bg=Shade, edge=Edge,
+        div(class="px-4 py-2 border-b-1 text-xs", bg=Shade, edge=Edge,
             t(ide, "settings-title")),
         setting_kv(ide, "ligs", "ligatures", ide.ligs ? "on" : "off"),
         setting_kv(ide, "thin", "cursor", ide.thin ? "bar" : "block"),
@@ -160,12 +163,12 @@ setting_row(ide: Ide, act: str, label: str) -> Element =>
 script(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
         tab_bar(ide),
-        div(id="lines", class="flex flex-col grow overflow-y-scroll py-3",
+        div(id="lines", class="flex flex-col grow py-3 overflow-y-scroll",
             lines_of(ide).map(l => line_row(ide, l))),
         asked_controls(ide))
 
 tab_bar(ide: Ide) -> Element =>
-    div(class="flex flex-row border-b-1 overflow-hidden", bg=Shade, edge=Edge,
+    div(class="flex flex-row overflow-hidden border-b-1", bg=Shade, edge=Edge,
         div(class="flex flex-row",
             ide.opens.map(t => one_tab(ide, t, false))),
         ide.preview == "" ? gone() : one_tab(ide, ide.preview, true))
@@ -191,7 +194,7 @@ one_tab(ide: Ide, t: str, soft: bool) -> Element =>
 line_row(ide: Ide, l: Line) -> Element =>
     div(class="flex flex-row w-full",
         bg=(l.n - 1 == ide.line && !sel_on(ide, l.n - 1) ? Hover : Paper),
-        div(class="flex w-12 justify-end pr-4 text-xs",
+        div(class="flex justify-end w-12 pr-4 text-xs",
             fg=(l.n - 1 == ide.line ? Ink : Dim), str(l.n)),
         picked_form(ide, l))
 
@@ -247,7 +250,7 @@ under_cursor(ide: Ide, said: str) -> str =>
 /** Ctrl+P: the buffer becomes the quick menu until a file is chosen. */
 seeker(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
-        div(class="px-4 py-2 text-xs border-b-1", bg=Shade, edge=Edge,
+        div(class="px-4 py-2 border-b-1 text-xs", bg=Shade, edge=Edge,
             "OPEN  {ide.seek}_"),
         div(class="flex flex-col py-2",
             sought(ide).map(h => hit_row(ide, h))))
@@ -278,7 +281,7 @@ asked_controls(ide: Ide) -> Element {
  */
 panel(ide: Ide) -> Element =>
     div(id="panel",
-        class="flex flex-col w-80 border-l-1 overflow-y-scroll",
+        class="flex flex-col w-80 overflow-y-scroll border-l-1",
         bg=Shade, edge=Edge,
         div(class="flex flex-row flex-wrap gap-1 px-3 py-2",
             Panels.map(p => tab(ide, p))),
@@ -292,7 +295,7 @@ panel_line(s: str) -> Element =>
 
 tab(ide: Ide, p: str) -> Element =>
     div(id="tab-{p}", click=(i => picked(i, p)),
-        class="px-2 py-1 text-xs rounded-md cursor-pointer",
+        class="px-2 py-1 rounded-md text-xs cursor-pointer",
         bg=(p == ide.panel ? Marked : Shade),
         fg=(p == ide.panel ? Ink : Dim), hover_bg=Hover,
         p)
@@ -304,7 +307,7 @@ files_said(ide: Ide) -> str {
 }
 
 footer(ide: Ide) -> Element =>
-    div(class="flex flex-row gap-6 px-4 py-1 border-t-1 items-center",
+    div(class="flex flex-row items-center gap-6 px-4 py-1 border-t-1",
         bg=Shade, edge=Edge,
         div(class="text-xs",
             ide.open == "" ? t(ide, "no-file")
@@ -321,7 +324,7 @@ footer(ide: Ide) -> Element =>
  */
 control(t: Tag) -> Element =>
     div(class="flex flex-row gap-2",
-        div(class="text-xs w-24", bound_name(t)),
+        div(class="w-24 text-xs", bound_name(t)),
         knob(bound_call(t)))
 
 /** The control the comment named, or its own text when it named one nobody
@@ -329,7 +332,7 @@ control(t: Tag) -> Element =>
  */
 knob(call: str) -> Element {
     if call.starts_with("slider(") {
-        return div(class="flex flex-row gap-1 grow",
+        return div(class="flex flex-row grow gap-1",
                    div(class="text-xs", span_lo(call)),
                    div(class="grow h-1"),
                    div(class="text-xs", span_hi(call)))

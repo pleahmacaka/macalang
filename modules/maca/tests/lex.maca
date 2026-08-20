@@ -238,3 +238,31 @@ test_a_block_comment_is_a_mark_and_never_a_token() {
     assert_eq(str(lex_marked("/* a block */\n/** a doc block\n * over lines\n */\nmain() -> int => 1 /* inline */ + 2\n").length()), "3",
               "a block, a doc block over lines, and one inside an expression")
 }
+
+test_a_string_wraps_and_the_break_folds_to_one_space() {
+    ts = lex("x = \"ab\ncd\"")
+
+    assert_eq(ts.get(2).text, "ab cd",
+              "the newline folds to a single space")
+
+    deep = lex("x = \"ab\n        cd\"")
+
+    assert_eq(deep.get(2).text, "ab cd",
+              "and the indentation after it is eaten whole")
+
+    crlf = lex("x = \"ab\r\ncd\"")
+
+    assert_eq(crlf.get(2).text, "ab cd",
+              "a Windows break folds the same way")
+}
+
+test_escapes_survive_the_fold_and_an_open_string_still_fails() {
+    ts = lex("x = \"a\\nb\ncd\"")
+
+    assert_eq(ts.get(2).text, "a\\nb cd",
+              "a written escape is text, only the real break folds")
+    bad = errors_of("x = \"never shut")
+
+    assert(bad.length() > 0,
+           "a string open at the end of the file is still an error")
+}

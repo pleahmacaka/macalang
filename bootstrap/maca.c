@@ -120,7 +120,7 @@ static char* maca_attr(const char* name, const char* value) { if (!name || !*nam
 static char* maca_flag(const char* name, int on) { if (!on || !name || !*name) return maca_cat("", ""); return maca_cat(" ", name); }
 static int maca_void_tag(const char* t) { const char* v[] = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr", 0}; for (int i = 0; v[i]; i++) if (strcmp(t, v[i]) == 0) return 1; return 0; }
 static char* maca_element(const char* tag, const char* attrs, const char* kids) { size_t t = strlen(tag), a = strlen(attrs), k = strlen(kids); char* r = malloc(t * 2 + a + k + 6); char* w = r; *w++ = '<'; memcpy(w, tag, t); w += t; memcpy(w, attrs, a); w += a; *w++ = '>'; if (!maca_void_tag(tag)) { memcpy(w, kids, k); w += k; *w++ = '<'; *w++ = '/'; memcpy(w, tag, t); w += t; *w++ = '>'; } *w = 0; return r; }
-#define MACA_STYLES "*,*::before,*::after{box-sizing:border-box}\nhtml,body{margin:0}\n.absolute { position:absolute; }\n.block { display:block; }\n.border { border-width:1px;border-style:solid; }\n.fixed { position:fixed; }\n.grow { flex-grow:1; }\n.h\\[i-1\\] { height:i-1; }\n.h\\[j\\] { height:j; }\n.inline { display:inline; }\n.lowercase { text-transform:lowercase; }\n.p\\[-1\\] { padding:-1; }\n.p\\[0\\] { padding:0; }\n.rounded { border-radius:0.25rem; }\n.static { position:static; }\n.table { display:table; }\n"
+#define MACA_STYLES "*,*::before,*::after{box-sizing:border-box}\nhtml,body{margin:0}\n.absolute { position:absolute; }\n.block { display:block; }\n.border { border-width:1px;border-style:solid; }\n.fixed { position:fixed; }\n.flex { display:flex; }\n.grid { display:grid; }\n.grow { flex-grow:1; }\n.h\\[i-1\\] { height:i-1; }\n.h\\[j\\] { height:j; }\n.hidden { display:none; }\n.inline { display:inline; }\n.italic { font-style:italic; }\n.lowercase { text-transform:lowercase; }\n.p\\[-1\\] { padding:-1; }\n.p\\[0\\] { padding:0; }\n.relative { position:relative; }\n.rounded { border-radius:0.25rem; }\n.static { position:static; }\n.table { display:table; }\n"
 static int maca_fail(const char* s) { fprintf(stderr, "error: %s\n", s ? s : ""); exit(1); return 0; }
 #ifdef _WIN32
 static char* maca_quoted(const char* s) { char* r = malloc(strlen(s) * 2 + 3); char* w = r; *w++ = 34; for (const char* p = s; *p; p++) { if (*p == 34) *w++ = 92; *w++ = *p; } *w++ = 34; *w = 0; return r; }
@@ -154,6 +154,7 @@ typedef struct { const char* base; MacaList names; MacaList texts; } Assets;
 typedef struct { const char* name; MacaList tys; } Want;
 typedef struct { MacaList gens; MacaList wants; MacaList done; } Poly;
 typedef struct { const char* name; const char* triple; const char* cpu; const char* flash; long long flash_k; const char* ram; long long ram_k; } Mcu;
+typedef struct { const char* path; long long line; const char* what; } Issue;
 typedef struct { const char* name; long long start; long long end; long long depth; long long parent; long long closed; } Span;
 typedef struct { const char* label; MacaList spans; } Trace;
 typedef struct { long long base; long long total; long long cols; } Scale;
@@ -223,7 +224,7 @@ static const const char* EmbedStartup = "\n/* ---- Cortex-M startup ---- */\next
 static const const char* JavaReserved = " abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try var void volatile while ";
 static const const char* ExReserved = " after and catch cond do else end false fn in nil not or rescue true when quote unquote alias require import use def defp defmodule defstruct case if unless receive try raise throw ";
 static const const char* Indent = "    ";
-static const const char* Version = "0.6.3";
+static const const char* Version = "0.7.0";
 static const long long WatchPollMs = 300;
 static const const char* EntryDir = ".maca";
 static const const char* CargoName = "maca_app";
@@ -284,6 +285,8 @@ Lexed lex_raw(MacaList cs, long long i, Lexed out);
 const char* escape_raw(MacaList cs, long long i, const char* acc);
 const char* raw_char(const char* c);
 Lexed lex_string(MacaList cs, long long i, Lexed out);
+const char* folded(MacaList cs, long long a, long long b);
+long long past_break(MacaList cs, long long i, long long b);
 Lexed escaped_in_interp(MacaList cs, long long i, Lexed out);
 long long plain_end(MacaList cs, long long i);
 Lexed unclosed(Lexed out, MacaList cs, long long from, long long j);
@@ -1842,6 +1845,33 @@ const char* print_binary(Expr e, long long d);
 const char* print_operand(Expr c, long long mine, long long side, long long d);
 const char* print_ternary(Expr e, long long d);
 const char* print_args(MacaList xs, long long i, const char* acc, long long d);
+long long enabled();
+const char* paint(const char* code, const char* s);
+long long width(const char* s);
+long long utf8_len(long long b);
+long long codepoint(const char* s, long long i, long long len);
+long long lead_base(long long len);
+long long tail(const char* s, long long i);
+long long columns(long long cp);
+long long skip_escape(const char* s, long long from);
+const char* pad(const char* s, long long w);
+const char* pad_left(const char* s, long long w);
+const char* plain(const char* s);
+const char* bold(const char* s);
+const char* dim(const char* s);
+const char* italic(const char* s);
+const char* underline(const char* s);
+const char* red(const char* s);
+const char* green(const char* s);
+const char* yellow(const char* s);
+const char* blue(const char* s);
+const char* magenta(const char* s);
+const char* cyan(const char* s);
+const char* grey(const char* s);
+const char* ok(const char* s);
+const char* warn(const char* s);
+const char* bad(const char* s);
+const char* note__17(const char* s);
 MacaList lines(const char* s);
 MacaList words(const char* s);
 MacaList keep_nonempty(MacaList xs, long long i, MacaList acc);
@@ -1869,6 +1899,63 @@ const char* wrap(const char* s, long long width);
 const char* fill(MacaList ws, long long i, long long width, const char* cur, const char* out);
 const char* next_word(MacaList ws, long long i, long long width, const char* cur, const char* out);
 const char* flush(const char* out, const char* cur);
+const char* join(const char* a, const char* b);
+const char* drop_trailing_sep(const char* s);
+const char* drop_leading_sep(const char* s);
+const char* basename(const char* p);
+const char* dirname(const char* p);
+const char* extension(const char* p);
+const char* stem(const char* p);
+const char* with_extension(const char* p, const char* ext);
+const char* drop_leading_dot(const char* ext);
+long long is_absolute(const char* p);
+const char* normalize(const char* p);
+MacaList walk_segments(MacaList segs, long long i, MacaList acc);
+MacaList step__20(MacaList acc, const char* seg);
+long long last_sep(const char* p);
+long long last_dot__20(const char* s);
+long long scan_back(MacaList cs, long long i, const char* want);
+MacaList walk(const char* root);
+MacaList walk_entries(const char* root, MacaList names, long long i, MacaList acc);
+MacaList walk_one(const char* p);
+MacaList walk_dirs(const char* root);
+MacaList dir_entries(const char* root, MacaList names, long long i, MacaList acc);
+MacaList dir_one(const char* p);
+MacaList find(const char* root, const char* suffix);
+MacaList read_lines(const char* p);
+long long write_if_changed(const char* p, const char* text);
+long long force_write(const char* p, const char* text);
+long long append_file(const char* p, const char* text);
+long long copy_file(const char* from, const char* to);
+long long copy_tree(const char* from, const char* to);
+long long copy_all(const char* from, const char* to, MacaList files, long long i, long long n);
+long long copy_one(const char* p, const char* from, const char* to);
+long long tree_size(const char* root);
+long long single_line_if(const char* line);
+long long too_wide(const char* line);
+const char* collapse_strings(const char* line);
+const char* collapse(MacaList cs, long long i, long long quoted, const char* acc);
+long long has_trailing_space(const char* line);
+MacaList line_issues(const char* path, long long no, const char* line);
+long long class_rank(const char* word);
+long long unordered_classes(const char* line);
+MacaList class_words(const char* line);
+MacaList kept_words(MacaList xs, long long i, MacaList acc);
+MacaList space_issues(const char* path, long long no, const char* line);
+MacaList say(const char* path, long long no, long long hit, const char* what);
+MacaList scan_lines(const char* path, MacaList ls, long long i, long long raw, MacaList acc);
+long long odd_fence(const char* line);
+long long count_fences(MacaList cs, long long i, long long n);
+long long fence_at(MacaList cs, long long i);
+MacaList lint_file(const char* path);
+MacaList lint_tree(const char* dir);
+MacaList lint_each(MacaList paths, long long i, MacaList acc);
+MacaList lint_path(const char* path);
+MacaList default_paths();
+long long lint(MacaList paths);
+long long lint_given(MacaList paths);
+long long report(MacaList issues);
+const char* counted(long long n);
 const char* encode(long long value);
 long long decode(const char* text);
 const char* quote(const char* s);
@@ -1913,7 +2000,7 @@ long long child_time(Trace t, long long i);
 long long sum_kids(Trace t, MacaList ids, long long i, long long acc);
 long long self_time(Trace t, long long i);
 MacaList leaked(Trace t);
-MacaList unclosed__16(MacaList xs, long long i, MacaList acc);
+MacaList unclosed__21(MacaList xs, long long i, MacaList acc);
 long long find_span(Trace t, const char* name);
 long long scan_name(MacaList xs, const char* name, long long i);
 const char* to_json(Trace t);
@@ -1922,33 +2009,6 @@ const char* span_json(Span s);
 Trace from_json(const char* src);
 MacaList read_spans(MacaList objs, long long i, MacaList acc);
 Span read_span(const char* o);
-long long enabled();
-const char* paint(const char* code, const char* s);
-long long width(const char* s);
-long long utf8_len(long long b);
-long long codepoint(const char* s, long long i, long long len);
-long long lead_base(long long len);
-long long tail(const char* s, long long i);
-long long columns(long long cp);
-long long skip_escape(const char* s, long long from);
-const char* pad(const char* s, long long w);
-const char* pad_left(const char* s, long long w);
-const char* plain(const char* s);
-const char* bold(const char* s);
-const char* dim(const char* s);
-const char* italic(const char* s);
-const char* underline(const char* s);
-const char* red(const char* s);
-const char* green(const char* s);
-const char* yellow(const char* s);
-const char* blue(const char* s);
-const char* magenta(const char* s);
-const char* cyan(const char* s);
-const char* grey(const char* s);
-const char* ok(const char* s);
-const char* warn(const char* s);
-const char* bad(const char* s);
-const char* note__20(const char* s);
 Scale scale_of(Trace t, long long cols);
 long long column(Scale sc, long long at);
 const char* flame(Trace t, long long cols);
@@ -1999,6 +2059,10 @@ long long fence_count(const char* line);
 const char* unit_times(const char* unit, long long n);
 long long indent_width(const char* line, long long i);
 long long format_file(const char* src, long long only_check);
+const char* tidy_classes(const char* text);
+const char* tidy_class_line(const char* line);
+const char* ranked_words(const char* inside);
+MacaList split_words(MacaList xs, long long i, MacaList acc);
 long long fmt_cmd(MacaList args);
 long long fmt_each(MacaList files, long long i, long long only_check, long long acc);
 long long fix_cmd(MacaList args);
@@ -2543,7 +2607,9 @@ long long raw_end(MacaList cs, long long i) { long long j = i; while (((j + 2) <
 Lexed lex_raw(MacaList cs, long long i, Lexed out) { long long j = raw_end(cs, (i + 3)); const char* text = escape_raw(maca_chars(span(cs, (i + 3), j)), 0, ""); Lexed held = keep(unterminated(out, cs, j), mk_token(TStr, text, i)); return moved(held, (j + 3));  }
 const char* escape_raw(MacaList cs, long long i, const char* acc) { MacaList parts = maca_chars(""); long long j = i; while ((j < (cs.len))) { parts = maca_list_pushed(parts, (long long)(raw_char(((const char*)cs.data[j])))); j = (j + 1); } return maca_cat(acc, maca_list_join(parts, ""));  }
 const char* raw_char(const char* c) { return ((strcmp(c, "\\") == 0) ? "\\\\" : ((strcmp(c, "\"") == 0) ? "\\\"" : ((strcmp(c, "\n") == 0) ? "\\n" : ((strcmp(c, "\r") == 0) ? "\\r" : ((strcmp(c, "\t") == 0) ? "\\t" : ((strcmp(c, "{") == 0) ? "{{" : ((strcmp(c, "}") == 0) ? "}}" : c)))))));  }
-Lexed lex_string(MacaList cs, long long i, Lexed out) { long long j = string_end(cs, (i + 1)); if ((j < 0)) { return escaped_in_interp(cs, i, out); } const char* text = span(cs, (i + 1), j); Lexed held = keep(unclosed(out, cs, (i + 1), j), mk_token(TStr, text, i)); return moved(held, (j + 1));  }
+Lexed lex_string(MacaList cs, long long i, Lexed out) { long long j = string_end(cs, (i + 1)); if ((j < 0)) { return escaped_in_interp(cs, i, out); } const char* text = folded(cs, (i + 1), j); Lexed held = keep(unclosed(out, cs, (i + 1), j), mk_token(TStr, text, i)); return moved(held, (j + 1));  }
+const char* folded(MacaList cs, long long a, long long b) { MacaList out = maca_chars(""); long long i = a; while ((i < b)) { const char* c = ((const char*)cs.data[i]); if (((strcmp(c, "\\") == 0) && ((i + 1) < b))) { out = maca_list_pushed(out, (long long)(c)); out = maca_list_pushed(out, (long long)(((const char*)cs.data[(i + 1)]))); i = (i + 2); i; } else if (((strcmp(c, "\n") == 0) || (strcmp(c, "\r") == 0))) { out = maca_list_pushed(out, (long long)(" ")); i = past_break(cs, i, b); i; } else { out = maca_list_pushed(out, (long long)(c)); i = (i + 1); i; } } return maca_list_join(out, "");  }
+long long past_break(MacaList cs, long long i, long long b) { long long j = ((((strcmp(((const char*)cs.data[i]), "\r") == 0) && ((i + 1) < b)) && (strcmp(((const char*)cs.data[(i + 1)]), "\n") == 0)) ? (i + 2) : (i + 1)); while (((j < b) && ((strcmp(((const char*)cs.data[j]), " ") == 0) || (strcmp(((const char*)cs.data[j]), "\t") == 0)))) { j = (j + 1); } return j;  }
 Lexed escaped_in_interp(MacaList cs, long long i, Lexed out) { long long shut = plain_end(cs, (i + 1)); Lexed held = note_error(out, maca_cat(maca_cat("a `\\` inside an interpolation is not an escape:", " a string written inside `{…}` is quoted"), " plainly, as in `xs.join(\", \")`")); return moved(keep(held, mk_token(TStr, span(cs, (i + 1), shut), i)), (shut + 1));  }
 long long plain_end(MacaList cs, long long i) { long long j = i; while ((j < (cs.len))) { if ((strcmp(((const char*)cs.data[j]), "\\") == 0)) { j = (j + 2); j; } else if ((strcmp(((const char*)cs.data[j]), "\"") == 0)) { return j; } else { j = (j + 1); j; } } return j;  }
 Lexed unclosed(Lexed out, MacaList cs, long long from, long long j) { return ((j < (cs.len)) ? out : (opens_interp(cs, from, j) ? note_error(out, maca_cat("unterminated interpolation: a literal `{` in a", " string is written `{{`")) : note_error(out, "unterminated string")));  }
@@ -4102,6 +4168,33 @@ const char* print_binary(Expr e, long long d) { long long mine = op_power(e.text
 const char* print_operand(Expr c, long long mine, long long side, long long d) { const char* inner = print_expr(c, d); return (loose(c) ? maca_cat(maca_cat("(", inner), ")") : (((c.kind != EBinary) || (strcmp(c.text, "=") == 0)) ? inner : (((op_power(c.text) < mine) || ((op_power(c.text) == mine) && (side == 1))) ? maca_cat(maca_cat("(", inner), ")") : inner)));  }
 const char* print_ternary(Expr e, long long d) { return maca_cat(maca_cat(maca_cat(maca_cat(held((*(Expr*)e.children.data[0]), d), " ? "), print_expr((*(Expr*)e.children.data[1]), d)), " : "), print_expr((*(Expr*)e.children.data[2]), d));  }
 const char* print_args(MacaList xs, long long i, const char* acc, long long d) { return ((i >= (xs.len)) ? acc : ((i == ((xs.len) - 1)) ? maca_cat(acc, print_expr((*(Expr*)xs.data[i]), d)) : print_args(xs, (i + 1), maca_cat(maca_cat(acc, print_expr((*(Expr*)xs.data[i]), d)), ", "), d)));  }
+long long enabled() { return ((strcmp(maca_env("NO_COLOR"), "") != 0) ? 0 : ((strcmp(maca_env("FORCE_COLOR"), "") != 0) ? 1 : maca_is_tty()));  }
+const char* paint(const char* code, const char* s) { return (((!enabled()) || (strcmp(s, "") == 0)) ? s : maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_chr(27), "["), code), "m"), s), maca_chr(27)), "[0m"));  }
+long long width(const char* s) { long long n = ((int)strlen(s)); long long out = 0; long long i = 0; while ((i < n)) { long long b = maca_ord(maca_str_at(s, i)); if ((b == 27)) { i = skip_escape(s, (i + 1)); i; } else if ((b < 128)) { out = (out + 1); i = (i + 1); i; } else { long long len = utf8_len(b); out = (out + columns(codepoint(s, i, len))); i = (i + len); i; } } return out;  }
+long long utf8_len(long long b) { return ((b >= 240) ? 4 : ((b >= 224) ? 3 : ((b >= 192) ? 2 : 1)));  }
+long long codepoint(const char* s, long long i, long long len) { long long lead = maca_ord(maca_str_at(s, i)); long long cp = (lead - lead_base(len)); long long at = 1; while ((at < len)) { cp = ((cp * 64) + tail(s, (i + at))); at = (at + 1); } return cp;  }
+long long lead_base(long long len) { return ((len == 4) ? 240 : ((len == 3) ? 224 : ((len == 2) ? 192 : 0)));  }
+long long tail(const char* s, long long i) { long long b = maca_ord(maca_str_at(s, i)); return ((b >= 128) ? (b - 128) : 0);  }
+long long columns(long long cp) { return (((cp >= 768) && (cp <= 879)) ? 0 : ((cp == 8203) ? 0 : (((cp >= 4352) && (cp <= 4447)) ? 2 : (((cp >= 11904) && (cp <= 42191)) ? 2 : (((cp >= 44032) && (cp <= 55203)) ? 2 : (((cp >= 63744) && (cp <= 64255)) ? 2 : (((cp >= 65072) && (cp <= 65135)) ? 2 : (((cp >= 65280) && (cp <= 65376)) ? 2 : (((cp >= 127744) && (cp <= 129791)) ? 2 : 1)))))))));  }
+long long skip_escape(const char* s, long long from) { long long n = ((int)strlen(s)); long long i = from; while (((i < n) && (!(isalpha((unsigned char)(maca_str_at(s, i))[0]) != 0)))) { i = (i + 1); } return (i + 1);  }
+const char* pad(const char* s, long long w) { long long short_mc = (w - width(s)); return ((short_mc > 0) ? maca_cat(s, maca_repeat(" ", short_mc)) : s);  }
+const char* pad_left(const char* s, long long w) { long long short_mc = (w - width(s)); return ((short_mc > 0) ? maca_cat(maca_repeat(" ", short_mc), s) : s);  }
+const char* plain(const char* s) { long long n = ((int)strlen(s)); const char* out = ""; long long i = 0; while ((i < n)) { if ((strcmp(maca_str_at(s, i), maca_chr(27)) == 0)) { i = skip_escape(s, (i + 1)); i; } else { out = maca_cat(out, maca_str_at(s, i)); i = (i + 1); i; } } return out;  }
+const char* bold(const char* s) { return paint("1", s);  }
+const char* dim(const char* s) { return paint("2", s);  }
+const char* italic(const char* s) { return paint("3", s);  }
+const char* underline(const char* s) { return paint("4", s);  }
+const char* red(const char* s) { return paint("31", s);  }
+const char* green(const char* s) { return paint("32", s);  }
+const char* yellow(const char* s) { return paint("33", s);  }
+const char* blue(const char* s) { return paint("34", s);  }
+const char* magenta(const char* s) { return paint("35", s);  }
+const char* cyan(const char* s) { return paint("36", s);  }
+const char* grey(const char* s) { return paint("90", s);  }
+const char* ok(const char* s) { return maca_cat(maca_cat(green("✓"), " "), s);  }
+const char* warn(const char* s) { return maca_cat(maca_cat(yellow("!"), " "), s);  }
+const char* bad(const char* s) { return maca_cat(maca_cat(red("✗"), " "), s);  }
+const char* note__17(const char* s) { return maca_cat(maca_cat(grey("-"), " "), grey(s));  }
 MacaList lines(const char* s) { MacaList parts = maca_split(maca_replace(s, "\r\n", "\n"), "\n"); long long n = (parts.len); return (((n > 0) && (strcmp(((const char*)parts.data[(n - 1)]), "") == 0)) ? maca_list_slice(parts, 0, (n - 1)) : parts);  }
 MacaList words(const char* s) { return keep_nonempty(maca_split(maca_replace(maca_replace(s, "\t", " "), "\n", " "), " "), 0, maca_listv(0));  }
 MacaList keep_nonempty(MacaList xs, long long i, MacaList acc) { return ((i >= (xs.len)) ? acc : ((strcmp(((const char*)xs.data[i]), "") == 0) ? keep_nonempty(xs, (i + 1), acc) : keep_nonempty(xs, (i + 1), maca_list_pushed(acc, (long long)(((const char*)xs.data[i]))))));  }
@@ -4129,6 +4222,63 @@ const char* wrap(const char* s, long long width) { return fill(words(s), 0, widt
 const char* fill(MacaList ws, long long i, long long width, const char* cur, const char* out) { return ((i >= (ws.len)) ? flush(out, cur) : next_word(ws, i, width, cur, out));  }
 const char* next_word(MacaList ws, long long i, long long width, const char* cur, const char* out) { const char* w = ((const char*)ws.data[i]); const char* joined = ((strcmp(cur, "") == 0) ? w : maca_cat(maca_cat(cur, " "), w)); return (((((int)strlen(joined)) <= width) || (strcmp(cur, "") == 0)) ? fill(ws, (i + 1), width, joined, out) : fill(ws, (i + 1), width, w, flush(out, cur)));  }
 const char* flush(const char* out, const char* cur) { return ((strcmp(cur, "") == 0) ? out : ((strcmp(out, "") == 0) ? cur : maca_cat(maca_cat(out, "\n"), cur)));  }
+const char* join(const char* a, const char* b) { const char* left = drop_trailing_sep(a); const char* right = drop_leading_sep(b); return ((strcmp(left, "") == 0) ? right : ((strcmp(right, "") == 0) ? left : maca_cat(maca_cat(left, "/"), right)));  }
+const char* drop_trailing_sep(const char* s) { return (maca_ends_with(s, "/") ? maca_str_slice(s, 0, (((int)strlen(s)) - 1)) : s);  }
+const char* drop_leading_sep(const char* s) { return (maca_starts_with(s, "/") ? maca_str_slice(s, 1, ((int)strlen(s))) : s);  }
+const char* basename(const char* p) { long long at = last_sep(p); return ((at < 0) ? p : maca_str_slice(p, (at + 1), ((int)strlen(p))));  }
+const char* dirname(const char* p) { long long at = last_sep(p); return ((at < 0) ? "." : ((at == 0) ? "/" : maca_str_slice(p, 0, at)));  }
+const char* extension(const char* p) { const char* name = basename(p); long long at = last_dot__20(name); return ((at <= 0) ? "" : maca_str_slice(name, (at + 1), ((int)strlen(name))));  }
+const char* stem(const char* p) { const char* name = basename(p); long long at = last_dot__20(name); return ((at <= 0) ? name : maca_str_slice(name, 0, at));  }
+const char* with_extension(const char* p, const char* ext) { const char* bare_ext = drop_leading_dot(ext); const char* dir = dirname(p); const char* name = ((strcmp(bare_ext, "") == 0) ? stem(p) : maca_cat(maca_cat(stem(p), "."), bare_ext)); return (((strcmp(dir, ".") == 0) && (!maca_starts_with(p, "./"))) ? name : join(dir, name));  }
+const char* drop_leading_dot(const char* ext) { return (maca_starts_with(ext, ".") ? maca_str_slice(ext, 1, ((int)strlen(ext))) : ext);  }
+long long is_absolute(const char* p) { return maca_starts_with(p, "/");  }
+const char* normalize(const char* p) { const char* kept = maca_list_join(walk_segments(maca_split(p, "/"), 0, maca_listv(0)), "/"); return (is_absolute(p) ? maca_cat("/", kept) : ((strcmp(kept, "") == 0) ? "." : kept));  }
+MacaList walk_segments(MacaList segs, long long i, MacaList acc) { return ((i >= (segs.len)) ? acc : walk_segments(segs, (i + 1), step__20(acc, ((const char*)segs.data[i]))));  }
+MacaList step__20(MacaList acc, const char* seg) { return (((strcmp(seg, "") == 0) || (strcmp(seg, ".") == 0)) ? acc : ((strcmp(seg, "..") != 0) ? maca_list_pushed(acc, (long long)(seg)) : (((acc.len) > 0) ? ({ MacaList _q = acc; maca_list_slice(_q, 0, _q.len - 1); }) : acc)));  }
+long long last_sep(const char* p) { return scan_back(maca_chars(p), (((int)strlen(p)) - 1), "/");  }
+long long last_dot__20(const char* s) { return scan_back(maca_chars(s), (((int)strlen(s)) - 1), ".");  }
+long long scan_back(MacaList cs, long long i, const char* want) { return ((i < 0) ? (-1) : ((strcmp(((const char*)cs.data[i]), want) == 0) ? i : scan_back(cs, (i - 1), want)));  }
+MacaList walk(const char* root) { return walk_entries(root, maca_list_dir(root), 0, maca_listv(0));  }
+MacaList walk_entries(const char* root, MacaList names, long long i, MacaList acc) { return ((i >= (names.len)) ? acc : ({ MacaList found = walk_one(join(root, ((const char*)names.data[i]))); walk_entries(root, names, (i + 1), maca_list_cat(acc, found)); }));  }
+MacaList walk_one(const char* p) { return (maca_is_dir(p) ? walk(p) : maca_listv(1, (long long)(p)));  }
+MacaList walk_dirs(const char* root) { return dir_entries(root, maca_list_dir(root), 0, maca_listv(0));  }
+MacaList dir_entries(const char* root, MacaList names, long long i, MacaList acc) { return ((i >= (names.len)) ? acc : ({ MacaList found = dir_one(join(root, ((const char*)names.data[i]))); dir_entries(root, names, (i + 1), maca_list_cat(acc, found)); }));  }
+MacaList dir_one(const char* p) { return (maca_is_dir(p) ? maca_list_cat(maca_listv(1, (long long)(p)), walk_dirs(p)) : maca_listv(0));  }
+MacaList find(const char* root, const char* suffix) { return ({ MacaList _m = walk(root); MacaList _r; _r.len = 0; _r.data = maca_cells((_m.len ? _m.len : 1) * sizeof(long long)); for (int _i = 0; _i < _m.len; _i++) if (({ const char* p = ((const char*)_m.data[_i]); maca_ends_with(p, suffix); })) _r.data[_r.len++] = _m.data[_i]; _r; });  }
+MacaList read_lines(const char* p) { return lines(maca_read_file(p));  }
+long long write_if_changed(const char* p, const char* text) { long long unchanged = (maca_file_exists(p) && (strcmp(maca_read_file(p), text) == 0)); return (unchanged ? 0 : force_write(p, text));  }
+long long force_write(const char* p, const char* text) { maca_make_dir(dirname(p)); return maca_write_file(p, text);  }
+long long append_file(const char* p, const char* text) { const char* existing = (maca_file_exists(p) ? maca_read_file(p) : ""); return maca_write_file(p, maca_cat(existing, text));  }
+long long copy_file(const char* from, const char* to) { maca_make_dir(dirname(to)); return maca_copy_bytes(from, to);  }
+long long copy_tree(const char* from, const char* to) { return copy_all(from, to, walk(from), 0, 0);  }
+long long copy_all(const char* from, const char* to, MacaList files, long long i, long long n) { return ((i >= (files.len)) ? n : ({ long long copied = (copy_one(((const char*)files.data[i]), from, to) ? 1 : 0); copy_all(from, to, files, (i + 1), (n + copied)); }));  }
+long long copy_one(const char* p, const char* from, const char* to) { const char* rel = strip_prefix(strip_prefix(p, from), "/"); return copy_file(p, join(to, rel));  }
+long long tree_size(const char* root) { return ({ MacaList _q = ({ MacaList _m = walk(root); MacaList _r; _r.len = _m.len; _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long long)); for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = (long long)(({ const char* p = ((const char*)_m.data[_i]); maca_file_size(p); })); _r; }); long long _a = 0; for (int _qi = 0; _qi < _q.len; _qi++) _a += ((long long)_q.data[_qi]); _a; });  }
+long long single_line_if(const char* line) { const char* t = maca_trim(line); long long opens = (maca_starts_with(t, "if ") || maca_starts_with(t, "} else if ")); return (((opens && (strstr(t, "{") != NULL)) && maca_ends_with(t, "}")) && (!(strstr(t, "? ") != NULL)));  }
+long long too_wide(const char* line) { return ((((!maca_starts_with(maca_trim(line), "//")) && (!maca_starts_with(maca_trim(line), "/*"))) && (!maca_starts_with(maca_trim(line), "*"))) && (((int)strlen(collapse_strings(line))) > 80));  }
+const char* collapse_strings(const char* line) { return collapse(maca_chars(line), 0, 0, "");  }
+const char* collapse(MacaList cs, long long i, long long quoted, const char* acc) { return ((i >= (cs.len)) ? acc : (((strcmp(((const char*)cs.data[i]), "\\") == 0) && quoted) ? collapse(cs, (i + 2), quoted, acc) : ((strcmp(((const char*)cs.data[i]), "\"") == 0) ? collapse(cs, (i + 1), (!quoted), maca_cat(acc, "\"")) : (quoted ? collapse(cs, (i + 1), quoted, acc) : collapse(cs, (i + 1), quoted, maca_cat(acc, ((const char*)cs.data[i])))))));  }
+long long has_trailing_space(const char* line) { return ((((int)strlen(line)) > 0) && (maca_ends_with(line, " ") || maca_ends_with(line, "\t")));  }
+MacaList line_issues(const char* path, long long no, const char* line) { return maca_list_cat(maca_list_cat(maca_list_cat(say(path, no, too_wide(line), "line exceeds 80 columns"), say(path, no, single_line_if(line), "single-line `if` block; break it across lines")), say(path, no, unordered_classes(line), maca_cat("tailwind classes out of order; layout before paint,", " spacing before border, text before cursor"))), space_issues(path, no, line));  }
+long long class_rank(const char* word) { return ((((((((maca_starts_with(word, "absolute") || maca_starts_with(word, "relative")) || maca_starts_with(word, "fixed")) || maca_starts_with(word, "top-")) || maca_starts_with(word, "left-")) || maca_starts_with(word, "right-")) || maca_starts_with(word, "bottom-")) || maca_starts_with(word, "z-")) ? 1 : (((((strcmp(word, "flex") == 0) || (strcmp(word, "grid") == 0)) || (strcmp(word, "hidden") == 0)) || (strcmp(word, "block") == 0)) ? 2 : (maca_starts_with(word, "flex-") ? 3 : ((((maca_starts_with(word, "items-") || maca_starts_with(word, "justify-")) || maca_starts_with(word, "content-")) || maca_starts_with(word, "self-")) ? 4 : (((strcmp(word, "grow") == 0) || (strcmp(word, "shrink") == 0)) ? 5 : (((((maca_starts_with(word, "size-") || maca_starts_with(word, "w-")) || maca_starts_with(word, "h-")) || maca_starts_with(word, "min-")) || maca_starts_with(word, "max-")) ? 6 : (((((((((((maca_starts_with(word, "m-") || maca_starts_with(word, "mx-")) || maca_starts_with(word, "my-")) || maca_starts_with(word, "p-")) || maca_starts_with(word, "px-")) || maca_starts_with(word, "py-")) || maca_starts_with(word, "pl-")) || maca_starts_with(word, "pr-")) || maca_starts_with(word, "pt-")) || maca_starts_with(word, "pb-")) || maca_starts_with(word, "gap-")) ? 7 : (maca_starts_with(word, "overflow-") ? 8 : ((maca_starts_with(word, "border") || maca_starts_with(word, "rounded")) ? 9 : ((((maca_starts_with(word, "text-") || maca_starts_with(word, "font-")) || (strcmp(word, "italic") == 0)) || maca_starts_with(word, "leading-")) ? 10 : (maca_starts_with(word, "cursor-") ? 11 : 12)))))))))));  }
+long long unordered_classes(const char* line) { MacaList words = class_words(line); long long i = 1; while ((i < (words.len))) { if ((class_rank(((const char*)words.data[i])) < class_rank(((const char*)words.data[(i - 1)])))) { return 1; } i = (i + 1); } return 0;  }
+MacaList class_words(const char* line) { long long at = maca_str_index_of(line, "class=\""); if ((at < 0)) { return maca_listv(0); } const char* rest = maca_str_slice(line, (at + 7), ((int)strlen(line))); long long shut = maca_str_index_of(rest, "\""); const char* inside = ((shut < 0) ? rest : maca_str_slice(rest, 0, shut)); return kept_words(maca_split(inside, " "), 0, maca_listv(0));  }
+MacaList kept_words(MacaList xs, long long i, MacaList acc) { return ((i >= (xs.len)) ? acc : ((strcmp(maca_trim(((const char*)xs.data[i])), "") == 0) ? kept_words(xs, (i + 1), acc) : kept_words(xs, (i + 1), maca_list_pushed(acc, (long long)(maca_trim(((const char*)xs.data[i])))))));  }
+MacaList space_issues(const char* path, long long no, const char* line) { return maca_list_cat(say(path, no, has_trailing_space(line), "trailing whitespace"), say(path, no, (strstr(line, "\t") != NULL), "hard tab; Maca indents with four spaces"));  }
+MacaList say(const char* path, long long no, long long hit, const char* what) { return (hit ? maca_listv(1, maca_box(sizeof(Issue), (Issue[]){ (Issue){ .path = path, .line = no, .what = what } })) : maca_listv(0));  }
+MacaList scan_lines(const char* path, MacaList ls, long long i, long long raw, MacaList acc) { return ((i >= (ls.len)) ? acc : ({ const char* line = ((const char*)ls.data[i]); long long fence = odd_fence(line); MacaList found = ((raw || fence) ? space_issues(path, (i + 1), line) : line_issues(path, (i + 1), line)); scan_lines(path, ls, (i + 1), (raw != fence), maca_list_cat(acc, found)); }));  }
+long long odd_fence(const char* line) { return ((count_fences(maca_chars(line), 0, 0) % 2) == 1);  }
+long long count_fences(MacaList cs, long long i, long long n) { return (((i + 2) >= (cs.len)) ? n : (fence_at(cs, i) ? count_fences(cs, (i + 3), (n + 1)) : count_fences(cs, (i + 1), n)));  }
+long long fence_at(MacaList cs, long long i) { return (((strcmp(((const char*)cs.data[i]), "\"") == 0) && (strcmp(((const char*)cs.data[(i + 1)]), "\"") == 0)) && (strcmp(((const char*)cs.data[(i + 2)]), "\"") == 0));  }
+MacaList lint_file(const char* path) { return scan_lines(path, read_lines(path), 0, 0, maca_listv(0));  }
+MacaList lint_tree(const char* dir) { return lint_each(find(dir, ".maca"), 0, maca_listv(0));  }
+MacaList lint_each(MacaList paths, long long i, MacaList acc) { return ((i >= (paths.len)) ? acc : lint_each(paths, (i + 1), maca_list_cat(acc, lint_path(((const char*)paths.data[i])))));  }
+MacaList lint_path(const char* path) { return (maca_is_dir(path) ? lint_tree(path) : (maca_file_exists(path) ? lint_file(path) : maca_listv(0)));  }
+MacaList default_paths() { return maca_listv(4, (long long)("modules"), (long long)("apps"), (long long)("tests/programs"), (long long)("dev.maca"));  }
+long long lint(MacaList paths) { return (((paths.len) == 0) ? report(lint_each(default_paths(), 0, maca_listv(0))) : lint_given(paths));  }
+long long lint_given(MacaList paths) { MacaList absent = ({ MacaList _m = paths; MacaList _r; _r.len = 0; _r.data = maca_cells((_m.len ? _m.len : 1) * sizeof(long long)); for (int _i = 0; _i < _m.len; _i++) if (({ const char* p = ((const char*)_m.data[_i]); (!maca_file_exists(p)); })) _r.data[_r.len++] = _m.data[_i]; _r; }); return (((absent.len) > 0) ? ({ fprintf(stderr, "%s\n", bad(maca_cat("lint: cannot read ", maca_list_join(absent, ", ")))); 1; }) : report(lint_each(paths, 0, maca_listv(0))));  }
+long long report(MacaList issues) { { MacaList _f = issues; for (int _fi = 0; _fi < _f.len; _fi++) { Issue it = (*(Issue*)_f.data[_fi]); printf("%s\n", maca_cat(maca_cat(dim(maca_cat(maca_cat(maca_cat(maca_cat("", it.path), ":"), maca_int_to_str(it.line)), ":")), " "), it.what)); } } return (((issues.len) == 0) ? ({ printf("%s\n", ok("clean")); 0; }) : ({ printf("%s\n", bad(counted((issues.len)))); 1; }));  }
+const char* counted(long long n) { return ((n == 1) ? "1 issue" : maca_cat(maca_cat("", maca_int_to_str(n)), " issues"));  }
 const char* quote(const char* s) { return maca_cat(maca_cat("\"", maca_replace(maca_replace(maca_replace(maca_replace(maca_replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n"), "\r", "\\r"), "\t", "\\t")), "\"");  }
 const char* array_of_str(MacaList xs) { return maca_cat(maca_cat("[", maca_list_join(({ MacaList _m = xs; MacaList _r; _r.len = _m.len; _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long long)); for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = (long long)(quote(((const char*)_m.data[_i]))); _r; }), ",")), "]");  }
 const char* array_of_int(MacaList xs) { return maca_cat(maca_cat("[", maca_list_join(({ MacaList _m = xs; MacaList _r; _r.len = _m.len; _r.data = maca_cells((_r.len ? _r.len : 1) * sizeof(long long)); for (int _i = 0; _i < _m.len; _i++) _r.data[_i] = (long long)(({ long long v = ((long long)_m.data[_i]); maca_int_to_str(v); })); _r; }), ",")), "]");  }
@@ -4170,8 +4320,8 @@ MacaList at_depth(MacaList xs, long long d, long long i, MacaList acc) { return 
 long long child_time(Trace t, long long i) { return sum_kids(t, children(t, i), 0, 0);  }
 long long sum_kids(Trace t, MacaList ids, long long i, long long acc) { return ((i >= (ids.len)) ? acc : sum_kids(t, ids, (i + 1), (acc + duration((*(Span*)t.spans.data[((long long)ids.data[i])])))));  }
 long long self_time(Trace t, long long i) { long long own = (duration((*(Span*)t.spans.data[i])) - child_time(t, i)); return ((own > 0) ? own : 0);  }
-MacaList leaked(Trace t) { return unclosed__16(t.spans, 0, maca_listv(0));  }
-MacaList unclosed__16(MacaList xs, long long i, MacaList acc) { return ((i >= (xs.len)) ? acc : ((*(Span*)xs.data[i]).closed ? unclosed__16(xs, (i + 1), acc) : unclosed__16(xs, (i + 1), maca_list_pushed(acc, (long long)((*(Span*)xs.data[i]).name)))));  }
+MacaList leaked(Trace t) { return unclosed__21(t.spans, 0, maca_listv(0));  }
+MacaList unclosed__21(MacaList xs, long long i, MacaList acc) { return ((i >= (xs.len)) ? acc : ((*(Span*)xs.data[i]).closed ? unclosed__21(xs, (i + 1), acc) : unclosed__21(xs, (i + 1), maca_list_pushed(acc, (long long)((*(Span*)xs.data[i]).name)))));  }
 long long find_span(Trace t, const char* name) { return scan_name(t.spans, name, 0);  }
 long long scan_name(MacaList xs, const char* name, long long i) { return ((i >= (xs.len)) ? (-1) : ((strcmp((*(Span*)xs.data[i]).name, name) == 0) ? i : scan_name(xs, name, (i + 1))));  }
 const char* to_json(Trace t) { MacaList parts = span_objects(t.spans, 0, maca_listv(0)); const char* body = maca_list_join(parts, ","); const char* head = maca_cat("{\"label\":", quote(t.label)); return maca_cat(maca_cat(maca_cat(head, ",\"spans\":["), body), "]}");  }
@@ -4180,33 +4330,6 @@ const char* span_json(Span s) { const char* flag = (s.closed ? "true" : "false")
 Trace from_json(const char* src) { return trace(get(src, "label"), read_spans(items(get(src, "spans")), 0, maca_listv(0)));  }
 MacaList read_spans(MacaList objs, long long i, MacaList acc) { return ((i >= (objs.len)) ? acc : read_spans(objs, (i + 1), maca_list_pushed(acc, maca_box(sizeof(Span), (Span[]){ read_span(((const char*)objs.data[i])) }))));  }
 Span read_span(const char* o) { return (Span){ .name = get(o, "name"), .start = get_int(o, "start", 0), .end = get_int(o, "end", 0), .depth = get_int(o, "depth", 0), .parent = get_int(o, "parent", (-1)), .closed = get_bool(o, "closed") };  }
-long long enabled() { return ((strcmp(maca_env("NO_COLOR"), "") != 0) ? 0 : ((strcmp(maca_env("FORCE_COLOR"), "") != 0) ? 1 : maca_is_tty()));  }
-const char* paint(const char* code, const char* s) { return (((!enabled()) || (strcmp(s, "") == 0)) ? s : maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_cat(maca_chr(27), "["), code), "m"), s), maca_chr(27)), "[0m"));  }
-long long width(const char* s) { long long n = ((int)strlen(s)); long long out = 0; long long i = 0; while ((i < n)) { long long b = maca_ord(maca_str_at(s, i)); if ((b == 27)) { i = skip_escape(s, (i + 1)); i; } else if ((b < 128)) { out = (out + 1); i = (i + 1); i; } else { long long len = utf8_len(b); out = (out + columns(codepoint(s, i, len))); i = (i + len); i; } } return out;  }
-long long utf8_len(long long b) { return ((b >= 240) ? 4 : ((b >= 224) ? 3 : ((b >= 192) ? 2 : 1)));  }
-long long codepoint(const char* s, long long i, long long len) { long long lead = maca_ord(maca_str_at(s, i)); long long cp = (lead - lead_base(len)); long long at = 1; while ((at < len)) { cp = ((cp * 64) + tail(s, (i + at))); at = (at + 1); } return cp;  }
-long long lead_base(long long len) { return ((len == 4) ? 240 : ((len == 3) ? 224 : ((len == 2) ? 192 : 0)));  }
-long long tail(const char* s, long long i) { long long b = maca_ord(maca_str_at(s, i)); return ((b >= 128) ? (b - 128) : 0);  }
-long long columns(long long cp) { return (((cp >= 768) && (cp <= 879)) ? 0 : ((cp == 8203) ? 0 : (((cp >= 4352) && (cp <= 4447)) ? 2 : (((cp >= 11904) && (cp <= 42191)) ? 2 : (((cp >= 44032) && (cp <= 55203)) ? 2 : (((cp >= 63744) && (cp <= 64255)) ? 2 : (((cp >= 65072) && (cp <= 65135)) ? 2 : (((cp >= 65280) && (cp <= 65376)) ? 2 : (((cp >= 127744) && (cp <= 129791)) ? 2 : 1)))))))));  }
-long long skip_escape(const char* s, long long from) { long long n = ((int)strlen(s)); long long i = from; while (((i < n) && (!(isalpha((unsigned char)(maca_str_at(s, i))[0]) != 0)))) { i = (i + 1); } return (i + 1);  }
-const char* pad(const char* s, long long w) { long long short_mc = (w - width(s)); return ((short_mc > 0) ? maca_cat(s, maca_repeat(" ", short_mc)) : s);  }
-const char* pad_left(const char* s, long long w) { long long short_mc = (w - width(s)); return ((short_mc > 0) ? maca_cat(maca_repeat(" ", short_mc), s) : s);  }
-const char* plain(const char* s) { long long n = ((int)strlen(s)); const char* out = ""; long long i = 0; while ((i < n)) { if ((strcmp(maca_str_at(s, i), maca_chr(27)) == 0)) { i = skip_escape(s, (i + 1)); i; } else { out = maca_cat(out, maca_str_at(s, i)); i = (i + 1); i; } } return out;  }
-const char* bold(const char* s) { return paint("1", s);  }
-const char* dim(const char* s) { return paint("2", s);  }
-const char* italic(const char* s) { return paint("3", s);  }
-const char* underline(const char* s) { return paint("4", s);  }
-const char* red(const char* s) { return paint("31", s);  }
-const char* green(const char* s) { return paint("32", s);  }
-const char* yellow(const char* s) { return paint("33", s);  }
-const char* blue(const char* s) { return paint("34", s);  }
-const char* magenta(const char* s) { return paint("35", s);  }
-const char* cyan(const char* s) { return paint("36", s);  }
-const char* grey(const char* s) { return paint("90", s);  }
-const char* ok(const char* s) { return maca_cat(maca_cat(green("✓"), " "), s);  }
-const char* warn(const char* s) { return maca_cat(maca_cat(yellow("!"), " "), s);  }
-const char* bad(const char* s) { return maca_cat(maca_cat(red("✗"), " "), s);  }
-const char* note__20(const char* s) { return maca_cat(maca_cat(grey("-"), " "), grey(s));  }
 Scale scale_of(Trace t, long long cols) { return (Scale){ .base = origin(t), .total = wall(t), .cols = cols };  }
 long long column(Scale sc, long long at) { return ((sc.total <= 0) ? 0 : (((at - sc.base) * sc.cols) / sc.total));  }
 const char* flame(Trace t, long long cols) { return ((span_count(t) == 0) ? dim("(nothing recorded)") : ({ MacaList rows = chart_rows(t, scale_of(t, cols), 0, maca_listv(0)); maca_cat(maca_cat(maca_cat(chart_head(t), "\n"), maca_list_join(rows, "\n")), leak_note(t)); }));  }
@@ -4257,7 +4380,11 @@ const char* reindent_line(const char* line, const char* unit, long long step) { 
 long long fence_count(const char* line) { MacaList cs = maca_chars(line); long long hits = 0; long long j = 0; while (((j + 2) < (cs.len))) { if ((((strcmp(((const char*)cs.data[j]), "\"") == 0) && (strcmp(((const char*)cs.data[(j + 1)]), "\"") == 0)) && (strcmp(((const char*)cs.data[(j + 2)]), "\"") == 0))) { hits = (hits + 1); j = (j + 3); j; } else { j = (j + 1); j; } } return hits;  }
 const char* unit_times(const char* unit, long long n) { return ((n <= 0) ? "" : maca_cat(unit, unit_times(unit, (n - 1))));  }
 long long indent_width(const char* line, long long i) { return (((i < ((int)strlen(line))) && (strcmp(maca_str_at(line, i), " ") == 0)) ? indent_width(line, (i + 1)) : i);  }
-long long format_file(const char* src, long long only_check) { const char* before = maca_read_file(src); const char* unit = indent_unit(chain_of(src)); const char* after = reindent(before, unit); return ((strcmp(after, reindent(after, unit)) != 0) ? ({ fprintf(stderr, "%s\n", maca_cat(maca_cat("", src), ": left as it is, the formatter cannot write it back")); 1; }) : ((strcmp(before, after) == 0) ? 0 : (only_check ? ({ printf("%s\n", maca_cat(maca_cat("", src), ": not formatted")); 1; }) : ({ maca_write_file(src, after); 0; }))));  }
+long long format_file(const char* src, long long only_check) { const char* before = maca_read_file(src); const char* unit = indent_unit(chain_of(src)); const char* after = tidy_classes(reindent(before, unit)); return ((strcmp(after, tidy_classes(reindent(after, unit))) != 0) ? ({ fprintf(stderr, "%s\n", maca_cat(maca_cat("", src), ": left as it is, the formatter cannot write it back")); 1; }) : ((strcmp(before, after) == 0) ? 0 : (only_check ? ({ printf("%s\n", maca_cat(maca_cat("", src), ": not formatted")); 1; }) : ({ maca_write_file(src, after); 0; }))));  }
+const char* tidy_classes(const char* text) { MacaList out = maca_listv(0); { MacaList _f = maca_split(text, "\n"); for (int _fi = 0; _fi < _f.len; _fi++) { const char* line = ((const char*)_f.data[_fi]); out = maca_list_pushed(out, (long long)(tidy_class_line(line))); } } return maca_list_join(out, "\n");  }
+const char* tidy_class_line(const char* line) { long long at = maca_str_index_of(line, "class=\""); if ((at < 0)) { return line; } const char* rest = maca_str_slice(line, (at + 7), ((int)strlen(line))); long long shut = maca_str_index_of(rest, "\""); if ((shut < 0)) { return line; } const char* head = maca_str_slice(line, 0, (at + 7)); const char* sorted_bit = ranked_words(maca_str_slice(rest, 0, shut)); return maca_cat(maca_cat(head, sorted_bit), maca_str_slice(rest, shut, ((int)strlen(rest))));  }
+const char* ranked_words(const char* inside) { MacaList words = split_words(maca_split(inside, " "), 0, maca_listv(0)); MacaList out = words; long long i = 0; while ((i < (out.len))) { long long j = (i + 1); while ((j < (out.len))) { if ((class_rank(((const char*)out.data[j])) < class_rank(((const char*)out.data[i])))) { const char* held = ((const char*)out.data[i]); out = maca_list_set(out, i, (long long)(((const char*)out.data[j]))); out = maca_list_set(out, j, (long long)(held)); out; } j = (j + 1); } i = (i + 1); } return maca_list_join(out, " ");  }
+MacaList split_words(MacaList xs, long long i, MacaList acc) { return ((i >= (xs.len)) ? acc : ((strcmp(maca_trim(((const char*)xs.data[i])), "") == 0) ? split_words(xs, (i + 1), acc) : split_words(xs, (i + 1), maca_list_pushed(acc, (long long)(maca_trim(((const char*)xs.data[i])))))));  }
 long long fmt_cmd(MacaList args) { MacaList files = fix_files(args, 1, maca_listv(0)); return (((files.len) == 0) ? ({ fprintf(stderr, "%s\n", "usage: maca fmt <file.maca>... [--check]"); 2; }) : fmt_each(files, 0, (maca_list_index_of_str(args, "--check") >= 0), 0));  }
 long long fmt_each(MacaList files, long long i, long long only_check, long long acc) { return ((i >= (files.len)) ? acc : fmt_each(files, (i + 1), only_check, (acc + format_file(((const char*)files.data[i]), only_check))));  }
 long long fix_cmd(MacaList args) { MacaList files = fix_files(args, 1, maca_listv(0)); return (((files.len) == 0) ? ({ fprintf(stderr, "%s\n", "usage: maca fix <file.maca>... [--dry-run]"); 2; }) : fix_each(files, 0, (maca_list_index_of_str(args, "--dry-run") >= 0), 0));  }

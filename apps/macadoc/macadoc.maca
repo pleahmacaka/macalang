@@ -465,16 +465,16 @@ page(title: str, side: str, body: str) -> str =>
         "\n"
 
 top_bar(title: str) -> str =>
-    header(class="sticky top-0 z-40 bg-white dark:bg-zinc-950 border-b" +
+    header(class="top-0 z-40 border-b sticky bg-white dark:bg-zinc-950" +
                  " border-zinc-200 dark:border-zinc-800",
         div(class=Wrap + " flex flex-wrap items-center justify-between" +
                   " gap-x-4 gap-y-2 py-3",
             nav(aria-label="Reference",
                 class="flex items-center gap-2 text-[0.9rem]",
-                a(class="font-bold no-underline text-inherit focus:underline",
+                a(class="font-bold text-inherit no-underline focus:underline",
                   href="../index.html", "Maca")
                 span(class="text-zinc-300 dark:text-zinc-700", "/")
-                a(class="no-underline text-zinc-600 dark:text-zinc-400" +
+                a(class="text-zinc-600 no-underline dark:text-zinc-400" +
                         " hover:text-black dark:hover:text-white" +
                         " focus:underline",
                   href="index.html", "API reference"))
@@ -489,16 +489,16 @@ hover_card() -> str =>
               " bg-white dark:bg-zinc-900 p-3",
         pre(class="m-0 overflow-x-auto text-[0.8rem]",
             code(class=Mono, ""))
-        p(class="mt-2 mb-0 text-[0.8rem] text-zinc-600 dark:text-zinc-400",
+        p(class="text-[0.8rem] text-zinc-600 mt-2 mb-0 dark:text-zinc-400",
           ""))
 
 index_page(ms: Module[]) -> str =>
     page("API reference", sidebar(ms, ""),
          section(class="py-2",
-             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500" +
+             p(class="text-[0.75rem] text-zinc-500 uppercase tracking-widest" +
                      " dark:text-zinc-400 m-0",
                "Reference")
-             h1(class="mt-1 font-bold text-[2.1rem] tracking-tight m-0",
+             h1(class="m-0 font-bold text-[2.1rem] mt-1 tracking-tight",
                 "API reference")
              p(class=ProseClass + " " + Measure,
                "Every module of the standard library, generated from the" +
@@ -522,7 +522,7 @@ module_cards(ms: Module[], i: int) -> str {
 }
 
 module_card(m: Module) -> str =>
-    a(class="block no-underline text-inherit border" +
+    a(class="block border text-inherit no-underline" +
             " border-zinc-200 dark:border-zinc-800 p-5 hover:bg-zinc-50" +
             " dark:hover:bg-zinc-900 hover:border-zinc-300" +
             " dark:hover:border-zinc-700",
@@ -557,10 +557,10 @@ first_sentence(ls: str[]) -> str {
 module_page(ms: Module[], m: Module) -> str =>
     page(m.path, sidebar(ms, m.name),
          section(class="py-2",
-             p(class="text-[0.75rem] uppercase tracking-widest text-zinc-500" +
+             p(class="text-[0.75rem] text-zinc-500 uppercase tracking-widest" +
                      " dark:text-zinc-400 m-0",
                "Module")
-             div(class="mt-1 flex flex-wrap items-baseline justify-between" +
+             div(class="flex flex-wrap items-baseline justify-between mt-1" +
                        " gap-3",
                  h1(class="font-mono font-bold text-[1.7rem] tracking-tight" +
                           " m-0",
@@ -586,8 +586,8 @@ entry(ms: Module[], m: Module, it: Item) -> str =>
         div(class="flex flex-wrap items-center justify-between gap-x-3" +
                   " gap-y-2",
             div(class="flex items-center gap-3",
-                h2(class="font-mono font-semibold text-[1.05rem] m-0",
-                   a(class="no-underline text-inherit hover:underline",
+                h2(class="m-0 font-mono font-semibold text-[1.05rem]",
+                   a(class="text-inherit no-underline hover:underline",
                      href="#" + it.name, escape_html(it.name)))
                 span(data-kind=it.kind, class=badge_class(it.kind),
                      kind_word(it.kind)))
@@ -601,7 +601,7 @@ ItemClass = "scroll-mt-20 border border-zinc-200" +
     " dark:border-zinc-800 p-5 max-sm:p-4"
 
 anchor_link(name: str) -> str =>
-    a(class="no-underline text-[0.8rem] text-zinc-400" +
+    a(class="text-[0.8rem] text-zinc-400 no-underline" +
             " dark:text-zinc-600 hover:text-black" +
             " dark:hover:text-white focus:underline",
       href="#" + name, title="Link to " + name, "#")
@@ -637,7 +637,7 @@ linked_span(part: str, ms: Module[], here: str, own: str) -> str {
     if name == own || where == "" {
         part
     } else {
-        a(class="no-underline text-inherit underline-offset-2" +
+        a(class="text-inherit no-underline underline-offset-2" +
                 " hover:underline focus:underline",
           href=item_href(where, name, where == here),
           data-mod=where, data-item=name, name) +
@@ -728,7 +728,7 @@ a[aria-current="true"] { background-color: #27272a; color: #fafafa }
 """
 
 source_link(path: str, line: int, label: str) -> str =>
-    a(class="no-underline text-zinc-500 dark:text-zinc-400 text-[0.75rem]" +
+    a(class="text-zinc-500 text-[0.75rem] no-underline dark:text-zinc-400" +
             " hover:underline",
       href=source_url(path, line), label)
 
@@ -749,7 +749,7 @@ SideClass = "text-[0.85rem] sticky top-[4.5rem] self-start" +
 sidebar(ms: Module[], cur: str) -> str =>
     div(class=SideClass,
         details(data-doc="nav", open=true,
-            summary(class="hidden max-md:block cursor-pointer py-2 list-none" +
+            summary(class="hidden max-md:block py-2 cursor-pointer list-none" +
                           " details-marker:hidden text-zinc-500",
                     "☰ Modules")
             search_box()
@@ -766,7 +766,7 @@ search_box() -> str =>
         span(class="absolute right-2 top-[0.35rem] pointer-events-none",
              element("kbd", class=KbdClass, "/"))) +
         p(id="macadoc-empty", hidden=true,
-             class="text-zinc-500 text-[0.8rem] my-1", "No matches.")
+             class="my-1 text-zinc-500 text-[0.8rem]", "No matches.")
 
 module_trees(ms: Module[], i: int, cur: str) -> str {
     if i >= ms.length() {
@@ -780,7 +780,7 @@ module_tree(m: Module, cur: str) -> str {
     here = m.name == cur
 
     details(data-mod=m.name, open=here,
-        summary(class="cursor-pointer py-1 font-mono font-semibold" +
+        summary(class="py-1 font-mono font-semibold cursor-pointer" +
                       " text-[0.82rem] " + summary_class(here),
                 escape_html(m.name))
         div(class="pb-2", kind_groups(m, here, 0)))
@@ -825,10 +825,10 @@ kind_group(m: Module, here: bool, kind: str) -> str {
         ""
     } else {
         div(data-group=kind,
-            p(class="mt-3 mb-1 px-1 text-[0.7rem] uppercase tracking-wide" +
+            p(class="px-1 text-[0.7rem] mt-3 mb-1 uppercase tracking-wide" +
                     " text-zinc-500 dark:text-zinc-400",
               kind_label(kind))
-            ul(class="list-none m-0 p-0", side_rows(m, got, here, 0)))
+            ul(class="m-0 p-0 list-none", side_rows(m, got, here, 0)))
     }
 }
 
@@ -854,7 +854,7 @@ side_rows(m: Module, items: Item[], here: bool, i: int) -> str {
 side_row(m: Module, it: Item, here: bool) -> str =>
     li(data-item=it.name, data-sig=flat(it.sig),
        data-brief=plain(first_sentence(it.doc)), class="m-0",
-       a(class="block px-2 py-[0.15rem] no-underline font-mono" +
+       a(class="block px-2 py-[0.15rem] font-mono no-underline" +
                " text-[0.8rem] text-zinc-600 dark:text-zinc-400" +
                " hover:bg-zinc-100 dark:hover:bg-zinc-800" +
                " hover:text-black dark:hover:text-white",

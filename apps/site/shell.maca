@@ -181,7 +181,7 @@ lang_item_current(name: str) -> str =>
 atom(label: str, inner: str) -> str =>
     div(
         div(class=Eyebrow, escape_html(label))
-        div(class="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800",
+        div(class="pt-3 border-t border-zinc-200 mt-3 dark:border-zinc-800",
             inner))
 
 /** A measured number beside the file it was computed from, which is the only
