@@ -1278,6 +1278,8 @@ gpui_attr(a: Expr) -> str {
         ".bg(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
     } else if a.text == "fg" {
         ".text_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
+    } else if a.text == "edge" {
+        ".border_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
     } else if a.text == "hover_bg" {
         ".hover(|_h| _h.bg(gpui::rgb(({remit_expr(a.children.get(0))})" +
             " as u32)))"

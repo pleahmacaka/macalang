@@ -530,6 +530,19 @@ test_a_click_attribute_is_a_gpui_handler_applied_to_the_ide() {
            "and it never becomes markup text, which has no node to attach to: {made}")
 }
 
+test_the_chrome_attributes_reach_their_gpui_methods() {
+    made = gpui_rust("view() -> Element =>\n" +
+                     "    div(id=\"x\", class=\"border-r-1\", edge=255," +
+                     " hover_bg=511, \"hi\")\n")
+
+    assert(made.index_of(".border_color(gpui::rgb((255i64) as u32))") >= 0,
+           "edge is the border's colour: {made}")
+    assert(made.index_of(".hover(|_h| _h.bg(gpui::rgb((511i64) as u32)))") >= 0,
+           "and hover_bg restyles under the pointer: {made}")
+    assert(made.index_of(".border_r_1()") >= 0,
+           "the class named the border the colour paints: {made}")
+}
+
 test_a_map_child_becomes_children_built_in_the_render_pass() {
     made = gpui_rust("row(f: str) -> Element => div(class=\"text-xs\", f)\n\nview(fs: str[]) -> Element =>\n    div(class=\"flex\", fs.map(f => row(f)))\n")
 

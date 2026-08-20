@@ -2,6 +2,15 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.6.1
+
+- Quipu dresses like an editor: a hairline border between every region
+  (`edge=` lowers to gpui's `.border_color`), an EXPLORER header, a real tab
+  bar, a right-aligned gutter whose active line is lit, a full-width active
+  line, the panel's twelve views as rounded pills, and a segmented status
+  bar. The buffer text grew a size, and the main row clips so the footer
+  stays on screen.
+
 ## 0.6.0
 
 - Selection: a shifted arrow drops an anchor and stretches a shaded selection,

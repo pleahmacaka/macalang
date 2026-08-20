@@ -4,15 +4,17 @@
  * this, so the editor is the same components either way.
  */
 
-import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown, stops,
+import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown,
          knobs, opened_file, picked, chosen_at, sought, line_spans,
-         footing, sel_on, sel_from, sel_upto, Panels } from apps/quipu/model
+         sel_on, sel_from, sel_upto, Panels } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
 
 Face = "JetBrains Mono Nerd Font"
 
-/** One Dark, near enough: paper, a shade for the side columns, ink for text. */
+/** One Dark, near enough: paper for the buffer, a shade for the chrome, a
+ * hairline between every region.
+ */
 Paper = 2634036
 
 Shade = 2172203
@@ -21,32 +23,33 @@ Ink = 11252415
 
 Dim = 6055792
 
-Select = 2896186
-
-Cursor = 5409727
+Hover = 2896186
 
 Marked = 4080721
 
+Cursor = 5409727
+
+Edge = 1579551
+
 view(ide: Ide) -> Element =>
     div(class="flex flex-col size-full", font=Face, bg=Paper, fg=Ink,
-        div(class="flex flex-row grow", tree(ide), buffer(ide), panel(ide)),
+        div(class="flex flex-row grow overflow-hidden",
+            tree(ide), buffer(ide), panel(ide)),
         footer(ide))
 
-footer(ide: Ide) -> Element =>
-    div(class="flex flex-row p-2 gap-2", bg=Shade,
-        div(class="text-xs", fg=Dim, footing(ide)))
-
 tree(ide: Ide) -> Element =>
-    div(id="tree", class="flex flex-col w-64 p-3 gap-2 overflow-y-scroll",
-        bg=Shade,
-        div(class="text-xs", fg=Dim, "FILES  ({str(ide.files.length())})"),
+    div(id="tree",
+        class="flex flex-col w-72 border-r-1 overflow-y-scroll",
+        bg=Shade, edge=Edge,
+        div(class="px-4 py-2 text-xs", fg=Dim,
+            "EXPLORER   {str(ide.files.length())}"),
         div(class="flex flex-col", ide.files.map(f => file_row(ide, f))))
 
 file_row(ide: Ide, f: str) -> Element =>
     div(id=f, click=(i => opened_file(i, f)),
-        class="text-xs px-2 py-1 cursor-pointer",
-        bg=(f == ide.open ? Select : Shade),
-        fg=(f == ide.open ? Ink : Dim), hover_bg=Select,
+        class="px-4 py-1 text-xs cursor-pointer",
+        bg=(f == ide.open ? Marked : Shade),
+        fg=(f == ide.open ? Ink : Dim), hover_bg=Hover,
         tail(f))
 
 /** The buffer wears a tab, and under Ctrl+P it becomes the quick menu. */
@@ -56,23 +59,25 @@ buffer(ide: Ide) -> Element =>
 script(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
         tab_bar(ide),
-        div(id="lines", class="flex flex-col grow overflow-y-scroll p-3",
+        div(id="lines", class="flex flex-col grow overflow-y-scroll py-3",
             lines_of(ide).map(l => line_row(ide, l))),
         asked_controls(ide))
 
 tab_bar(ide: Ide) -> Element =>
-    div(class="flex flex-row", bg=Shade,
-        div(class="text-xs px-3 py-2", bg=Paper,
+    div(class="flex flex-row border-b-1", bg=Shade, edge=Edge,
+        div(class="px-4 py-2 text-xs border-r-1", bg=Paper, edge=Edge,
             ide.open == "" ? "no file open"
                            : (ide.dirty ? "{tail(ide.open)} *"
                                         : tail(ide.open))))
 
-/** A line is its coloured spans; the cursor line carries the block, and a
- * selected line shades its stretch.
+/** A line is a dim number and its coloured spans; the cursor line is lit, and
+ * a selected line shades its stretch.
  */
 line_row(ide: Ide, l: Line) -> Element =>
-    div(class="flex flex-row gap-3",
-        div(class="text-xs w-10", fg=Dim, str(l.n)),
+    div(class="flex flex-row w-full",
+        bg=(l.n - 1 == ide.line && !sel_on(ide, l.n - 1) ? Hover : Paper),
+        div(class="flex w-12 justify-end pr-4 text-xs",
+            fg=(l.n - 1 == ide.line ? Ink : Dim), str(l.n)),
         picked_form(ide, l))
 
 picked_form(ide: Ide, l: Line) -> Element {
@@ -88,9 +93,9 @@ sel_row(ide: Ide, l: Line) -> Element {
     upto = sel_upto(ide, l.n - 1, l.said)
 
     div(class="flex flex-row",
-        div(class="text-xs", l.said.slice(0, from)),
-        div(class="text-xs", bg=Marked, shaded(l.said, from, upto)),
-        div(class="text-xs", l.said.slice(upto, l.said.length())))
+        div(class="text-sm", l.said.slice(0, from)),
+        div(class="text-sm", bg=Marked, shaded(l.said, from, upto)),
+        div(class="text-sm", l.said.slice(upto, l.said.length())))
 }
 
 shaded(said: str, from: int, upto: int) -> str =>
@@ -100,13 +105,13 @@ spans_row(said: str) -> Element =>
     div(class="flex flex-row", line_spans(said).map(sp => span_bit(sp)))
 
 span_bit(sp: Span) -> Element =>
-    div(class="text-xs", fg=sp.hue, sp.said)
+    div(class="text-sm", fg=sp.hue, sp.said)
 
 cursor_row(ide: Ide, said: str) -> Element =>
     div(class="flex flex-row",
-        div(class="text-xs", said.slice(0, ide.col)),
-        div(class="text-xs", bg=Cursor, fg=Paper, under_cursor(ide, said)),
-        div(class="text-xs",
+        div(class="text-sm", said.slice(0, ide.col)),
+        div(class="text-sm", bg=Cursor, fg=Paper, under_cursor(ide, said)),
+        div(class="text-sm",
             ide.col < said.length()
                 ? said.slice(ide.col + 1, said.length())
                 : ""))
@@ -116,14 +121,16 @@ under_cursor(ide: Ide, said: str) -> str =>
 
 /** Ctrl+P: the buffer becomes the quick menu until a file is chosen. */
 seeker(ide: Ide) -> Element =>
-    div(class="flex flex-col grow p-3 gap-2",
-        div(class="text-xs", "OPEN  {ide.seek}_"),
-        div(class="flex flex-col gap-1", sought(ide).map(h => hit_row(ide, h))))
+    div(class="flex flex-col grow",
+        div(class="px-4 py-2 text-xs border-b-1", bg=Shade, edge=Edge,
+            "OPEN  {ide.seek}_"),
+        div(class="flex flex-col py-2",
+            sought(ide).map(h => hit_row(ide, h))))
 
 hit_row(ide: Ide, h: Hit) -> Element =>
     div(id="hit-{str(h.at)}", click=(i => chosen_at(i, h.at)),
-        class="text-xs px-2 py-1 cursor-pointer",
-        bg=(h.at == ide.pick ? Select : Paper), hover_bg=Select,
+        class="px-4 py-1 text-xs cursor-pointer",
+        bg=(h.at == ide.pick ? Marked : Paper), hover_bg=Hover,
         tail(h.path))
 
 /** A `@param` in a doc comment is a control, drawn beside the buffer that asked
@@ -133,10 +140,10 @@ asked_controls(ide: Ide) -> Element {
     got = knobs(ide)
 
     if got.length() == 0 {
-        return div(class="text-xs p-2", fg=Dim, "stops: {stops(ide)}")
+        return div(class="h-0")
     }
 
-    div(class="flex flex-col gap-1 p-2",
+    div(class="flex flex-col gap-1 px-4 py-2 border-t-1", bg=Shade, edge=Edge,
         div(class="text-xs", fg=Dim, "{str(got.length())} asked for"),
         control(got.get(0)))
 }
@@ -145,19 +152,38 @@ asked_controls(ide: Ide) -> Element {
  * has to be chosen.
  */
 panel(ide: Ide) -> Element =>
-    div(id="panel", class="flex flex-col w-96 p-3 gap-2 overflow-y-scroll",
-        bg=Shade,
-        div(class="flex flex-row flex-wrap gap-2",
+    div(id="panel",
+        class="flex flex-col w-80 border-l-1 overflow-y-scroll",
+        bg=Shade, edge=Edge,
+        div(class="flex flex-row flex-wrap gap-1 px-3 py-2",
             Panels.map(p => tab(ide, p))),
-        div(class="text-xs", fg=Dim, "{ide.target} via {panel_for(ide.target)}"),
-        div(class="text-sm", shown(ide)))
+        div(class="px-3 py-1 text-xs", fg=Dim,
+            "{ide.target} via {panel_for(ide.target)}"),
+        div(class="flex flex-col px-3 py-2",
+            shown(ide).split("\n").map(s => panel_line(s))))
+
+panel_line(s: str) -> Element =>
+    div(class="text-xs", s)
 
 tab(ide: Ide, p: str) -> Element =>
     div(id="tab-{p}", click=(i => picked(i, p)),
-        class="text-xs px-2 py-1 cursor-pointer",
-        bg=(p == ide.panel ? Select : Shade),
-        fg=(p == ide.panel ? Ink : Dim), hover_bg=Select,
+        class="px-2 py-1 text-xs rounded-md cursor-pointer",
+        bg=(p == ide.panel ? Marked : Shade),
+        fg=(p == ide.panel ? Ink : Dim), hover_bg=Hover,
         p)
+
+footer(ide: Ide) -> Element =>
+    div(class="flex flex-row gap-6 px-4 py-1 border-t-1 items-center",
+        bg=Shade, edge=Edge,
+        div(class="text-xs",
+            ide.open == "" ? "no file"
+                           : (ide.dirty ? "{tail(ide.open)} *"
+                                        : tail(ide.open))),
+        div(class="text-xs", fg=Dim,
+            "ln {str(ide.line + 1)}, col {str(ide.col + 1)}"),
+        div(class="text-xs", fg=Dim, "{str(ide.files.length())} files"),
+        div(class="text-xs", fg=Dim,
+            "{ide.target} via {panel_for(ide.target)}"))
 
 /** A control a doc comment asked for, drawn the way the tag syntax draws
  * anything else.
