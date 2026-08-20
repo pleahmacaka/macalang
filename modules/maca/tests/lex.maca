@@ -266,3 +266,10 @@ test_escapes_survive_the_fold_and_an_open_string_still_fails() {
     assert(bad.length() > 0,
            "a string open at the end of the file is still an error")
 }
+
+test_an_unclosed_interpolation_is_an_error_and_never_a_crash() {
+    bad = errors_of("x() -> str => \"a {{ b\"")
+
+    assert(bad.length() > 0,
+           "the torn interpolation is reported, and the lexer walks on")
+}

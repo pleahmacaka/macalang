@@ -243,18 +243,19 @@ lex_string(cs: str[], i: int, out: Lexed) -> Lexed {
  */
 folded(cs: str[], a: int, b: int) -> str {
     out = "".chars()
+    stop = b < cs.length() ? b : cs.length()
     i = a
 
-    while i < b {
+    while i < stop {
         c = cs.get(i)
 
-        if c == "\\" && i + 1 < b {
+        if c == "\\" && i + 1 < stop {
             out = out.push(c)
             out = out.push(cs.get(i + 1))
             i = i + 2
         } else if c == "\n" || c == "\r" {
             out = out.push(" ")
-            i = past_break(cs, i, b)
+            i = past_break(cs, i, stop)
         } else {
             out = out.push(c)
             i = i + 1
