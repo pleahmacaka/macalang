@@ -50,6 +50,27 @@ Ide = {
     thin:   bool,
     lang:   str,
     leaving: bool,
+    about:  bool,
+    picking: bool,
+    spread: str[],
+    rows:   Row[],
+    term:   bool,
+    cmd:    str,
+    shell:  str,
+    ran:    str[],
+    undo_text: str[],
+    undo_line: int[],
+    undo_col:  int[],
+}
+
+/** One line of the explorer: what it is, how deep it sits, and whether it is
+ * a folder.
+ */
+Row = {
+    path:  str
+    name:  str
+    depth: int
+    dir:   bool
 }
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
@@ -103,10 +124,110 @@ opened(root: str) -> Ide {
                  dirty = false, marking = false, mark_line = 0, mark_col = 0,
                  pane = "", bar = "", opens = [], preview = "",
                  stash_k = [], stash_v = [], setting = false, ligs = true,
-                 thin = false, lang = "en", leaving = false }
+                 thin = false, lang = "en", leaving = false, about = false,
+                 picking = false, spread = [root], rows = [], term = false,
+                 cmd = "", shell = "", ran = [], undo_text = [],
+                 undo_line = [], undo_col = [] }
 
-    bare.files.length() == 0 ? bare : opened_file(bare, bare.files.get(0))
+    grown = retreed(bare)
+
+    grown.files.length() == 0 ? grown
+                              : opened_file(grown, grown.files.get(0))
 }
+
+/** The explorer's lines, folders before files, and only the folders the
+ * reader opened walked into.
+ */
+retreed(ide: Ide) -> Ide =>
+    ide with { rows = spread_rows(ide, ide.root, 0) }
+
+spread_rows(ide: Ide, dir: str, depth: int) -> Row[] {
+    out: Row[] = []
+
+    for r in listed(dir, depth) {
+        out = out.push(r)
+
+        if r.dir && ide.spread.index_of(r.path) >= 0 {
+            out = out + spread_rows(ide, r.path, depth + 1)
+        }
+    }
+
+    out
+}
+
+/** What one folder holds, folders first and each side by name. */
+listed(dir: str, depth: int) -> Row[] {
+    dirs: Row[] = []
+    files: Row[] = []
+
+    for name in list_dir(dir) {
+        at = "{dir}/{name}"
+
+        if is_dir(at) {
+            if !skipped_dir(name) {
+                dirs = dirs.push(Row { path = at, name = name, depth = depth,
+                                       dir = true })
+            }
+        } else if !name.starts_with(".") {
+            files = files.push(Row { path = at, name = name, depth = depth,
+                                     dir = false })
+        }
+    }
+
+    by_name(dirs) + by_name(files)
+}
+
+by_name(rs: Row[]) -> Row[] {
+    out: Row[] = []
+
+    for r in rs {
+        out = inserted(out, r)
+    }
+
+    out
+}
+
+inserted(sorted: Row[], r: Row) -> Row[] {
+    made: Row[] = []
+    placed = false
+
+    for x in sorted {
+        if !placed && r.name < x.name {
+            made = made.push(r)
+            placed = true
+        }
+
+        made = made.push(x)
+    }
+
+    placed ? made : made.push(r)
+}
+
+/** Clicking a folder opens or shuts it; clicking a file opens the file. */
+tree_hit(ide: Ide, path: str, dir: bool) -> Ide =>
+    dir ? folded(ide, path) : opened_file(ide, path)
+
+folded(ide: Ide, path: str) -> Ide {
+    shut = ide.spread.index_of(path) >= 0
+
+    (retreed(ide with { spread = shut ? without_path(ide.spread, path)
+                                      : ide.spread.push(path) }))
+}
+
+is_spread(ide: Ide, path: str) -> bool =>
+    ide.spread.index_of(path) >= 0
+
+/** The mark a row opens with, and the depth it is written at, in a face where
+ * every glyph is one column wide.
+ */
+row_label(ide: Ide, r: Row) -> str {
+    mark = r.dir ? (is_spread(ide, r.path) ? "v " : "> ") : "  "
+
+    indent(r.depth) + mark + r.name
+}
+
+indent(depth: int) -> str =>
+    depth <= 0 ? "" : "  " + indent(depth - 1)
 
 /** Opening a file reads it and decides what building it would produce. */
 opened_file(ide: Ide, path: str) -> Ide {
@@ -291,13 +412,23 @@ sorted_lines(xs: int[]) -> int[] {
 }
 
 /** The panel reads its cache; the toolchain runs when a click filled it,
- * never in a render.
+ * never in a render. It shows one thing: the open file on the target its own
+ * source names, with the checker's word underneath.
  */
 shown(ide: Ide) -> str =>
     ide.pane
 
 /** The panel's text, asked of the toolchain rather than guessed at. */
 paneled(ide: Ide) -> str {
+    if ide.open == "" {
+        return t(ide, "no-file")
+    }
+
+    "{transpiled(ide.open, panel_for(ide.target))}\n\n== checks ==\n" +
+        checked(ide.open, ide.target)
+}
+
+was_paneled(ide: Ide) -> str {
     if ide.open == "" {
         return "open a file"
     }
@@ -354,8 +485,9 @@ transpiled(path: str, panel: str) -> str {
         : output("sh", ["-c", "'{maca_bin()}' build '{path}' --target {panel}" +
                                   " -o '{out}' 2>&1"])
     got = read_file(out)
+    rs = read_file(out + ".rs")
 
-    got != "" ? got : said
+    got != "" ? got : (rs != "" ? rs : said)
 }
 
 /** Where the time went, under the counter that is exactly repeatable. */
@@ -453,6 +585,22 @@ struck(ide: Ide, key: str) -> Ide {
 
     if key == "escape" && ide.setting {
         return ide with { setting = false }
+    }
+
+    if key == "escape" && ide.about {
+        return ide with { about = false }
+    }
+
+    if key == "ctrl-`" || key == "ctrl-oem_3" {
+        return ide with { term = !ide.term, bar = "" }
+    }
+
+    if ide.term {
+        return typed_at_shell(ide, key)
+    }
+
+    if key == "ctrl-o" {
+        return ide with { picking = true, bar = "" }
     }
 
     if key == "ctrl-p" {
@@ -893,6 +1041,41 @@ Line = {
     said: str
 }
 
+/** How many lines the buffer draws at once. A window that follows the cursor
+ * is what keeps a long file cheap and the cursor on screen, and gpui has no
+ * scroll position to ask for.
+ */
+Shown = 42
+
+/** The first line drawn, kept so the cursor sits inside the window. */
+first_shown(ide: Ide) -> int {
+    total = rows_of(ide).length()
+
+    if total <= Shown {
+        return 0
+    }
+
+    want = ide.line - Shown / 2
+    last = total - Shown
+
+    want < 0 ? 0 : (want > last ? last : want)
+}
+
+/** The lines the buffer draws, numbered as they are in the file. */
+window_lines(ide: Ide) -> Line[] {
+    from = first_shown(ide)
+    all = lines_of(ide)
+    out: Line[] = []
+    i = from
+
+    while i < all.length() && i < from + Shown {
+        out = out.push(all.get(i))
+        i = i + 1
+    }
+
+    out
+}
+
 lines_of(ide: Ide) -> Line[] {
     out: Line[] = []
     i = 0
@@ -919,6 +1102,8 @@ edited(ide: Ide, key: str) -> Ide {
         ide
     } else if key == "ctrl-s" {
         saved(ide)
+    } else if key == "ctrl-z" {
+        undone(ide)
     } else if key.starts_with("shift-") {
         stretched(ide, key.slice(6, key.length()))
     } else if key == "ctrl-x" {
@@ -1090,6 +1275,85 @@ sel_from(ide: Ide, n: int) -> int =>
 sel_upto(ide: Ide, n: int, row: str) -> int =>
     n == sel_b_line(ide) ? sel_b_col(ide) : row.length()
 
+/** Every edit writes the buffer it replaced onto a stack, and Ctrl+Z puts the
+ * top of that stack back where the cursor was.
+ */
+kept(ide: Ide) -> Ide {
+    deep = ide.undo_text.length()
+    from = deep >= 50 ? 1 : 0
+
+    (ide with { undo_text = drop_front(ide.undo_text, from).push(ide.text),
+                undo_line = drop_ints(ide.undo_line, from).push(ide.line),
+                undo_col = drop_ints(ide.undo_col, from).push(ide.col) })
+}
+
+undone(ide: Ide) -> Ide {
+    deep = ide.undo_text.length()
+
+    if deep == 0 {
+        return ide
+    }
+
+    last = deep - 1
+
+    (ide with { text = ide.undo_text.get(last),
+                line = ide.undo_line.get(last),
+                col = ide.undo_col.get(last),
+                dirty = true,
+                marking = false,
+                undo_text = drop_back(ide.undo_text),
+                undo_line = drop_back_ints(ide.undo_line),
+                undo_col = drop_back_ints(ide.undo_col) })
+}
+
+drop_front(xs: str[], from: int) -> str[] {
+    out: str[] = []
+    i = from
+
+    while i < xs.length() {
+        out = out.push(xs.get(i))
+        i = i + 1
+    }
+
+    out
+}
+
+drop_ints(xs: int[], from: int) -> int[] {
+    out: int[] = []
+    i = from
+
+    while i < xs.length() {
+        out = out.push(xs.get(i))
+        i = i + 1
+    }
+
+    out
+}
+
+drop_back(xs: str[]) -> str[] {
+    out: str[] = []
+    i = 0
+
+    while i < xs.length() - 1 {
+        out = out.push(xs.get(i))
+        i = i + 1
+    }
+
+    out
+}
+
+drop_back_ints(xs: int[]) -> int[] {
+    out: int[] = []
+    i = 0
+
+    while i < xs.length() - 1 {
+        out = out.push(xs.get(i))
+        i = i + 1
+    }
+
+    out
+}
+
 saved(ide: Ide) -> Ide {
     write_file(ide.open, ide.text)
 
@@ -1104,6 +1368,12 @@ row_at(ide: Ide, n: int) -> str {
 
     n < 0 || n >= rs.length() ? "" : rs.get(n)
 }
+
+/** A click in the buffer puts the cursor on that line, at the column the
+ * pointer landed on, counted in the one width every glyph of this face has.
+ */
+placed_click(ide: Ide, line: int, col: int) -> Ide =>
+    placed_at(let_go(ide), line, col)
 
 /** The cursor lands where it can: the line clamped to the file, the column to
  * that line.
@@ -1138,35 +1408,38 @@ stepped_on(ide: Ide) -> Ide {
 }
 
 put(ide: Ide, said: str) -> Ide {
+    held = kept(ide)
     row = row_at(ide, ide.line)
     grown = row.slice(0, ide.col) + said + row.slice(ide.col, row.length())
 
-    (ide with { text = swapped_row(ide, grown), dirty = true,
-                col = ide.col + said.length() })
+    (held with { text = swapped_row(ide, grown), dirty = true,
+                 col = ide.col + said.length() })
 }
 
 split_line(ide: Ide) -> Ide {
+    held = kept(ide)
     row = row_at(ide, ide.line)
     cut = row.slice(0, ide.col) + chr(10) + row.slice(ide.col, row.length())
 
-    (ide with { text = swapped_row(ide, cut), dirty = true,
-                line = ide.line + 1, col = 0 })
+    (held with { text = swapped_row(ide, cut), dirty = true,
+                 line = ide.line + 1, col = 0 })
 }
 
 /** Backspace deletes to the left, or joins this line onto the one above. */
 rubbed(ide: Ide) -> Ide {
     row = row_at(ide, ide.line)
+    held = kept(ide)
 
     if ide.col > 0 {
         cut = row.slice(0, ide.col - 1) + row.slice(ide.col, row.length())
 
-        (ide with { text = swapped_row(ide, cut), dirty = true,
-                    col = ide.col - 1 })
+        (held with { text = swapped_row(ide, cut), dirty = true,
+                     col = ide.col - 1 })
     } else if ide.line > 0 {
         above = row_at(ide, ide.line - 1)
 
-        (joined_up(ide, above + row) with { line = ide.line - 1,
-                                            col = above.length() })
+        (joined_up(held, above + row) with { line = ide.line - 1,
+                                             col = above.length() })
     } else {
         ide
     }
@@ -1344,10 +1617,12 @@ menu_hit(ide: Ide, act: str) -> Ide {
         saved(shut)
     } else if act == "open" {
         shut with { menu = true, seek = "", pick = 0 }
+    } else if act == "folder" {
+        shut with { picking = true }
     } else if act == "about" {
-        picked(shut, "about")
+        shut with { about = true }
     } else if act == "keys" {
-        picked(shut, "keys")
+        shut with { setting = true }
     } else if act == "settings" {
         shut with { setting = true }
     } else if act == "quit" {
@@ -1386,25 +1661,77 @@ setting_hit(ide: Ide, act: str) -> Ide {
 /** Every word the editor shows, in the tongue the settings picked. */
 Keys18 = ["file", "edit", "help", "open", "save", "all", "settings", "keys",
           "about", "explorer", "settings-title", "ligatures", "cursor",
-          "close", "no-file", "files", "lang"]
+          "close", "no-file", "files", "lang", "folder", "no-workspace",
+          "empty"]
 
 english() -> Lang =>
     Lang { tag = "en", keys = Keys18,
            words = ["File", "Edit", "Help", "Open...", "Save", "Select All",
                     "Settings", "Key Bindings", "About Quipu", "EXPLORER",
                     "SETTINGS", "Ligatures", "Cursor", "Close", "no file open",
-                    "files", "Language"] }
+                    "files", "Language", "Open Folder...",
+                    "no folder open", "nothing here"] }
 
 korean() -> Lang =>
     Lang { tag = "ko", keys = Keys18,
            words = ["파일", "편집", "도움말", "열기...", "저장", "모두 선택",
                     "설정", "키 바인딩", "Quipu 정보", "탐색기", "설정",
                     "합자", "커서", "닫기", "열린 파일 없음", "파일",
-                    "언어"] }
+                    "언어", "폴더 열기...", "열린 폴더 없음",
+                    "비어 있음"] }
 
 t(ide: Ide, key: str) -> str =>
     said(picked_lang([english(), korean()], ide.lang), key)
 
+/** The terminal strip: a line is typed, Enter runs it where the workspace
+ * is, and what it said is kept above the prompt.
+ */
+typed_at_shell(ide: Ide, key: str) -> Ide {
+    if key == "escape" {
+        ide with { term = false }
+    } else if key == "enter" {
+        obeyed(ide)
+    } else if key == "backspace" {
+        ide with { cmd = shorn(ide.cmd) }
+    } else if key == "up" {
+        ide with { cmd = ide.ran.length() == 0
+                       ? ide.cmd
+                       : ide.ran.get(ide.ran.length() - 1) }
+    } else if key.length() == 1 {
+        ide with { cmd = ide.cmd + key }
+    } else {
+        ide
+    }
+}
+
+obeyed(ide: Ide) -> Ide {
+    if ide.cmd.trim() == "" {
+        return ide
+    }
+
+    said = shell_said(ide.root, ide.cmd)
+
+    (ide with { shell = "$ {ide.cmd}\n{said}", cmd = "",
+                ran = ide.ran.push(ide.cmd) })
+}
+
+shell_said(root: str, cmd: str) -> str {
+    out = on_windows()
+        ? output("cmd", ["/c", "cd /d \"{root}\" && {cmd} 2>&1"])
+        : output("sh", ["-c", "cd '{root}' && {cmd} 2>&1"])
+
+    out.trim() == "" ? "(no output)" : out
+}
+
+on_windows() -> bool =>
+    env_or("OS", "") != ""
+
 /** The face the buffer wears: whatever monospace the desktop actually has. */
 face(ide: Ide) -> str =>
     ide.ligs ? "JetBrainsMono Nerd Font" : "JetBrainsMonoNL Nerd Font"
+
+/** The chrome reads as an application, so it wears a UI face while the buffer
+ * keeps the one that lines code up.
+ */
+ui_face() -> str =>
+    "Pretendard"

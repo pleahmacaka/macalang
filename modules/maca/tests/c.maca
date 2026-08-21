@@ -461,3 +461,37 @@ test_a_return_ending_a_branch_is_a_statement_and_not_a_ternary() {
     assert(made.index_of("if ((j < 0)) {{ return") >= 0,
            "so a branch ending in one is written as an `if`: {made}")
 }
+
+picked_kind(n: str) -> str {
+    kind = "none"
+
+    if n.starts_with("d") {
+        if n != "dx" {
+            kind = "dir"
+        }
+    } else if !n.starts_with(".") {
+        kind = "file"
+    }
+
+    kind
+}
+
+test_an_else_beside_a_nested_if_belongs_to_the_outer_one() {
+    assert_eq(picked_kind("d1"), "dir", "the inner branch still runs")
+    assert_eq(picked_kind("dx"), "none",
+              "and the else is not the inner one's, so a skipped inner" +
+                  " branch answers nothing")
+    assert_eq(picked_kind("a.maca"), "file",
+              "while the outer else answers what the outer test refused")
+    assert_eq(picked_kind(".hidden"), "none", "its own guard still holds")
+}
+
+test_a_then_branch_that_is_an_if_is_braced() {
+    made = gate_c("f(a: bool, b: bool) -> int {{ c = 0" +
+                  " if a {{ if b {{ c = 1 }} }} else {{ c = 2 }} c }}")
+
+    assert(made.index_of("if (a) {{ if (b)") >= 0,
+           "the outer then wears braces of its own: {made}")
+    assert(made.index_of("if (a) if (b)") < 0,
+           "or C would read the else as the inner one's: {made}")
+}

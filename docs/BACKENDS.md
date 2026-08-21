@@ -139,6 +139,15 @@ it, and a hand-written shim does not scale past a few dozen flat functions.
   attach it to. An inner attribute such as `#![windows_subsystem = "windows"]`
   must open the crate, so it belongs to the raw block of the import written
   first.
+* A `class=` word is a gpui style method with `-` written `_`, so the whole
+  vocabulary is `gpui::Styled`'s method list and nothing else: `h-12` and
+  `w-96` exist because `h_12` and `w_96` do, while `h-14` and `tracking-widest`
+  do not. A word gpui has no method for is a compile error naming it.
+* A raw block's `use` items and the module's own record names share one Rust
+  namespace, so `Column = { … }` beside `use sqlx::Column` is a name clash
+  (`E0255`) and one of the two has to be renamed.
+* A list or string `slice` clamps to what is there, on every back end: past
+  the end answers what remains rather than failing.
 
 No borrow checker, no lifetimes, no trait definitions, no generic bounds, no
 proc macros, no `unsafe`, and no Rust parser. The back end emits Rust and lets

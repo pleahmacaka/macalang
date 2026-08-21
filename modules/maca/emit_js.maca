@@ -575,7 +575,7 @@ jarms_stmt(cs: Expr[], i: int) -> str {
  */
 jif_stmt(e: Expr) -> str {
     cond = jemit_expr(e.children.get(0))
-    then = jbranch(e.children.get(1))
+    then = jthen(e.children.get(1))
     els = e.children.get(2)
 
     if els.kind == EIdent && els.text == "?" {
@@ -584,6 +584,12 @@ jif_stmt(e: Expr) -> str {
         "if ({cond}) {then} else {jbranch(els)}"
     }
 }
+
+/** A then branch that is itself an `if` is braced, or the `else` beside it
+ * binds to the inner one.
+ */
+jthen(e: Expr) -> str =>
+    e.kind == EIf ? "{{ {jif_stmt(e)} }}" : jbranch(e)
 
 jbranch(e: Expr) -> str {
     if e.kind == EIf {

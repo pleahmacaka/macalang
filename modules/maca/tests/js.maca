@@ -390,3 +390,13 @@ test_the_greatest_common_divisor_is_a_helper() {
               "function f(a, b) {{ return _mgcd(a, b); }}",
               "no `Math` carries it, so the program does")
 }
+
+test_a_then_branch_that_is_an_if_is_braced_in_js() {
+    made = js_of("f(a: bool, b: bool) -> int {{ c = 0" +
+                  " if a {{ if b {{ c = 1 }} }} else {{ c = 2 }} c }}")
+
+    assert(made.index_of("if (a) {{ if (b)") >= 0,
+           "the outer then wears braces of its own: {made}")
+    assert(made.index_of("if (a) if (b)") < 0,
+           "or the else would bind to the inner if: {made}")
+}

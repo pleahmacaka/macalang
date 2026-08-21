@@ -1,8 +1,9 @@
 import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          shown, paneled, bar_swung, menu_hit, held_all, promoted,
-         closed_tab, stash_of, setting_hit, face, t,
+         closed_tab, stash_of, setting_hit, face, t, tree_hit, row_label,
          gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
          Span, line_spans, footing, selected_text, pasted, sel_on,
+         window_lines, first_shown, placed_click,
          flame_frames, declared, house_rules,
          asked, knobs, reading, Pick, picks, matching,
          Bind, keymap, bound_to, rebound, clash,
@@ -16,7 +17,10 @@ blank() -> Ide =>
           pick = 0, line = 0, col = 0, dirty = false, marking = false,
           mark_line = 0, mark_col = 0, pane = "", bar = "", opens = [],
           preview = "", stash_k = [], stash_v = [], setting = false,
-          ligs = true, thin = false, lang = "en", leaving = false }
+          ligs = true, thin = false, lang = "en", leaving = false,
+          about = false, picking = false, spread = [], rows = [],
+          term = false, cmd = "", shell = "", ran = [], undo_text = [],
+          undo_line = [], undo_col = [] }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
@@ -412,16 +416,20 @@ test_home_and_end_jump_the_line() {
 }
 
 test_the_panel_reads_its_cache_and_a_render_runs_nothing() {
-    ide = blank() with { open = "x.maca", text = "main() -> int => 0\n" }
+    at = env_or("TMPDIR", "/tmp") + "/maca-ide-pane.maca"
+    write_file(at, "main() -> int => 0\n")
 
-    assert_eq(shown(ide), "", "an unfilled pane shows nothing")
+    assert_eq(shown(blank()), "", "an unfilled pane shows nothing")
 
-    on_names = picked(ide, "names")
+    on_file = opened_file(blank(), at)
 
-    assert(shown(on_names).contains("main"),
-           "picking a panel fills the cache once: {shown(on_names)}")
-    assert_eq(shown(on_names with { pane = "held" }), "held",
+    assert(shown(on_file).contains("== checks =="),
+           "opening a file fills the cache once, checks and all:" +
+               " {shown(on_file)}")
+    assert_eq(shown(on_file with { pane = "held" }), "held",
               "and the render only ever reads it back")
+
+    remove_file(at)
 }
 
 test_a_menu_swings_open_and_any_pick_shuts_it() {
@@ -439,8 +447,8 @@ test_menu_picks_route_to_what_the_keys_already_do() {
 
     assert(opened_menu.menu, "File > Open is Ctrl+P")
     assert_eq(opened_menu.bar, "", "and the menu bar shut behind it")
-    assert_eq(menu_hit(ide, "about").panel, "about",
-              "Help > About shows the about panel")
+    assert(menu_hit(ide, "about").about,
+           "Help > About raises the about pane")
 }
 
 test_select_all_stretches_the_whole_buffer() {
@@ -545,4 +553,119 @@ test_the_editor_speaks_the_picked_tongue() {
 test_quit_raises_the_leaving_flag_for_the_host() {
     assert(menu_hit(blank() with { bar = "file" }, "quit").leaving,
            "the model only raises the flag; the host does the leaving")
+}
+
+test_the_explorer_shows_folders_before_files_and_opens_one_at_a_time() {
+    root = env_or("TMPDIR", "/tmp") + "/maca-ide-tree"
+    make_dir(root)
+    make_dir(root + "/zsub")
+    write_file(root + "/maca.toml", "[package]\nname = \"t\"\n")
+    write_file(root + "/a.maca", "main() -> int => 0\n")
+    write_file(root + "/zsub/deep.maca", "x() -> int => 1\n")
+
+    ide = opened(root)
+
+    assert_eq(ide.rows.get(0).name, "zsub", "a folder leads the listing")
+    assert(ide.rows.get(0).dir, "and it knows it is one")
+    assert_eq(str(ide.rows.length()), "3",
+              "the shut folder shows itself and the two files beside it")
+
+    open_dir = tree_hit(ide, root + "/zsub", true)
+
+    assert_eq(str(open_dir.rows.length()), "4",
+              "opening the folder shows what it holds")
+    assert_eq(open_dir.rows.get(1).name, "deep.maca",
+              "which is written under it")
+    assert_eq(str(open_dir.rows.get(1).depth), "1",
+              "one step deeper than the folder")
+    assert(row_label(open_dir, open_dir.rows.get(1)).starts_with("  "),
+           "and drawn that far in: {row_label(open_dir, open_dir.rows.get(1))}")
+    assert_eq(str(tree_hit(open_dir, root + "/zsub", true).rows.length()), "3",
+              "clicking it again shuts it")
+
+    remove_file(root + "/zsub/deep.maca")
+    remove_file(root + "/a.maca")
+    remove_file(root + "/maca.toml")
+}
+
+test_the_terminal_takes_a_line_and_keeps_what_it_said() {
+    root = env_or("TMPDIR", "/tmp") + "/maca-ide-term"
+    make_dir(root)
+
+    open_term = struck(blank() with { root = root }, "ctrl-`")
+
+    assert(open_term.term, "the chord opens the strip")
+
+    typed = struck(struck(struck(open_term, "e"), "c"), "h")
+
+    assert_eq(typed.cmd, "ech", "the keys land on the command line")
+    assert_eq(struck(typed, "backspace").cmd, "ec", "backspace takes one off")
+
+    said = struck(struck(typed, "o"), "enter")
+
+    assert_eq(said.cmd, "", "running clears the line")
+    assert(said.shell.contains("$ echo"), "and keeps what was asked: {said.shell}")
+    assert_eq(str(said.ran.length()), "1", "the line is remembered")
+    assert_eq(struck(said, "up").cmd, "echo", "and comes back on up")
+    assert(!struck(said, "escape").term, "escape shuts the strip")
+}
+
+test_an_edit_can_be_taken_back() {
+    typed = struck(struck(scripted("ab"), "x"), "y")
+
+    assert_eq(typed.text, "xyab", "two keys went in")
+
+    once = struck(typed, "ctrl-z")
+
+    assert_eq(once.text, "xab", "one step back")
+    assert_eq(str(once.col), "1", "with the cursor where it was")
+
+    twice = struck(once, "ctrl-z")
+
+    assert_eq(twice.text, "ab", "and back to the start")
+    assert_eq(struck(twice, "ctrl-z").text, "ab",
+              "an empty stack answers what is already there")
+}
+
+test_a_click_in_the_buffer_moves_the_cursor() {
+    ide = placed_click(scripted("ab\ncdef"), 1, 3)
+
+    assert_eq("{str(ide.line)}:{str(ide.col)}", "1:3",
+              "the cursor lands where the click did")
+    assert_eq(str(placed_click(ide, 9, 2).line), "1",
+              "a click past the last line stops at it")
+}
+
+manylines(n: int) -> str {
+    out: str[] = []
+    i = 0
+
+    while i < n {
+        out = out.push("line {str(i)}")
+        i = i + 1
+    }
+
+    out.join(chr(10))
+}
+
+test_the_buffer_draws_a_window_that_follows_the_cursor() {
+    ide = scripted(manylines(200))
+
+    assert_eq(str(window_lines(ide).length()), "42",
+              "a long file draws a window, not the whole of it")
+    assert_eq(str(window_lines(ide).get(0).n), "1",
+              "which starts at the top while the cursor is there")
+
+    deep = placed_click(ide, 150, 0)
+
+    assert(first_shown(deep) > 100,
+           "the window moved down with the cursor: {str(first_shown(deep))}")
+    assert(window_lines(deep).get(0).n <= 151
+               && window_lines(deep).get(41).n >= 151,
+           "and the cursor line is inside it")
+
+    short = scripted("a\nb")
+
+    assert_eq(str(window_lines(short).length()), "2",
+              "a short file draws every line it has")
 }

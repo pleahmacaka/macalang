@@ -4,10 +4,11 @@
  * this, so the editor is the same components either way.
  */
 
-import { Ide, Line, Hit, Span, lines_of, tail, panel_for, shown, face,
-         knobs, opened_file, picked, chosen_at, sought, line_spans,
-         sel_on, sel_from, sel_upto, bar_swung, menu_hit, closed_tab,
-         setting_hit, t, Panels } from apps/quipu/model
+import { Ide, Line, Hit, Span, Row, window_lines, tail, panel_for, shown, face,
+         knobs, opened_file, chosen_at, sought, line_spans, tree_hit,
+         row_label, sel_on, sel_from, sel_upto, bar_swung, menu_hit,
+         closed_tab, setting_hit, t, about, keymap, ui_face, placed_click,
+         listed_binds } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
 
@@ -31,11 +32,48 @@ Cursor = 5409727
 Edge = 1579551
 
 view(ide: Ide) -> Element =>
-    div(class="flex flex-col size-full", font=face(ide), bg=Paper, fg=Ink,
+    div(class="relative flex flex-col size-full cursor-default",
+        font=ui_face(), bg=Paper, fg=Ink,
         menubar(ide),
         div(class="flex flex-row grow overflow-hidden",
             tree(ide), buffer(ide), panel(ide)),
-        footer(ide))
+        ide.term ? terminal(ide) : gone(),
+        footer(ide),
+        ide.bar == "" ? gone() : hung_menu(ide))
+
+/** The open dropdown is painted last from the root, so nothing in the tree
+ * can sit on top of it.
+ */
+hung_menu(ide: Ide) -> Element {
+    if ide.bar == "file" {
+        return drop_at_12(ide)
+    }
+
+    ide.bar == "edit" ? drop_at_24(ide) : drop_at_36(ide)
+}
+
+drop_at_12(ide: Ide) -> Element =>
+    div(class="absolute top-10 left-12 flex flex-col w-56 py-1
+               rounded-md border-1",
+        bg=Shade, edge=Edge,
+        keyed_item(ide, "folder", "folder", "Ctrl+O"),
+        keyed_item(ide, "open", "open", "Ctrl+P"),
+        keyed_item(ide, "save", "save", "Ctrl+S"),
+        menu_item(ide, "quit", "Quit          Ctrl+Q"))
+
+drop_at_24(ide: Ide) -> Element =>
+    div(class="absolute top-10 left-20 flex flex-col w-56 py-1
+               rounded-md border-1",
+        bg=Shade, edge=Edge,
+        menu_item(ide, "all", t(ide, "all")),
+        menu_item(ide, "settings", t(ide, "settings")),
+        menu_item(ide, "keys", t(ide, "keys")))
+
+drop_at_36(ide: Ide) -> Element =>
+    div(class="absolute top-10 left-32 flex flex-col w-56 py-1
+               rounded-md border-1",
+        bg=Shade, edge=Edge,
+        menu_item(ide, "about", t(ide, "about")))
 
 /** The one bar at the top: the app's name, its menus, a stretch to drag the
  * window by, and the window's own buttons, drawn by us and answered by the
@@ -44,57 +82,39 @@ view(ide: Ide) -> Element =>
 menubar(ide: Ide) -> Element =>
     div(class="flex flex-row items-center gap-1 px-2 border-b-1",
         bg=Shade, edge=Edge,
-        div(class="px-3 py-2 text-xs", fg=Dim, "Quipu"),
+        logo(),
+        div(id="drag-left", zone="drag", winop="drag", class="w-2 h-9", ""),
         menu_head(ide, "file", t(ide, "file")),
         menu_head(ide, "edit", t(ide, "edit")),
         menu_head(ide, "help", t(ide, "help")),
-        div(id="drag", zone="drag", class="grow h-9", ""),
-        div(id="win-min", zone="min",
+        div(id="drag", zone="drag", winop="drag", class="grow h-9", ""),
+        div(id="win-min", zone="min", winop="min",
             class="px-4 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
             "_"),
-        div(id="win-max", zone="max",
+        div(id="win-max", zone="max", winop="max",
             class="px-4 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
             "o"),
-        div(id="win-shut", zone="close",
+        div(id="win-shut", zone="close", click=(i => menu_hit(i, "quit")),
             class="px-4 py-2 text-xs cursor-pointer", fg=Dim, hover_bg=Hover,
             "x"))
 
+/** The knot: a small rounded mark, so the bar opens with a face and not a
+ * word.
+ */
+logo() -> Element =>
+    div(class="flex items-center justify-center w-5 h-5 mx-2 rounded-md",
+        bg=Cursor,
+        div(class="text-xs", fg=Paper, "Q"))
+
 menu_head(ide: Ide, name: str, label: str) -> Element =>
-    div(class="relative",
-        div(id="bar-{name}", click=(i => bar_swung(i, name)),
-            class="px-3 py-1 rounded-md text-xs cursor-pointer",
-            bg=(ide.bar == name ? Marked : Shade),
-            fg=(ide.bar == name ? Ink : Dim), hover_bg=Hover,
-            label),
-        ide.bar == name ? dropdown(ide, name) : gone())
+    div(id="bar-{name}", click=(i => bar_swung(i, name)),
+        class="px-3 py-1 rounded-md text-xs cursor-pointer",
+        bg=(ide.bar == name ? Marked : Shade),
+        fg=(ide.bar == name ? Ink : Dim), hover_bg=Hover,
+        label)
 
 gone() -> Element =>
     div(class="h-0")
-
-dropdown(ide: Ide, name: str) -> Element {
-    if name == "file" {
-        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1
-                          rounded-md border-1",
-                   bg=Shade, edge=Edge,
-                   keyed_item(ide, "open", "open", "Ctrl+P"),
-                   keyed_item(ide, "save", "save", "Ctrl+S"),
-                   menu_item(ide, "quit", "Quit"))
-    }
-
-    if name == "edit" {
-        return div(class="absolute top-8 left-0 flex flex-col w-56 py-1
-                          rounded-md border-1",
-                   bg=Shade, edge=Edge,
-                   menu_item(ide, "all", t(ide, "all")),
-                   menu_item(ide, "settings", t(ide, "settings")),
-                   menu_item(ide, "keys", t(ide, "keys")))
-    }
-
-    div(class="absolute top-8 left-0 flex flex-col w-56 py-1
-                          rounded-md border-1",
-        bg=Shade, edge=Edge,
-        menu_item(ide, "about", t(ide, "about")))
-}
 
 menu_item(ide: Ide, act: str, label: str) -> Element =>
     div(id="item-{act}", click=(i => menu_hit(i, act)),
@@ -120,14 +140,26 @@ tree(ide: Ide) -> Element =>
         bg=Shade, edge=Edge,
         div(class="px-4 py-2 text-xs", fg=Dim,
             tree_head(ide)),
-        div(class="flex flex-col", ide.files.map(f => file_row(ide, f))))
+        ide.rows.length() == 0 ? empty_tree(ide) : gone(),
+        div(class="flex flex-col", ide.rows.map(r => tree_row(ide, r))))
 
-file_row(ide: Ide, f: str) -> Element =>
-    div(id=f, click=(i => opened_file(i, f)),
-        class="px-4 py-1 text-xs cursor-pointer",
-        bg=(f == ide.open ? Marked : Shade),
-        fg=(f == ide.open ? Ink : Dim), hover_bg=Hover,
-        tail(f))
+/** A window opened on no workspace says so, and offers the one thing that
+ * fixes it.
+ */
+empty_tree(ide: Ide) -> Element =>
+    div(class="flex flex-col px-4 py-2 gap-2",
+        div(class="text-xs", fg=Dim, t(ide, "no-workspace")),
+        div(id="pick-folder", click=(i => menu_hit(i, "folder")),
+            class="px-3 py-1 rounded-md text-xs cursor-pointer",
+            bg=Marked, hover_bg=Hover,
+            t(ide, "folder")))
+
+tree_row(ide: Ide, r: Row) -> Element =>
+    div(id=r.path, click=(i => tree_hit(i, r.path, r.dir)),
+        class="px-4 py-1 text-xs cursor-pointer", font=face(ide),
+        bg=(r.path == ide.open ? Marked : Shade),
+        fg=(r.path == ide.open ? Ink : Dim), hover_bg=Hover,
+        row_label(ide, r))
 
 /** The buffer wears its tabs; Ctrl+P turns it into the quick menu and the
  * settings pane borrows it too.
@@ -137,8 +169,20 @@ buffer(ide: Ide) -> Element {
         return seeker(ide)
     }
 
-    ide.setting ? settings(ide) : script(ide)
+    if ide.setting {
+        return settings(ide)
+    }
+
+    ide.about ? about_pane(ide) : script(ide)
 }
+
+about_pane(ide: Ide) -> Element =>
+    div(class="flex flex-col grow",
+        div(class="px-4 py-2 border-b-1 text-xs", bg=Shade, edge=Edge,
+            t(ide, "about")),
+        div(class="flex flex-col px-4 py-2",
+            about().split("\n").map(s => panel_line(s))),
+        div(class="px-4 py-2 text-xs", fg=Dim, "Esc"))
 
 settings(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
@@ -147,7 +191,12 @@ settings(ide: Ide) -> Element =>
         setting_kv(ide, "ligs", "ligatures", ide.ligs ? "on" : "off"),
         setting_kv(ide, "thin", "cursor", ide.thin ? "bar" : "block"),
         setting_kv(ide, "lang", "lang", ide.lang),
-        setting_kv(ide, "close", "close", "Esc"))
+        setting_kv(ide, "close", "close", "Esc"),
+        div(class="px-4 py-2 border-t-1 text-xs", fg=Dim, edge=Edge,
+            t(ide, "keys")),
+        div(class="flex flex-col px-4",
+            listed_binds(keymap(), 0, []).split("\n")
+                .map(s => panel_line(s))))
 
 setting_kv(ide: Ide, act: str, key: str, val: str) -> Element {
     word = t(ide, key)
@@ -163,8 +212,10 @@ setting_row(ide: Ide, act: str, label: str) -> Element =>
 script(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
         tab_bar(ide),
-        div(id="lines", class="flex flex-col grow py-3 overflow-y-scroll",
-            lines_of(ide).map(l => line_row(ide, l))),
+        div(id="lines", class="flex flex-col grow py-3 overflow-y-scroll
+                               cursor-text",
+            font=face(ide),
+            window_lines(ide).map(l => line_row(ide, l))),
         asked_controls(ide))
 
 tab_bar(ide: Ide) -> Element =>
@@ -192,7 +243,8 @@ one_tab(ide: Ide, t: str, soft: bool) -> Element =>
  * a selected line shades its stretch.
  */
 line_row(ide: Ide, l: Line) -> Element =>
-    div(class="flex flex-row w-full",
+    div(id="line-{str(l.n)}", click=(i => placed_click(i, l.n - 1, l.said.length())),
+        class="flex flex-row w-full cursor-text",
         bg=(l.n - 1 == ide.line && !sel_on(ide, l.n - 1) ? Hover : Paper),
         div(class="flex justify-end w-12 pr-4 text-xs",
             fg=(l.n - 1 == ide.line ? Ink : Dim), str(l.n)),
@@ -252,6 +304,9 @@ seeker(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
         div(class="px-4 py-2 border-b-1 text-xs", bg=Shade, edge=Edge,
             "OPEN  {ide.seek}_"),
+        sought(ide).length() == 0
+            ? div(class="px-4 py-2 text-xs", fg=Dim, t(ide, "empty"))
+            : gone(),
         div(class="flex flex-col py-2",
             sought(ide).map(h => hit_row(ide, h))))
 
@@ -283,22 +338,24 @@ panel(ide: Ide) -> Element =>
     div(id="panel",
         class="flex flex-col w-80 overflow-y-scroll border-l-1",
         bg=Shade, edge=Edge,
-        div(class="flex flex-row flex-wrap gap-1 px-3 py-2",
-            Panels.map(p => tab(ide, p))),
-        div(class="px-3 py-1 text-xs", fg=Dim,
-            "{ide.target} via {panel_for(ide.target)}"),
-        div(class="flex flex-col px-3 py-2",
+        div(class="px-3 py-2 border-b-1 text-xs", fg=Dim, edge=Edge,
+            "TARGET   {ide.target} via {panel_for(ide.target)}"),
+        div(class="flex flex-col px-3 py-2", font=face(ide),
             shown(ide).split("\n").map(s => panel_line(s))))
 
 panel_line(s: str) -> Element =>
     div(class="text-xs", s)
 
-tab(ide: Ide, p: str) -> Element =>
-    div(id="tab-{p}", click=(i => picked(i, p)),
-        class="px-2 py-1 rounded-md text-xs cursor-pointer",
-        bg=(p == ide.panel ? Marked : Shade),
-        fg=(p == ide.panel ? Ink : Dim), hover_bg=Hover,
-        p)
+/** The terminal strip under the columns: what the last command said, and the
+ * line being typed.
+ */
+terminal(ide: Ide) -> Element =>
+    div(class="flex flex-col h-64 border-t-1", bg=Shade, edge=Edge,
+        div(class="px-4 py-1 text-xs", fg=Dim, "TERMINAL   Ctrl+`"),
+        div(id="term-out", class="flex flex-col grow px-4 overflow-y-scroll",
+            font=face(ide),
+            ide.shell.split("\n").map(l => panel_line(l))),
+        div(class="px-4 py-2 text-xs", font=face(ide), "$ {ide.cmd}_"))
 
 files_said(ide: Ide) -> str {
     word = t(ide, "files")

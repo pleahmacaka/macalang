@@ -145,7 +145,7 @@ run_script(cmd: str) -> int {
     }
 }
 
-Version = "0.7.0"
+Version = "0.7.1"
 
 check_only(src: str, target: str) -> int {
     unit = unit_of(src)

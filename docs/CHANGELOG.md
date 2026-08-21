@@ -2,6 +2,23 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.7.1
+
+- The C and JS back ends brace a `then` branch that is itself an `if`. Written
+  bare, the `else` beside it bound to the inner one, so
+  `if a { if b { … } } else { … }` ran the wrong branch on every native and
+  browser build; the Rust back end was fixed in 0.5.9 and this closes the
+  other two.
+- A list `contains` compares elements rather than casting them, and `slice`
+  clamps to what is there on the Rust target as it already did on C, so a
+  short list no longer panics.
+- Quipu: a real file tree (folders first, expand and collapse, every file
+  rather than only `.maca`), a terminal strip on Ctrl+` that runs a line where
+  the workspace is and keeps what it said, File > Open Folder... (Ctrl+O)
+  through the desktop's own chooser, Pretendard for the chrome with the
+  monospace face kept for code, and window buttons and a drag strip that
+  answer the press directly.
+
 ## 0.7.0
 
 - A `"…"` string wraps across lines: the newline and the indentation after it

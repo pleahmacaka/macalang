@@ -332,7 +332,9 @@ rstr_index(e: Expr) -> bool =>
 remit_method(e: Expr) -> str {
     recv = rreceiver(e.children.get(0))
 
-    if rstr_helper(e.text) {
+    if e.text == "contains" && rlist(e.children.get(0).ty) {
+        "({recv}).contains(&{rarg(e, 1)})"
+    } else if rstr_helper(e.text) {
         remit_str_method(e, recv)
     } else if e.text == "chars" {
         "Rc::new(({recv}).chars().map(|c| c.to_string())" +
@@ -356,12 +358,11 @@ remit_method(e: Expr) -> str {
     } else if e.text == "slice" && rlist(e.children.get(0).ty) {
         lo = remit_expr(e.children.get(1))
         hi = remit_expr(e.children.get(2))
-        "Rc::new({recv}[({lo}) as usize..({hi}) as usize].to_vec())"
+        "Rc::new(maca_slice(&{recv}, {lo}, {hi}))"
     } else if e.text == "slice" {
         lo = remit_expr(e.children.get(1))
         hi = remit_expr(e.children.get(2))
-        "({recv}).get(({lo}) as usize..({hi}) as usize)" +
-            ".unwrap_or(\"\").to_string()"
+        "maca_str_slice(&{recv}, {lo}, {hi})"
     } else if e.text == "index_of" && e.children.get(0).ty == "str" {
         "({recv}).find({remit_expr(e.children.get(1))}.as_str())" +
             ".map(|i| i as i64).unwrap_or(-1)"
@@ -978,6 +979,8 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_pad_start(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", \" \".repeat(w - s.len()), s) }} }}\n" +
     "#[allow(dead_code)]\nfn maca_pad_end(s: String, w: i64) -> String {{ let w = w.max(0) as usize; if s.len() >= w {{ s }} else {{ format!(\"{{}}{{}}\", s, \" \".repeat(w - s.len())) }} }}\n" +
     "#[allow(dead_code)]\nfn maca_block_on<F: std::future::Future>(fut: F) -> F::Output {{ use std::sync::{{Arc, Mutex, Condvar}}; use std::task::{{Context, Poll, Wake, Waker}}; struct Flag(Mutex<bool>, Condvar); impl Wake for Flag {{ fn wake(self: Arc<Self>) {{ *self.0.lock().unwrap() = true; self.1.notify_one(); }} }} let flag = Arc::new(Flag(Mutex::new(false), Condvar::new())); let waker = Waker::from(flag.clone()); let mut cx = Context::from_waker(&waker); let mut fut = std::pin::pin!(fut); loop {{ match fut.as_mut().poll(&mut cx) {{ Poll::Ready(v) => return v, Poll::Pending => {{ let mut ready = flag.0.lock().unwrap(); while !*ready {{ ready = flag.1.wait(ready).unwrap(); }} *ready = false; }} }} }} }}\n" +
+    "#[allow(dead_code)]\nfn maca_slice<T: Clone>(xs: &[T], lo: i64, hi: i64) -> Vec<T> {{ let n = xs.len() as i64; let a = lo.max(0).min(n); let b = hi.max(a).min(n); xs[a as usize..b as usize].to_vec() }}\n" +
+    "#[allow(dead_code)]\nfn maca_str_slice(s: &str, lo: i64, hi: i64) -> String {{ let n = s.len() as i64; let a = lo.max(0).min(n); let b = hi.max(a).min(n); s.get(a as usize..b as usize).unwrap_or(\"\").to_string() }}\n" +
     "#[allow(dead_code)]\nfn maca_try<F: FnOnce()>(f: F) -> String {{ let hushed = std::panic::take_hook(); std::panic::set_hook(Box::new(|_| {{}})); let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)); std::panic::set_hook(hushed); match out {{ Ok(_) => String::new(), Err(e) => e.downcast_ref::<String>().cloned().unwrap_or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()).unwrap_or_default()) }} }}\n" +
     "#[allow(dead_code)]\nfn maca_is_tty() -> bool {{ false }}\n" +
     "#[allow(dead_code)]\nfn maca_chdir(p: String) -> bool {{ std::env::set_current_dir(p).is_ok() }}\n" +
@@ -1221,6 +1224,15 @@ gpui_element_raw(e: Expr) -> str =>
         gpui_attrs(e.children.get(3).children, 0) +
         gpui_kids(e.children.get(4).children, 0)
 
+/** What a window button does, said to gpui directly: the platform hands a
+ * caption click to the application before it moves the window, so an editor
+ * that draws its own bar has to act on it itself.
+ */
+rwinop(name: str) -> str =>
+    ".on_mouse_down(gpui::MouseButton::Left," +
+        " move |_e, _w: &mut gpui::Window, _a: &mut gpui::App|" +
+        " maca_window_op(\"{name}\", _w))"
+
 rzone(name: str) -> str {
     if name == "drag" {
         "Drag"
@@ -1292,6 +1304,8 @@ gpui_attr(a: Expr) -> str {
         ".text_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
     } else if a.text == "edge" {
         ".border_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
+    } else if a.text == "winop" {
+        rwinop(a.children.get(0).text)
     } else if a.text == "zone" {
         ".window_control_area(gpui::WindowControlArea::" +
             "{rzone(a.children.get(0).text)})"

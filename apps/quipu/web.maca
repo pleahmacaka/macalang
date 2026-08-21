@@ -17,7 +17,12 @@ shown_state() -> Ide =>
           text = Sample, target = "native", panel = "names", output = "",
           breaks = [2], menu = false, seek = "", pick = 0, line = 0, col = 0,
           dirty = false, marking = false, mark_line = 0, mark_col = 0,
-          pane = "" }
+          pane = "", bar = "", opens = [], preview = "",
+          stash_k = [], stash_v = [], setting = false, ligs = true,
+          thin = false, lang = "en", leaving = false, about = false,
+          picking = false, spread = [], rows = [], term = false,
+          cmd = "", shell = "", ran = [], undo_text = [],
+          undo_line = [], undo_col = [] }
 
 main() -> Element =>
     view(shown_state())

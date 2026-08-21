@@ -1537,7 +1537,7 @@ emit_stmt(s: Stmt, is_last: bool, ret: str) -> str {
 
 emit_if_stmt(e: Expr) -> str {
     cond = emit_expr(e.children.get(0))
-    then = c_branch(e.children.get(1))
+    then = c_then(e.children.get(1))
     els = e.children.get(2)
 
     if is_missing_else(els) {
@@ -1549,6 +1549,12 @@ emit_if_stmt(e: Expr) -> str {
 
 is_missing_else(e: Expr) -> bool =>
     e.kind == EIdent && e.text == "?"
+
+/** A then branch that is itself an `if` is braced, or the `else` beside it
+ * would bind to the inner one, which is the language's own dangling else.
+ */
+c_then(e: Expr) -> str =>
+    e.kind == EIf ? "{{ {emit_if_stmt(e)} }}" : c_branch(e)
 
 c_branch(e: Expr) -> str {
     if e.kind == EIf {

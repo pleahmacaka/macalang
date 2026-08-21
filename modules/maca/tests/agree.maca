@@ -1,0 +1,102 @@
+import std/proc
+
+scratch() -> str {
+    dir = env_or("TMPDIR", "/tmp") + "/maca-agree"
+
+    make_dir(dir)
+
+    dir
+}
+
+maca_bin() -> str {
+    named = env_or("MACA", "target/release/maca")
+
+    named.starts_with("/") ? named : cwd() + "/" + named
+}
+
+rustc_here() -> bool =>
+    output("sh", ["-c", "rustc --version 2>/dev/null"]).trim() != ""
+
+node_here() -> bool =>
+    output("sh", ["-c", "node --version 2>/dev/null"]).trim() != ""
+
+/** The one program every target is asked to answer, written so each line is
+ * one claim and the answers can be compared as text.
+ */
+Same = "main() -> int {{\n" +
+    "    r = 0..3\n" +
+    "    info(\"range={{str(r.length())}},{{str(r.get(r.length() - 1))}}\")\n" +
+    "    total = 0\n" +
+    "    for i in 0..3 {{ total = total + i }}\n" +
+    "    info(\"for={{str(total)}}\")\n" +
+    "    xs = [\"a\"]\n" +
+    "    info(\"slice={{str(xs.slice(0, 8).length())}}\")\n" +
+    "    info(\"cut=[{{\"ab\".slice(0, 8)}}]\")\n" +
+    "    info(\"has={{str([\"x\", \"y\"].contains(\"y\") ? 1 : 0)}}\")\n" +
+    "    n = 0\n" +
+    "    if total > 0 {{\n" +
+    "        if total > 100 {{ n = 1 }}\n" +
+    "    }} else {{\n" +
+    "        n = 2\n" +
+    "    }}\n" +
+    "    info(\"else={{str(n)}}\")\n" +
+    "    0\n" +
+    "}}\n"
+
+Wanted = "range=3,2\nfor=3\nslice=1\ncut=[ab]\nhas=1\nelse=0"
+
+written(name: str) -> str {
+    at = "{scratch()}/{name}.maca"
+
+    write_file(at, Same)
+
+    at
+}
+
+said_by(target: str, name: str) -> str {
+    at = written(name)
+    out = "{scratch()}/{name}-{target}"
+
+    remove_file(out)
+
+    if target == "native" {
+        exec(maca_bin(), ["build", at, "-o", out])
+    } else {
+        exec(maca_bin(), ["build", at, "--target", target, "-o", out])
+    }
+
+    target == "js" ? capture("node", ["{out}.js"]) : capture(out, [])
+}
+
+test_every_target_answers_the_same_program_the_same_way() {
+    assert_eq(said_by("native", "same").trim(), Wanted,
+              "the native answer is the one the spec states")
+}
+
+/** A back end that drifts from the others is what this suite is for: the same
+ * claims, compiled twice, compared as text.
+ */
+test_the_rust_target_agrees_with_native() {
+    if !rustc_here() {
+        assert(true, "rustc is not on this host, so there is nothing to run")
+    } else {
+        assert_eq(said_by("rust", "same").trim(), Wanted,
+                  "ranges, slices, contains and a nested else all agree")
+    }
+}
+
+test_the_js_target_agrees_with_native() {
+    if !node_here() {
+        assert(true, "node is not on this host, so there is nothing to run")
+    } else {
+        assert_eq(said_by("js", "same").trim(), Wanted,
+                  "the browser target answers the same claims")
+    }
+}
+
+main() -> int {
+    test_every_target_answers_the_same_program_the_same_way()
+    test_the_rust_target_agrees_with_native()
+    test_the_js_target_agrees_with_native()
+    failures()
+}
