@@ -39,7 +39,7 @@ maca build app.maca --target js -o out
 maca build gen.maca -o gen
 ```
 
-네이티브 바이너리를 만들고, 거기서 같은 요소는 **텍스트**로 렌더링됩니다.
+C를 거쳐 바이너리를 만들고, 거기서 같은 요소는 **텍스트**로 렌더링됩니다.
 
 ```maca
 main() -> int {

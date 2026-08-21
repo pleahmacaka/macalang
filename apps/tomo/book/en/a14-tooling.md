@@ -7,7 +7,7 @@ binary, package manager or test runner to install.
 
 | Command | Does |
 |---|---|
-| `maca build FILE` | compile to a native binary |
+| `maca build FILE` | translate to C and build a binary with it |
 | `maca run FILE` | compile and execute |
 | `maca test FILE` | run every `test_…` function in the file |
 | `maca fmt FILE` | format source |

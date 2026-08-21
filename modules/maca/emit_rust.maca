@@ -554,7 +554,7 @@ rjoins(e: Expr) -> bool {
 }
 
 rlist(ty: str) -> bool =>
-    ty.length() > 2 && ty.slice(ty.length() - 2, ty.length()) == "[]"
+    ty.ends_with("[]")
 
 remit_arms(cs: Expr[], i: int, scrut: str) -> str {
     if i + 1 >= cs.length() {
@@ -894,9 +894,184 @@ rmut_word(movable: bool) -> str {
 }
 
 remit_module(m: Module) -> str =>
-    rust_preamble() +
-        remit_items(m.items, rlazy_names(m.items, 0, []),
-                       declared_types(m.items, 0, []), 0)
+    remit_window(m, "Maca", 1200, 800)
+
+/** The same module, with the window this program asked its manifest for. */
+remit_window(m: Module, title: str, wide: int, tall: int) -> str {
+    body = remit_items(m.items, rlazy_names(m.items, 0, []),
+                       declared_types(m.items, 0, []), 0) +
+        desktop_runtime(m.items, title, wide, tall)
+
+    rust_preamble() + rcaptures(body) + body
+}
+
+/** Reading what another program said needs the console's own code page on
+ * Windows, and that is a foreign call, so only a program that runs another
+ * one carries it.
+ */
+rcaptures(code: str) -> str =>
+    code.index_of("maca_capture") < 0 ? "" : rcapture_runtime()
+
+rcapture_runtime() -> str =>
+    "#[allow(dead_code)]\n#[cfg(target_os = \"windows\")]\nfn maca_console_text(bytes: &[u8]) -> String {{ if let Ok(said) = std::str::from_utf8(bytes) {{ return said.to_string(); }} #[link(name = \"kernel32\")] unsafe extern \"system\" {{ fn GetOEMCP() -> u32; fn MultiByteToWideChar(cp: u32, flags: u32, said: *const u8, said_len: i32, wide: *mut u16, wide_len: i32) -> i32; }} unsafe {{ let cp = GetOEMCP(); let n = MultiByteToWideChar(cp, 0, bytes.as_ptr(), bytes.len() as i32, std::ptr::null_mut(), 0); if n <= 0 {{ return String::from_utf8_lossy(bytes).into_owned(); }} let mut wide = vec![0u16; n as usize]; MultiByteToWideChar(cp, 0, bytes.as_ptr(), bytes.len() as i32, wide.as_mut_ptr(), n); String::from_utf16_lossy(&wide) }} }}\n" +
+    "#[allow(dead_code)]\n#[cfg(not(target_os = \"windows\"))]\nfn maca_console_text(bytes: &[u8]) -> String {{ String::from_utf8_lossy(bytes).into_owned() }}\n" +
+    "#[allow(dead_code)]\nfn maca_command(cmd: &str, args: &[String]) -> std::process::Command {{ let mut c = std::process::Command::new(cmd); #[cfg(target_os = \"windows\")] {{ let shell = cmd.eq_ignore_ascii_case(\"cmd\") || cmd.to_ascii_lowercase().ends_with(\"cmd.exe\"); if shell {{ use std::os::windows::process::CommandExt; for a in args {{ c.raw_arg(a); }} return c; }} }} c.args(args.iter()); c }}\n" +
+    "#[allow(dead_code)]\nfn maca_capture(cmd: String, args: Rc<Vec<String>>) -> String {{ match maca_command(&cmd, &args).output() {{ Ok(o) => maca_console_text(&o.stdout), Err(_) => String::new() }} }}\n" +
+    "#[allow(dead_code)]\nfn maca_capture_err(cmd: String, args: Rc<Vec<String>>) -> String {{ match maca_command(&cmd, &args).output() {{ Ok(o) => maca_console_text(&o.stderr), Err(_) => String::new() }} }}\n"
+
+/** A program that says `start()` and `view(state) -> Element` is a desktop
+ * program, and the window it wants is the same window every time: an event
+ * loop, one value of state, a render that draws the view, keys handed to
+ * `key(state, chord)` when it declares one, and title-bar controls that act.
+ * Writing that by hand in Rust is the language failing, so the language
+ * writes it.
+ */
+desktop_runtime(items: Stmt[], title: str, wide: int,
+                tall: int) -> str {
+    held = state_type(items)
+
+    if held == "" {
+        return ""
+    }
+
+    keyed = fn_named(items, "key") != ""
+
+    window_host(held, keyed, title, wide, tall)
+}
+
+/** The type `start()` answers, when `view` takes it and answers an Element. */
+state_type(items: Stmt[]) -> str {
+    start = fn_named(items, "start")
+    view = fn_named(items, "view")
+
+    if start == "" || view != "Element" {
+        return ""
+    }
+
+    start
+}
+
+fn_named(items: Stmt[], want: str) -> str =>
+    named_ret(items, want, 0)
+
+named_ret(items: Stmt[], want: str, i: int) -> str {
+    if i >= items.length() {
+        ""
+    } else if items.get(i).kind == SFn && items.get(i).name == want {
+        items.get(i).ret
+    } else {
+        named_ret(items, want, i + 1)
+    }
+}
+
+window_host(held: str, keyed: bool, title: str, wide: int,
+            tall: int) -> str {
+    keys = keyed
+        ? ".on_key_down(cx.listener(|h, ev: &gpui::KeyDownEvent, _w, cx| {{" +
+              " h.state = key(h.state.clone(), maca_chord(ev)); cx.notify();" +
+              " }}))"
+        : ""
+
+    "\n" + host_uses() + host_types(held) + host_apply(held) + host_ops() +
+        host_render(held, keys) + host_main(title, wide, tall)
+}
+
+/** The names gpui puts its methods on. A program that writes no Rust cannot
+ * import a Rust trait, so the window runtime brings them.
+ */
+host_uses() -> str =>
+    "use gpui::prelude::*;\n"
+
+host_types(held: str) -> str =>
+    "pub struct MacaHost {{ pub state: {rtype(held)}," +
+        " pub focus: gpui::FocusHandle }}\n" +
+        "thread_local! {{ static MACA_SHELL:" +
+        " std::cell::RefCell<Option<gpui::Entity<MacaHost>>> =" +
+        " std::cell::RefCell::new(None); }}\n" +
+        "thread_local! {{ static MACA_AT: std::cell::RefCell<(i64, i64)> =" +
+        " std::cell::RefCell::new((0, 0)); }}\n" +
+        "thread_local! {{ static MACA_DROPPED:" +
+        " std::cell::RefCell<Vec<String>> =" +
+        " std::cell::RefCell::new(Vec::new()); }}\n"
+
+host_apply(held: str) -> str =>
+    "pub fn maca_apply(app: &mut gpui::App," +
+        " f: &dyn Fn({rtype(held)}) -> {rtype(held)}) {{" +
+        " let kept = MACA_SHELL.with(|s| s.borrow().clone());" +
+        " if let Some(host) = kept {{ host.update(app, |h, cx| {{" +
+        " let started = std::time::Instant::now();" +
+        " h.state = f(h.state.clone());" +
+        " let took = started.elapsed().as_millis();" +
+        " if took > 100 {{ eprintln!(\"maca: a handler held the window for" +
+        " {{}}ms; nothing draws while it runs\", took); }}" +
+        " cx.notify(); }}); }} }}\n"
+
+/** The window's own buttons. Windows hands a caption press to the program
+ * before it would act on it, and gpui stops it there, so the system command
+ * is asked for by hand; every other desktop answers the window's own calls.
+ */
+host_ops() -> str =>
+    "#[cfg(target_os = \"windows\")]\n" +
+        "pub fn maca_window_op(op: &str, _win: &mut gpui::Window) {{" +
+        " unsafe extern \"system\" {{ fn GetActiveWindow() -> isize;" +
+        " fn ReleaseCapture() -> i32; fn IsZoomed(h: isize) -> i32;" +
+        " fn SendMessageW(h: isize, m: u32, w: usize, l: isize) -> isize; }}" +
+        " unsafe {{ let h = GetActiveWindow(); if h == 0 {{ return; }}" +
+        " match op {{" +
+        " \"drag\" => {{ ReleaseCapture(); SendMessageW(h, 0x00A1, 2, 0); }}" +
+        " \"min\" => {{ SendMessageW(h, 0x0112, 0xF020, 0); }}" +
+        " \"max\" => {{ let c = if IsZoomed(h) != 0 {{ 0xF120 }}" +
+        " else {{ 0xF030 }}; SendMessageW(h, 0x0112, c, 0); }}" +
+        " _ => {{ SendMessageW(h, 0x0112, 0xF060, 0); }} }} }} }}\n" +
+        "#[cfg(not(target_os = \"windows\"))]\n" +
+        "pub fn maca_window_op(op: &str, win: &mut gpui::Window) {{" +
+        " match op {{ \"min\" => win.minimize_window()," +
+        " \"max\" => win.zoom_window()," +
+        " \"drag\" => win.start_window_move(), _ => {{}} }} }}\n" +
+        "pub fn maca_pointer_at(x: i64, y: i64) {{" +
+        " MACA_AT.with(|p| *p.borrow_mut() = (x, y)); }}\n" +
+        "pub fn at_x() -> i64 {{ MACA_AT.with(|p| p.borrow().0) }}\n" +
+        "pub fn at_y() -> i64 {{ MACA_AT.with(|p| p.borrow().1) }}\n" +
+        "pub fn maca_dropped_paths(paths: &gpui::ExternalPaths) {{" +
+        " let said: Vec<String> = paths.paths().iter()" +
+        ".map(|p| p.to_string_lossy().to_string()).collect();" +
+        " MACA_DROPPED.with(|d| *d.borrow_mut() = said); }}\n" +
+        "pub fn dropped_paths() -> Rc<Vec<String>> {{" +
+        " Rc::new(MACA_DROPPED.with(|d| d.borrow().clone())) }}\n" +
+        "pub fn maca_chord(ev: &gpui::KeyDownEvent) -> String {{" +
+        " let ks = &ev.keystroke;" +
+        " if ks.modifiers.control {{ return format!(\"ctrl-{{}}\", ks.key); }}" +
+        " let named = ks.key.chars().count() > 1;" +
+        " if named && ks.modifiers.shift {{" +
+        " return format!(\"shift-{{}}\", ks.key); }}" +
+        " if ks.key == \"space\" {{ return \" \".to_string(); }}" +
+        " if !named {{ if let Some(c) = &ks.key_char {{ return c.clone(); }} }}" +
+        " ks.key.clone() }}\n"
+
+host_render(held: str, keys: str) -> str =>
+    "impl gpui::Render for MacaHost {{ fn render(&mut self," +
+        " _win: &mut gpui::Window, cx: &mut gpui::Context<MacaHost>)" +
+        " -> impl gpui::IntoElement {{" +
+        " gpui::div().id(\"maca-host\").track_focus(&self.focus)" +
+        ".size_full(){keys}" +
+        ".child(view(self.state.clone())) }} }}\n"
+
+host_main(title: str, wide: int, tall: int) -> str =>
+    "fn main() {{ gpui::Application::new().run(|cx: &mut gpui::App| {{" +
+        " use gpui::AppContext as _;" +
+        " let bounds = gpui::Bounds::centered(None," +
+        " gpui::size(gpui::px({str(wide)}.0), gpui::px({str(tall)}.0)), cx);" +
+        " cx.open_window(gpui::WindowOptions {{" +
+        " window_bounds: Some(gpui::WindowBounds::Windowed(bounds))," +
+        " titlebar: Some(gpui::TitlebarOptions {{" +
+        " title: Some(\"{title}\".into())," +
+        " appears_transparent: true, ..Default::default() }})," +
+        " ..Default::default() }}, |_win, cx| {{" +
+        " let host = cx.new(|cx| MacaHost {{ state: start()," +
+        " focus: cx.focus_handle() }});" +
+        " MACA_SHELL.with(|s| *s.borrow_mut() = Some(host.clone()));" +
+        " _win.focus(&host.read(cx).focus);" +
+        " host }}).unwrap(); cx.activate(true); }}); }}\n"
 
 remit_items(items: Stmt[], lz: str[], own: str[], i: int) -> str {
     if i >= items.length() {
@@ -959,8 +1134,6 @@ rust_preamble() -> str =>
     "#[allow(dead_code)]\nfn maca_read_file(path: String) -> String {{ std::fs::read_to_string(path).unwrap_or_default() }}\n" +
     "#[allow(dead_code)]\nfn maca_write_file(path: String, text: String) -> bool {{ std::fs::write(path, text).is_ok() }}\n" +
     "#[allow(dead_code)]\nfn maca_exec(cmd: String, args: Rc<Vec<String>>) -> i64 {{ match std::process::Command::new(cmd).args(args.iter()).status() {{ Ok(s) => s.code().unwrap_or(-1) as i64, Err(_) => -1 }} }}\n" +
-    "#[allow(dead_code)]\nfn maca_capture(cmd: String, args: Rc<Vec<String>>) -> String {{ match std::process::Command::new(cmd).args(args.iter()).output() {{ Ok(o) => String::from_utf8_lossy(&o.stdout).into_owned(), Err(_) => String::new() }} }}\n" +
-    "#[allow(dead_code)]\nfn maca_capture_err(cmd: String, args: Rc<Vec<String>>) -> String {{ match std::process::Command::new(cmd).args(args.iter()).output() {{ Ok(o) => String::from_utf8_lossy(&o.stderr).into_owned(), Err(_) => String::new() }} }}\n" +
     "#[allow(dead_code)]\nfn maca_copy_bytes(from: String, to: String) -> bool {{ std::fs::copy(from, to).is_ok() }}\n" +
     "use std::cell::Cell;\nthread_local!(static MACA_FAILED: Cell<i64> = Cell::new(0));\n" +
     "#[allow(dead_code)]\nfn maca_failures() -> i64 {{ MACA_FAILED.with(|c| c.get()) }}\n" +
@@ -1233,6 +1406,65 @@ rwinop(name: str) -> str =>
         " move |_e, _w: &mut gpui::Window, _a: &mut gpui::App|" +
         " maca_window_op(\"{name}\", _w))"
 
+/** A pointer press, a drag and a release, each folding the state the same way
+ * a click does. The place the pointer was is kept so `at_x()` and `at_y()`
+ * can answer it, because a class list cannot carry a number that came from a
+ * hand.
+ */
+rmouse(which: str, f: Expr) -> str {
+    if which == "move" {
+        return rmoved(f)
+    }
+
+    held = rfree_in(f, [])
+    listener = which == "down" ? "on_mouse_down" : "on_mouse_up"
+    body = "{{ {rheld_clones(held, 0)}" +
+        "move |_ev, _win: &mut gpui::Window, _app: &mut gpui::App| {{" +
+        " maca_pointer_at(f32::from(_ev.position.x) as i64," +
+        " f32::from(_ev.position.y) as i64);" +
+        " maca_apply(_app, &{remit_expr(f)}); }} }}"
+    outside = which == "up"
+        ? ".on_mouse_up_out(gpui::MouseButton::Left, {body})"
+        : ""
+
+    ".{listener}(gpui::MouseButton::Left, {body}){outside}"
+}
+
+/** A drag folds the state; a pointer merely crossing the window does not.
+ * Every program would otherwise carry the same held flag, and pay a fold and
+ * a paint for a mouse that is only passing over.
+ */
+rmoved(f: Expr) -> str {
+    held = rfree_in(f, [])
+
+    ".on_mouse_move({{ {rheld_clones(held, 0)}" +
+        "move |_ev: &gpui::MouseMoveEvent, _win: &mut gpui::Window," +
+        " _app: &mut gpui::App| {{" +
+        " maca_pointer_at(f32::from(_ev.position.x) as i64," +
+        " f32::from(_ev.position.y) as i64);" +
+        " if _ev.pressed_button.is_some() {{" +
+        " maca_apply(_app, &{remit_expr(f)}); }} }} }})"
+}
+
+/** Files let go over an element, handed over as the paths they were. */
+rdropped(f: Expr) -> str {
+    held = rfree_in(f, [])
+
+    ".on_drop::<gpui::ExternalPaths>({{ {rheld_clones(held, 0)}" +
+        "move |_paths: &gpui::ExternalPaths, _win: &mut gpui::Window," +
+        " _app: &mut gpui::App| {{ maca_dropped_paths(_paths);" +
+        " maca_apply(_app, &{remit_expr(f)}); }} }})"
+}
+
+/** A colour is `0xRRGGBB`, or `0xAARRGGBB` when it carries an alpha, which is
+ * what a scrim over a window needs. Anything above three bytes is read as the
+ * four-byte form.
+ */
+rcolour(e: Expr) -> str =>
+    "{{ let _c = ({remit_expr(e)}) as u32;" +
+        " if _c > 0xFFFFFF {{ gpui::rgba(_c) }}" +
+        " else {{ gpui::rgb(_c).into() }} }}"
+
 rzone(name: str) -> str {
     if name == "drag" {
         "Drag"
@@ -1277,9 +1509,9 @@ rreceiver(e: Expr) -> str {
  */
 gpui_box(tag: str) -> str {
     if tag == "img" || tag == "svg" || tag == "canvas" {
-        "{tag}()"
+        "gpui::{tag}()"
     } else {
-        "div()"
+        "gpui::div()"
     }
 }
 
@@ -1299,9 +1531,9 @@ gpui_attr(a: Expr) -> str {
     } else if a.text == "font" {
         ".font_family({remit_expr(a.children.get(0))})"
     } else if a.text == "bg" {
-        ".bg(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
+        ".bg({rcolour(a.children.get(0))})"
     } else if a.text == "fg" {
-        ".text_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
+        ".text_color({rcolour(a.children.get(0))})"
     } else if a.text == "edge" {
         ".border_color(gpui::rgb(({remit_expr(a.children.get(0))}) as u32))"
     } else if a.text == "winop" {
@@ -1317,6 +1549,14 @@ gpui_attr(a: Expr) -> str {
 
         ".on_click({{ {rheld_clones(held, 0)}move |_ev, _win, _app|" +
             " maca_apply(_app, &{remit_expr(a.children.get(0))}) }})"
+    } else if a.text == "down" || a.text == "move" || a.text == "up" {
+        rmouse(a.text, a.children.get(0))
+    } else if a.text == "drop" {
+        rdropped(a.children.get(0))
+    } else if a.text == "width" {
+        ".w(gpui::px(({remit_expr(a.children.get(0))}) as f32))"
+    } else if a.text == "height" {
+        ".h(gpui::px(({remit_expr(a.children.get(0))}) as f32))"
     } else {
         ""
     }

@@ -1,8 +1,10 @@
 # Back ends
 
-Six, over one core IR. This page is what each one emits and what it refuses.
-What a *user* picks between is the handbook's targets chapter; this is the
-implementor's view.
+Six, over one core IR. Each one writes a language rather than an executable:
+what leaves Maca is C, JavaScript, Java, Rust, Elixir or Nix, and the
+toolchain of that language makes whatever runs. This page is what each one
+emits and what it refuses. What a *user* picks between is the handbook's
+targets chapter; this is the implementor's view.
 
 | target | crate | emits | for |
 |---|---|---|---|
@@ -139,6 +141,41 @@ it, and a hand-written shim does not scale past a few dozen flat functions.
   attach it to. An inner attribute such as `#![windows_subsystem = "windows"]`
   must open the crate, so it belongs to the raw block of the import written
   first.
+* **A desktop program is `start`, `view` and `key`, and the window is the
+  compiler's.** A module that declares `start() -> T` and `view(T) -> Element`
+  gets the whole host generated for it: the event loop, the window, a holder
+  for one value of `T`, the fold that turns a handler's `T -> T` into the next
+  state, the key bridge, and title-bar controls that act. `key(T, str) -> T`
+  is optional and takes the chord. No program writes an event loop, a `Render`
+  impl, a `use` line or a raw block, and a program that writes none of those
+  is a program with no Rust in it.
+* **The window's own controls act rather than only marking a zone.** Windows
+  hands a caption press to the application before it would move or minimise
+  the window, and gpui stops it there, so the generated host asks for the
+  system command itself (`WM_NCLBUTTONDOWN` for the drag, `WM_SYSCOMMAND` for
+  minimise, maximise and close) and calls gpui's own methods on every other
+  desktop. `zone="drag"|"min"|"max"|"close"` is what a program writes.
+* **The attributes an element takes beyond `class`:** `click=`, `down=`,
+  `move=`, `up=` and `drop=` each fold a `T -> T`; `at_x()` and `at_y()` give
+  the pointer in window coordinates, and `dropped_paths()` the files let go.
+  `move=` folds only while a button is held, so a pointer crossing the window
+  costs nothing. `up=` reaches its handler even when the pointer left the
+  element, which is what a drag that ends elsewhere needs. `width=` and
+  `height=` are pixels, for a size that came from a hand rather than a scale.
+  `bg=`/`fg=`/`edge=` take `0xRRGGBB`, or `0xAARRGGBB` when a scrim needs an
+  alpha.
+* **The key bridge is a contract.** Control gives `ctrl-<key>`; a named key
+  with shift gives `shift-<key>`; a single-character key gives the character
+  the keyboard produced; everything else is the bare name (`backspace`,
+  `escape`, `tab`, `enter`, `home`, `end`, `up`, `down`, `left`, `right`).
+* **The window's title and size come from `[window]` in `maca.toml`**, keys
+  `title`, `width` and `height`; with no title the package's name is used.
+  `start()` runs before the first paint, so a program that has slow work to do
+  does it on the first event rather than in `start`.
+* **A handler that blocks holds the window.** The generated fold times itself
+  and prints one line naming how long when it runs past 100ms. There is no
+  async here: a `click=` that runs a query freezes the window while it runs,
+  and now says so.
 * A `class=` word is a gpui style method with `-` written `_`, so the whole
   vocabulary is `gpui::Styled`'s method list and nothing else: `h-12` and
   `w-96` exist because `h_12` and `w_96` do, while `h-14` and `tracking-widest`

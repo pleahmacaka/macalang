@@ -38,9 +38,10 @@ test_root_page_links_the_site() {
 test_the_page_puts_the_language_in_a_box() {
     root = read_file(join(front_page_dir(), "index.html"))
 
-    assert(root.contains("Typed, compiled"), "says whether it is typed")
+    assert(root.contains("universal transpiler"), "says what kind of tool it is")
     assert(root.contains("no garbage collector"), "says whether it collects")
-    assert(root.contains("native binary"), "says what it compiles to")
+    assert(root.contains("no machine code of its own"),
+           "says the one thing it does not emit")
     assert(root.contains("Static, inferred"), "and again in the spec strip")
     assert(root.contains("Refcounted at compile time"), "how memory is freed")
 }
@@ -48,9 +49,10 @@ test_the_page_puts_the_language_in_a_box() {
 test_the_korean_page_answers_the_same_questions() {
     ko = read_file(join(front_page_dir(), "ko/home.html"))
 
-    assert(ko.contains("정적 타입"), "typed")
-    assert(ko.contains("가비지 컬렉터 없음"), "not collected")
-    assert(ko.contains("네이티브 바이너리"), "compiled to a binary")
+    assert(ko.contains("타입"), "typed")
+    assert(ko.contains("유니버설 트랜스파일러"), "says what kind of tool it is")
+    assert(ko.contains("기계어는 내지 않습니다"),
+           "and says the one thing it does not emit")
 }
 
 test_the_page_shows_code() {

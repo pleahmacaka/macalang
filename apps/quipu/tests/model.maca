@@ -2,8 +2,11 @@ import { Ide, Panels, opened, opened_file, target_of, panel_for, toggled,
          shown, paneled, bar_swung, menu_hit, held_all, promoted,
          closed_tab, stash_of, setting_hit, face, t, tree_hit, row_label,
          gutter, gutter_text, stops, tabs, picked, struck, hits, sought,
-         Span, line_spans, footing, selected_text, pasted, sel_on,
-         window_lines, first_shown, placed_click,
+         Span, line_spans, line_spans_in, kind_of, footing, selected_text,
+         pasted, sel_on,
+         window_lines, first_shown, placed_click, hit_at, hit_count,
+         saved_all, closed_all, filled, asked_knobs, fresh, arrived,
+         trusting, read_only,
          flame_frames, declared, house_rules,
          asked, knobs, reading, Pick, picks, matching,
          Bind, keymap, bound_to, rebound, clash,
@@ -20,10 +23,14 @@ blank() -> Ide =>
           ligs = true, thin = false, lang = "en", leaving = false,
           about = false, picking = false, spread = [], rows = [],
           term = false, cmd = "", shell = "", ran = [], undo_text = [],
-          undo_line = [], undo_col = [] }
+          undo_line = [], undo_col = [], finding = false, needle = "",
+          problems = [], controls = [], trusted = true, kind = "maca" }
 
 lined(text: str) -> Ide =>
     blank() with { text = text }
+
+controlled(text: str) -> Ide =>
+    blank() with { text = text, controls = asked_knobs(text) }
 
 test_the_target_is_read_off_the_source_and_not_chosen() {
     assert_eq(target_of("main() -> int => 0\n"), "native",
@@ -120,7 +127,7 @@ test_the_assistant_names_what_it_needs_rather_than_pretending() {
 }
 
 test_a_param_in_a_doc_comment_is_a_control_the_editor_offers() {
-    got = knobs(lined("/** Add two numbers.\n * @param a = slider(1..10)\n * @param b = toggle(off)\n */\nadd(a: int, b: int) -> int => a + b\n"))
+    got = knobs(controlled("/** Add two numbers.\n * @param a = slider(1..10)\n * @param b = toggle(off)\n */\nadd(a: int, b: int) -> int => a + b\n"))
 
     assert_eq(str(got.length()), "2",
               "two tags asked, two controls offered")
@@ -128,7 +135,7 @@ test_a_param_in_a_doc_comment_is_a_control_the_editor_offers() {
               "the control is bound to the name on the left")
     assert_eq(bound_call(got.get(0)), "slider(1..10)",
               "and to the control on the right")
-    assert_eq(str(knobs(lined("main() -> int => 0\n")).length()),
+    assert_eq(str(knobs(controlled("main() -> int => 0\n")).length()),
               "0", "a file that asks for none offers none")
 }
 
@@ -415,18 +422,20 @@ test_home_and_end_jump_the_line() {
     assert_eq(str(struck(ide, "home").col), "0", "and home returns")
 }
 
-test_the_panel_reads_its_cache_and_a_render_runs_nothing() {
+test_the_panel_is_filled_when_it_is_asked_for_and_never_on_a_render() {
     at = env_or("TMPDIR", "/tmp") + "/maca-ide-pane.maca"
     write_file(at, "main() -> int => 0\n")
 
-    assert_eq(shown(blank()), "", "an unfilled pane shows nothing")
-
     on_file = opened_file(blank(), at)
 
-    assert(shown(on_file).contains("== checks =="),
-           "opening a file fills the cache once, checks and all:" +
-               " {shown(on_file)}")
-    assert_eq(shown(on_file with { pane = "held" }), "held",
+    assert_eq(shown(on_file), "",
+              "opening a file runs no toolchain, so the window never waits")
+
+    asked = filled(on_file)
+
+    assert(asked.pane.contains("== checks =="),
+           "asking for it runs the compiler once: {asked.pane}")
+    assert_eq(shown(asked with { pane = "held" }), "held",
               "and the render only ever reads it back")
 
     remove_file(at)
@@ -668,4 +677,175 @@ test_the_buffer_draws_a_window_that_follows_the_cursor() {
 
     assert_eq(str(window_lines(short).length()), "2",
               "a short file draws every line it has")
+}
+
+test_find_walks_the_lines_that_hold_the_query() {
+    ide = struck(scripted("alpha\nbeta\nalpha again"), "ctrl-f")
+
+    assert(ide.finding, "the chord opens the find bar")
+
+    typed = struck(struck(struck(struck(struck(ide, "a"), "l"), "p"), "h"), "a")
+
+    assert_eq(typed.needle, "alpha", "the keys land on the query")
+    assert_eq(str(hit_count(typed)), "2", "two lines hold it")
+    assert_eq(str(hit_at(typed, "beta")), "-1", "and one does not")
+
+    next = struck(typed, "enter")
+
+    assert_eq(str(next.line), "2", "enter walks to the next line holding it")
+    assert_eq(str(struck(next, "enter").line), "0", "and wraps around")
+    assert(!struck(next, "escape").finding, "escape shuts the bar")
+}
+
+test_save_all_writes_the_stash_as_well() {
+    a = env_or("TMPDIR", "/tmp") + "/maca-ide-all-a.maca"
+    b = env_or("TMPDIR", "/tmp") + "/maca-ide-all-b.maca"
+    write_file(a, "aa")
+    write_file(b, "bb")
+
+    edited_a = struck(opened_file(blank(), a), "x")
+    on_b = struck(opened_file(edited_a, b), "y")
+    done = saved_all(on_b)
+
+    assert_eq(read_file(a), "xaa", "the buffer left in the stash was written")
+    assert_eq(read_file(b), "ybb", "and so was the open one")
+    assert(!done.dirty, "nothing is left unsaved")
+    assert_eq(str(done.stash_k.length()), "0", "and the stash is empty")
+
+    remove_file(a)
+    remove_file(b)
+}
+
+test_saving_a_broken_file_lists_what_the_checker_said() {
+    at = env_or("TMPDIR", "/tmp") + "/maca-ide-bad.maca"
+    write_file(at, "main() -> int => 0\n")
+
+    ide = opened_file(blank(), at)
+    broken = saved(ide with { text = "main() -> str => 1
+" })
+
+    assert(broken.problems.length() > 0,
+           "a file the checker refuses says so on save: {broken.pane}")
+
+    fixed = saved(opened_file(blank(), at) with { text = "main() -> int => 0\n" })
+
+    assert_eq(str(fixed.problems.length()), "0",
+              "and a file it accepts says nothing")
+
+    remove_file(at)
+}
+
+test_close_all_lets_go_of_every_tab() {
+    a = env_or("TMPDIR", "/tmp") + "/maca-ide-shut-a.maca"
+    write_file(a, "main() -> int => 0\n")
+
+    two = struck(opened_file(blank(), a), "x")
+    shut = closed_all(two)
+
+    assert_eq(shut.open, "", "no file is open")
+    assert_eq(str(shut.opens.length()), "0", "no tab is pinned")
+    assert_eq(str(shut.stash_k.length()), "0", "and nothing waits in the stash")
+
+    remove_file(a)
+}
+
+test_a_folder_that_is_no_workspace_is_not_walked() {
+    root = env_or("TMPDIR", "/tmp") + "/maca-ide-bare"
+    make_dir(root)
+    write_file(root + "/one.txt", "x")
+
+    ide = opened(root)
+
+    assert(ide.rows.length() <= 400,
+           "a folder is listed only as far as it can be read")
+    assert_eq(str(ide.files.length()), "0",
+              "and nothing under it is walked until it is trusted")
+
+    remove_file(root + "/one.txt")
+}
+
+test_a_crowded_folder_is_drawn_up_to_what_can_be_read() {
+    root = env_or("TMPDIR", "/tmp") + "/maca-ide-crowd"
+    make_dir(root)
+    write_file(root + "/maca.toml", "[package]\nname = \"c\"\n")
+
+    i = 0
+
+    while i < 450 {
+        write_file(root + "/f{str(i)}.maca", "main() -> int => 0\n")
+        i = i + 1
+    }
+
+    ide = opened(root)
+
+    assert(ide.rows.length() <= 400,
+           "the explorer stops where reading stops: {str(ide.rows.length())}")
+
+    i = 0
+
+    while i < 450 {
+        remove_file(root + "/f{str(i)}.maca")
+        i = i + 1
+    }
+
+    remove_file(root + "/maca.toml")
+}
+
+test_the_editor_starts_on_nothing_and_walks_nothing() {
+    ide = fresh()
+
+    assert_eq(ide.root, "", "no folder is chosen for the reader")
+    assert_eq(str(ide.rows.length()), "0", "so nothing is listed")
+    assert_eq(str(ide.files.length()), "0", "and nothing is walked")
+}
+
+test_a_folder_is_restricted_until_it_is_trusted() {
+    root = env_or("TMPDIR", "/tmp") + "/maca-ide-trust"
+    make_dir(root)
+    write_file(root + "/maca.toml", "[package]\nname = \"t\"\n")
+    write_file(root + "/a.maca", "main() -> int => 0\n")
+
+    shut = arrived(fresh(), root)
+
+    assert(read_only(shut), "a folder opens restricted")
+    assert(shut.rows.length() > 0, "its top level is listed to be looked at")
+    assert_eq(str(shut.files.length()), "0",
+              "but nothing under it is walked yet")
+
+    reading = opened_file(shut, root + "/a.maca")
+    typed = struck(reading, "x")
+
+    assert_eq(typed.text, reading.text, "a restricted buffer takes no edit")
+    assert(!typed.dirty, "and never says it was changed")
+    assert_eq(str(struck(reading, "down").line), "1",
+              "while the keys that only look still move")
+
+    told = trusting(shut)
+
+    assert(!read_only(told), "trusting lifts it")
+    assert(told.files.length() > 0, "and the walk happens then")
+
+    remove_file(root + "/a.maca")
+    remove_file(root + "/maca.toml")
+}
+
+test_a_file_is_painted_in_what_it_is_written_in() {
+    assert_eq(kind_of("a/b.maca"), "maca", "the name says the language")
+    assert_eq(kind_of("maca.toml"), "toml", "and a manifest is not Maca")
+    assert_eq(kind_of("readme.md"), "md", "nor is prose")
+    assert_eq(kind_of("LICENCE"), "", "a name that says nothing paints nothing")
+
+    conf = line_spans_in("toml", "name = \"quipu\"")
+
+    assert_eq(str(conf.length()), "3", "a config line is key, mark and value")
+    assert_eq(conf.get(0).said, "name ", "the key leads")
+
+    note = line_spans_in("md", "# Heading")
+
+    assert_eq(str(note.length()), "1", "a heading is one span")
+
+    plain = line_spans_in("", "whatever this is")
+
+    assert_eq(str(plain.length()), "1", "and an unknown kind is left alone")
+    assert_eq(plain.get(0).said, "whatever this is", "exactly as typed")
 }

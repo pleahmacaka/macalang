@@ -1,13 +1,13 @@
 # 프로그램이 도착하는 곳
 
-같은 소스가 네이티브 바이너리로도, 브라우저 페이지로도, JVM으로도, Rust로도,
-마이크로컨트롤러로도, 머신의 설정으로도 컴파일됩니다. 어느 쪽이 나오는지는
-플래그가 정합니다.
+같은 소스가 C로도, 브라우저 페이지로도, JVM으로도, Rust로도,
+마이크로컨트롤러용 C로도, 머신의 설정으로도 번역됩니다. 바이너리는 그 C를
+`cc`가 만든 것입니다. 어느 쪽이 나오는지는 플래그가 정합니다.
 
 ## 플래그 여섯
 
 ```
-maca build app.maca -o app                 # 네이티브 바이너리 (기본값)
+maca build app.maca -o app                 # C를 거친 바이너리 (기본값)
 maca build app.maca --target js -o out     # 페이지
 maca build app.maca --target jvm           # Java 소스
 maca build app.maca --target rust          # Rust 소스

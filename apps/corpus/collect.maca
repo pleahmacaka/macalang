@@ -77,12 +77,12 @@ keep(name: str, spdx: str) -> bool {
     true
 }
 
-note(name: str, spdx: str, stage: str, why: str) -> bool {
+note(name: str, spdx: str, step: str, why: str) -> bool {
     append_file(Failures,
                 failure_line(Failure {
                     pkg = name,
                     license = spdx,
-                    stage = stage,
+                    step = step,
                     why = why,
                 }) + "\n")
     false

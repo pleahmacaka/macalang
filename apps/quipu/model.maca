@@ -61,6 +61,12 @@ Ide = {
     undo_text: str[],
     undo_line: int[],
     undo_col:  int[],
+    finding: bool,
+    needle:  str,
+    problems: str[],
+    controls: Tag[],
+    trusted: bool,
+    kind:    str,
 }
 
 /** One line of the explorer: what it is, how deep it sits, and whether it is
@@ -75,11 +81,12 @@ Row = {
 
 Panels = ["rust", "c", "js", "flame", "checks", "names", "memory", "ask", "read", "open", "keys", "about"]
 
-maca_bin() -> str {
-    named = env_or("MACA", "maca")
-
-    named.starts_with("/") ? named : cwd() + "/" + named
-}
+/** The toolchain this editor drives: what `MACA` names, or whatever `maca`
+ * the desktop's own path resolves. A relative name is left alone, because a
+ * guess at the working directory is how the editor used to hang.
+ */
+maca_bin() -> str =>
+    env_or("MACA", "maca")
 
 /** Every `.maca` file under the tree, which is what the file list shows; a
  * directory with no manifest is not a workspace, and walking one from a Start
@@ -114,9 +121,35 @@ skipped_dir(name: str) -> bool =>
     name.starts_with(".") || name == "target" || name == "node_modules"
         || name == "bin" || name == "_build" || name == "deps"
 
-/** The editor opens on the first file it can see, because an editor showing
- * nothing is a report and not an editor.
+/** The editor starts on nothing: no folder is opened for the reader, because
+ * a window that walks whatever directory it was launched from is a window
+ * that reads what nobody asked it to.
  */
+fresh() -> Ide =>
+    opened("")
+
+/** A folder is opened in restricted mode: its top level is listed so it can
+ * be looked at, and nothing else runs until the reader trusts it.
+ */
+arrived(ide: Ide, root: str) -> Ide =>
+    (ide with { root = root, trusted = false, files = [], spread = [root],
+                rows = listed(root, 0), open = "", text = "", pane = "",
+                problems = [], opens = [], preview = "", stash_k = [],
+                stash_v = [], dirty = false, line = 0, col = 0 })
+
+/** Trusting a folder is what starts the walk, the checker and every other
+ * thing that reads or runs what is in it.
+ */
+trusting(ide: Ide) -> Ide {
+    told = ide with { trusted = true, files = sources(ide.root) }
+
+    retreed(told)
+}
+
+/** A buffer is read until the folder it came from is trusted. */
+read_only(ide: Ide) -> bool =>
+    !ide.trusted
+
 opened(root: str) -> Ide {
     bare = Ide { root = root, files = sources(root), open = "", text = "",
                  target = "", panel = "names", output = "", breaks = [],
@@ -127,13 +160,22 @@ opened(root: str) -> Ide {
                  thin = false, lang = "en", leaving = false, about = false,
                  picking = false, spread = [root], rows = [], term = false,
                  cmd = "", shell = "", ran = [], undo_text = [],
-                 undo_line = [], undo_col = [] }
+                 undo_line = [], undo_col = [], finding = false,
+                 needle = "", problems = [], controls = [], trusted = false,
+                 kind = "" }
 
-    grown = retreed(bare)
+    if root == "" || !is_dir(root) {
+        return bare with { rows = [] }
+    }
 
-    grown.files.length() == 0 ? grown
-                              : opened_file(grown, grown.files.get(0))
+    arrived(bare, root)
 }
+
+/** No more rows than an explorer can be read at: a directory of thousands is
+ * a directory nobody scrolls, and drawing it is what stops the window
+ * answering.
+ */
+Roomy = 400
 
 /** The explorer's lines, folders before files, and only the folders the
  * reader opened walked into.
@@ -145,10 +187,12 @@ spread_rows(ide: Ide, dir: str, depth: int) -> Row[] {
     out: Row[] = []
 
     for r in listed(dir, depth) {
-        out = out.push(r)
+        if out.length() < Roomy {
+            out = out.push(r)
 
-        if r.dir && ide.spread.index_of(r.path) >= 0 {
-            out = out + spread_rows(ide, r.path, depth + 1)
+            if r.dir && ide.spread.index_of(r.path) >= 0 {
+                out = out + spread_rows(ide, r.path, depth + 1)
+            }
         }
     }
 
@@ -159,8 +203,15 @@ spread_rows(ide: Ide, dir: str, depth: int) -> Row[] {
 listed(dir: str, depth: int) -> Row[] {
     dirs: Row[] = []
     files: Row[] = []
+    seen = 0
 
     for name in list_dir(dir) {
+        seen = seen + 1
+
+        if seen > Roomy {
+            return by_name(dirs) + by_name(files)
+        }
+
         at = "{dir}/{name}"
 
         if is_dir(at) {
@@ -235,11 +286,11 @@ opened_file(ide: Ide, path: str) -> Ide {
     body = stash_of(kept, path) != "" ? stash_of(kept, path) : read_file(path)
     tabs2 = kept.opens.index_of(path) >= 0 ? kept
                                            : kept with { preview = path }
-    held = tabs2 with { open = path, text = body, target = target_of(body),
-                        output = "", breaks = [], line = 0, col = 0,
-                        dirty = stash_of(kept, path) != "", marking = false }
-
-    held with { pane = paneled(held) }
+    (tabs2 with { open = path, text = body, target = target_of(body),
+                  output = "", breaks = [], line = 0, col = 0,
+                  dirty = stash_of(kept, path) != "", marking = false,
+                  pane = "", problems = [], controls = asked_knobs(body),
+                  kind = kind_of(path) })
 }
 
 /** A buffer left unsaved is stashed by path, and switching back restores it.
@@ -481,9 +532,9 @@ transpiled(path: str, panel: str) -> str {
     remove_file(out)
 
     said = panel == "c"
-        ? output("sh", ["-c", "'{maca_bin()}' '{path}' '{out}' 2>&1"])
-        : output("sh", ["-c", "'{maca_bin()}' build '{path}' --target {panel}" +
-                                  " -o '{out}' 2>&1"])
+        ? ran_line("\"{maca_bin()}\" \"{path}\" \"{out}\" 2>&1")
+        : ran_line("\"{maca_bin()}\" build \"{path}\" --target {panel}" +
+                       " -o \"{out}\" 2>&1")
     got = read_file(out)
     rs = read_file(out + ".rs")
 
@@ -509,8 +560,8 @@ flame_frames(svg: str) -> int =>
     svg.split("<rect").length() - 1
 
 checked(path: str, target: str) -> str {
-    said = output("sh", ["-c", "'{maca_bin()}' check '{path}' --target {target}" +
-                                   " 2>&1"])
+    said = ran_line("\"{maca_bin()}\" check \"{path}\" --target {target}" +
+                        " 2>&1")
 
     said.trim() == "" ? "no diagnostics" : said
 }
@@ -570,9 +621,23 @@ picked(ide: Ide, name: str) -> Ide {
         return ide
     }
 
-    held = ide with { panel = name }
+    ide with { panel = name }
+}
 
-    held with { pane = paneled(held) }
+/** The panel is filled when it is asked for, never while a file is opened:
+ * every line of it costs a run of the toolchain, and a render must not wait
+ * on a compiler.
+ */
+filled(ide: Ide) -> Ide {
+    if read_only(ide) {
+        return ide with { pane = t(ide, "restricted") }
+    }
+
+    if ide.open == "" {
+        return ide with { pane = t(ide, "no-file") }
+    }
+
+    ide with { pane = paneled(ide) }
 }
 
 /** One key, struck: Ctrl+P opens the quick menu, and while it is open the keys
@@ -597,6 +662,18 @@ struck(ide: Ide, key: str) -> Ide {
 
     if ide.term {
         return typed_at_shell(ide, key)
+    }
+
+    if key == "ctrl-shift-w" {
+        return closed_all(ide with { bar = "" })
+    }
+
+    if key == "ctrl-f" {
+        return ide with { finding = !ide.finding, bar = "" }
+    }
+
+    if ide.finding && !ide.menu {
+        return sought_at(ide, key)
     }
 
     if key == "ctrl-o" {
@@ -773,8 +850,14 @@ asked_body(ide: Ide) -> str =>
 /** The controls the open file asked for, which is every `@param` its doc
  * comments carry.
  */
+/** The controls the open file asked for, read when it was opened or written
+ * rather than on every frame.
+ */
 knobs(ide: Ide) -> Tag[] =>
-    tags(ide.text)
+    ide.controls
+
+asked_knobs(text: str) -> Tag[] =>
+    text.length() > 200000 ? [] : tags(text)
 
 /** The file as prose: what its comments say, with the code between them left
  * out.
@@ -1048,28 +1131,32 @@ Line = {
 Shown = 42
 
 /** The first line drawn, kept so the cursor sits inside the window. */
-first_shown(ide: Ide) -> int {
-    total = rows_of(ide).length()
+first_shown(ide: Ide) -> int =>
+    window_top(rows_of(ide).length(), ide.line)
 
+window_top(total: int, line: int) -> int {
     if total <= Shown {
         return 0
     }
 
-    want = ide.line - Shown / 2
+    want = line - Shown / 2
     last = total - Shown
 
     want < 0 ? 0 : (want > last ? last : want)
 }
 
-/** The lines the buffer draws, numbered as they are in the file. */
+/** The lines the buffer draws, numbered as they are in the file. Only the
+ * window is built: a render that walks a whole file is a render that stops
+ * answering on a large one.
+ */
 window_lines(ide: Ide) -> Line[] {
-    from = first_shown(ide)
-    all = lines_of(ide)
+    rs = rows_of(ide)
+    from = window_top(rs.length(), ide.line)
     out: Line[] = []
     i = from
 
-    while i < all.length() && i < from + Shown {
-        out = out.push(all.get(i))
+    while i < rs.length() && i < from + Shown {
+        out = out.push(Line { n = i + 1, said = rs.get(i) })
         i = i + 1
     }
 
@@ -1100,6 +1187,10 @@ tail(path: str) -> str {
 edited(ide: Ide, key: str) -> Ide {
     if ide.open == "" {
         ide
+    } else if read_only(ide) {
+        looked_at(ide, key)
+    } else if key == "ctrl-shift-s" {
+        saved_all(ide)
     } else if key == "ctrl-s" {
         saved(ide)
     } else if key == "ctrl-z" {
@@ -1128,6 +1219,27 @@ edited(ide: Ide, key: str) -> Ide {
         put(cleared(promoted(ide)), "    ")
     } else if key.length() == 1 {
         put(cleared(promoted(ide)), key)
+    } else {
+        ide
+    }
+}
+
+/** In restricted mode the keys still move and select, and nothing writes. */
+looked_at(ide: Ide, key: str) -> Ide {
+    if key == "up" {
+        placed_at(let_go(ide), ide.line - 1, ide.col)
+    } else if key == "down" {
+        placed_at(let_go(ide), ide.line + 1, ide.col)
+    } else if key == "left" {
+        stepped_back(let_go(ide))
+    } else if key == "right" {
+        stepped_on(let_go(ide))
+    } else if key.starts_with("shift-") {
+        stretched(ide, key.slice(6, key.length()))
+    } else if key == "home" {
+        let_go(ide) with { col = 0 }
+    } else if key == "end" {
+        let_go(ide) with { col = row_at(ide, ide.line).length() }
     } else {
         ide
     }
@@ -1354,11 +1466,119 @@ drop_back_ints(xs: int[]) -> int[] {
     out
 }
 
+/** The find bar: the query is typed, Enter walks to the next line holding it,
+ * and Escape puts the buffer back.
+ */
+sought_at(ide: Ide, key: str) -> Ide {
+    if key == "escape" {
+        ide with { finding = false }
+    } else if key == "enter" {
+        jumped(ide)
+    } else if key == "backspace" {
+        ide with { needle = shorn(ide.needle) }
+    } else if key.length() == 1 {
+        ide with { needle = ide.needle + key }
+    } else {
+        ide
+    }
+}
+
+/** The next line at or after the cursor that holds the query, wrapping once so
+ * every match is reachable.
+ */
+jumped(ide: Ide) -> Ide {
+    if ide.needle == "" {
+        return ide
+    }
+
+    at = next_hit(ide, ide.line + 1, rows_of(ide).length())
+
+    landed = at >= 0 ? at : next_hit(ide, 0, ide.line + 1)
+
+    landed < 0 ? ide : placed_at(ide, landed, 0)
+}
+
+next_hit(ide: Ide, from: int, upto: int) -> int {
+    rs = rows_of(ide)
+    i = from
+
+    while i < upto && i < rs.length() {
+        if rs.get(i).contains(ide.needle) {
+            return i
+        }
+
+        i = i + 1
+    }
+
+    0 - 1
+}
+
+/** Where the query sits on a line, or -1 when the line does not hold it. */
+hit_at(ide: Ide, said: str) -> int {
+    if !ide.finding || ide.needle == "" {
+        return 0 - 1
+    }
+
+    said.index_of(ide.needle)
+}
+
+/** How many lines hold the query, which is what the find bar counts. */
+hit_count(ide: Ide) -> int {
+    if ide.needle == "" {
+        return 0
+    }
+
+    n = 0
+
+    for r in rows_of(ide) {
+        if r.contains(ide.needle) {
+            n = n + 1
+        }
+    }
+
+    n
+}
+
+/** Save every buffer that was touched, the open one and the ones waiting in
+ * the stash.
+ */
+saved_all(ide: Ide) -> Ide {
+    i = 0
+
+    while i < ide.stash_k.length() {
+        write_file(ide.stash_k.get(i), ide.stash_v.get(i))
+        i = i + 1
+    }
+
+    (saved(ide) with { stash_k = [], stash_v = [] })
+}
+
 saved(ide: Ide) -> Ide {
+    if read_only(ide) {
+        return ide
+    }
+
     write_file(ide.open, ide.text)
 
-    ide with { dirty = false }
+    (ide with { dirty = false, problems = complaints(ide),
+                controls = asked_knobs(ide.text) })
 }
+
+/** What the checker says about the file just written, a line a complaint, so
+ * a mistake is seen where it was made rather than on the next build.
+ */
+complaints(ide: Ide) -> str[] {
+    said = checked(ide.open, ide.target)
+
+    said.trim() == "" || said.contains("no diagnostics") ? [] : lines(said)
+}
+
+/** Every tab let go of at once, which is what a reader wants after a detour.
+ */
+closed_all(ide: Ide) -> Ide =>
+    (ide with { opens = [], preview = "", open = "", text = "", dirty = false,
+                stash_k = [], stash_v = [], pane = "", problems = [],
+                line = 0, col = 0, marking = false })
 
 rows_of(ide: Ide) -> str[] =>
     ide.text.split(chr(10))
@@ -1492,16 +1712,173 @@ HueNote = 6055792
 HueCall = 6402031
 HueType = 15057275
 
-/** The line cut into coloured spans by a small scan: comments whole, strings
- * to their close, numbers, names against the keyword list, capitals as types.
+/** What a file is written in, read off its name, because a `.toml` painted
+ * as Maca is a file painted wrong.
  */
-line_spans(said: str) -> Span[] {
-    if said.trim().starts_with("//") || said.trim().starts_with("*") ||
-            said.trim().starts_with("/*") {
+kind_of(path: str) -> str {
+    name = tail(path).lower()
+
+    if name.ends_with(".maca") {
+        "maca"
+    } else if name.ends_with(".toml") || name.ends_with(".ini")
+            || name.ends_with(".cfg") {
+        "toml"
+    } else if name.ends_with(".json") {
+        "json"
+    } else if name.ends_with(".md") {
+        "md"
+    } else if name.ends_with(".rs") || name.ends_with(".c")
+            || name.ends_with(".h") || name.ends_with(".js")
+            || name.ends_with(".ts") || name.ends_with(".ex")
+            || name.ends_with(".java") || name.ends_with(".py")
+            || name.ends_with(".nix") {
+        "code"
+    } else {
+        ""
+    }
+}
+
+RustWords = ["fn", "let", "mut", "pub", "use", "struct", "enum", "impl",
+             "match", "if", "else", "for", "while", "return", "const",
+             "static", "move", "async", "await", "true", "false", "def",
+             "class", "import", "from", "export", "function", "var", "int",
+             "char", "void", "double", "float", "long", "unsigned", "typedef",
+             "struct", "switch", "case", "break", "continue", "do", "defmodule",
+             "defp", "when", "end", "in", "with", "self", "type"]
+
+/** The line cut into coloured spans, in whatever the file is written in. A
+ * kind nobody paints is left as it was typed.
+ */
+line_spans_in(kind: str, said: str) -> Span[] {
+    if kind == "maca" || kind == "code" {
+        return code_spans(kind, said)
+    }
+
+    if kind == "toml" {
+        return toml_spans(said)
+    }
+
+    if kind == "json" {
+        return span_scan(said.chars(), 0, "", [])
+    }
+
+    if kind == "md" {
+        return md_spans(said)
+    }
+
+    [Span { hue = HueInk, said = said }]
+}
+
+/** The old scan, which is Maca's, and the same shape for the languages that
+ * write comments and strings the same way.
+ */
+code_spans(kind: str, said: str) -> Span[] {
+    trimmed = said.trim()
+
+    if trimmed.starts_with("//") || trimmed.starts_with("*")
+            || trimmed.starts_with("/*") || trimmed.starts_with("#") {
         return [Span { hue = HueNote, said = said }]
     }
 
-    span_scan(said.chars(), 0, "", [])
+    span_scan_in(kind, said.chars(), 0, "", [])
+}
+
+/** A key, its value and the section it sits under, which is all a config file
+ * has.
+ */
+toml_spans(said: str) -> Span[] {
+    trimmed = said.trim()
+
+    if trimmed.starts_with("#") {
+        return [Span { hue = HueNote, said = said }]
+    }
+
+    if trimmed.starts_with("[") {
+        return [Span { hue = HueType, said = said }]
+    }
+
+    cut = said.index_of("=")
+
+    if cut < 0 {
+        return [Span { hue = HueInk, said = said }]
+    }
+
+    [Span { hue = HueCall, said = said.slice(0, cut) },
+     Span { hue = HueInk, said = "=" },
+     Span { hue = HueStr, said = said.slice(cut + 1, said.length()) }]
+}
+
+/** A heading, a bullet and a fence, which is what a reader looks for. */
+md_spans(said: str) -> Span[] {
+    trimmed = said.trim()
+
+    if trimmed.starts_with("#") {
+        return [Span { hue = HueKey, said = said }]
+    }
+
+    if trimmed.starts_with("```") {
+        return [Span { hue = HueNote, said = said }]
+    }
+
+    if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+        return [Span { hue = HueCall, said = said }]
+    }
+
+    [Span { hue = HueInk, said = said }]
+}
+
+line_spans(said: str) -> Span[] =>
+    line_spans_in("maca", said)
+
+span_scan_in(kind: str, cs: str[], i: int, held: str,
+             acc: Span[]) -> Span[] {
+    if i >= cs.length() {
+        return held == "" ? acc : acc.push(Span { hue = HueInk, said = held })
+    }
+
+    c = cs.get(i)
+
+    if c == "\"" {
+        shut = string_close(cs, i + 1)
+        lit = piece(cs, i, shut + 1)
+
+        span_scan_in(kind, cs, shut + 1, "",
+                     plained(acc, held).push(Span { hue = HueStr,
+                                                    said = lit }))
+    } else if c.is_ascii_digit() && !word_tail(cs, i) {
+        stop = number_close(cs, i)
+
+        span_scan_in(kind, cs, stop, "",
+                     plained(acc, held).push(Span { hue = HueNum,
+                                                    said = piece(cs, i,
+                                                                 stop) }))
+    } else if c.is_alpha() || c == "_" {
+        stop = word_close(cs, i)
+        word = piece(cs, i, stop)
+
+        span_scan_in(kind, cs, stop, "",
+                     plained(acc, held).push(Span { hue = word_hue_in(kind, cs,
+                                                                      word,
+                                                                      stop),
+                                                    said = word }))
+    } else {
+        span_scan_in(kind, cs, i + 1, held + c, acc)
+    }
+}
+
+word_hue_in(kind: str, cs: str[], word: str, stop: int) -> int {
+    words = kind == "maca" ? Keywords : RustWords
+
+    if words.index_of(word) >= 0 {
+        HueKey
+    } else if word.slice(0, 1).upper() == word.slice(0, 1) &&
+            word.slice(0, 1).is_alpha() {
+        HueType
+    } else if stop < cs.length() && cs.get(stop) == "(" {
+        HueCall
+    } else {
+        HueInk
+    }
 }
 
 span_scan(cs: str[], i: int, held: str, acc: Span[]) -> Span[] {
@@ -1619,6 +1996,10 @@ menu_hit(ide: Ide, act: str) -> Ide {
         shut with { menu = true, seek = "", pick = 0 }
     } else if act == "folder" {
         shut with { picking = true }
+    } else if act == "shut-all" {
+        closed_all(shut)
+    } else if act == "trust" {
+        trusting(shut)
     } else if act == "about" {
         shut with { about = true }
     } else if act == "keys" {
@@ -1662,7 +2043,7 @@ setting_hit(ide: Ide, act: str) -> Ide {
 Keys18 = ["file", "edit", "help", "open", "save", "all", "settings", "keys",
           "about", "explorer", "settings-title", "ligatures", "cursor",
           "close", "no-file", "files", "lang", "folder", "no-workspace",
-          "empty"]
+          "empty", "restricted", "trust", "trust-ask"]
 
 english() -> Lang =>
     Lang { tag = "en", keys = Keys18,
@@ -1670,7 +2051,9 @@ english() -> Lang =>
                     "Settings", "Key Bindings", "About Quipu", "EXPLORER",
                     "SETTINGS", "Ligatures", "Cursor", "Close", "no file open",
                     "files", "Language", "Open Folder...",
-                    "no folder open", "nothing here"] }
+                    "no folder open", "nothing here", "restricted mode",
+                    "Trust this folder",
+                    "Nothing is read or run until you trust it."] }
 
 korean() -> Lang =>
     Lang { tag = "ko", keys = Keys18,
@@ -1678,7 +2061,8 @@ korean() -> Lang =>
                     "설정", "키 바인딩", "Quipu 정보", "탐색기", "설정",
                     "합자", "커서", "닫기", "열린 파일 없음", "파일",
                     "언어", "폴더 열기...", "열린 폴더 없음",
-                    "비어 있음"] }
+                    "비어 있음", "제한 모드", "이 폴더 신뢰하기",
+                    "신뢰하기 전에는 아무것도 읽거나 실행하지 않습니다."] }
 
 t(ide: Ide, key: str) -> str =>
     said(picked_lang([english(), korean()], ide.lang), key)
@@ -1715,9 +2099,21 @@ obeyed(ide: Ide) -> Ide {
                 ran = ide.ran.push(ide.cmd) })
 }
 
+/** One command line, run by whatever shell this desktop has. */
+ran_line(line: str) -> str =>
+    on_windows() ? output("cmd", ["/c", whole(line)])
+                 : output("sh", ["-c", line])
+
+/** `cmd /c` drops the first and last quote of the line it is given, so a
+ * line that starts at a quoted program comes apart in the middle. Another
+ * pair around the whole thing is what survives that.
+ */
+whole(line: str) -> str =>
+    line.starts_with("\"") ? "\"{line}\"" : line
+
 shell_said(root: str, cmd: str) -> str {
     out = on_windows()
-        ? output("cmd", ["/c", "cd /d \"{root}\" && {cmd} 2>&1"])
+        ? output("cmd", ["/c", whole("cd /d \"{root}\" && {cmd} 2>&1")])
         : output("sh", ["-c", "cd '{root}' && {cmd} 2>&1"])
 
     out.trim() == "" ? "(no output)" : out

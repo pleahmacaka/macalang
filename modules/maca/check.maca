@@ -108,8 +108,12 @@ joined(env: Env, want: Ty, got: Ty) -> Env {
     note(with_infer(env, step.infer), step.error)
 }
 
+/** A written `[]` is a list of something not yet named, and it is still a
+ * list: measuring the name's length instead let `out = []` reach a `push`
+ * nobody defined.
+ */
 is_array_name(name: str) -> bool =>
-    name.length() > 2 && name.slice(name.length() - 2, name.length()) == "[]"
+    name.ends_with("[]")
 
 ty_named(name: str) -> Ty {
     if name == "" {
@@ -564,7 +568,7 @@ is_host_builtin(name: str) -> bool =>
         || name == "input" || name == "read_stdin" || name == "at_eof"
         || name == "failures" || name == "alloc_count" || name == "reuse_count"
         || name == "map" || name == "data" || name == "stored"
-        || name == "styles" || name == "list_dir"
+        || name == "styles" || name == "list_dir" || name == "dropped_paths"
         || is_register_builtin(name)
 
 is_register_builtin(name: str) -> bool =>
@@ -703,7 +707,7 @@ builtin_type(name: str) -> Ty {
         t_int()
     } else if is_bool_builtin(name) {
         t_bool()
-    } else if name == "list_dir" {
+    } else if name == "list_dir" || name == "dropped_paths" {
         t_array(t_str())
     } else if is_io_builtin(name) {
         t_unit()
@@ -735,6 +739,7 @@ is_int_builtin(name: str) -> bool =>
     name == "int" || name == "exec" || name == "len" || name == "ord"
         || name == "sign" || name == "gcd" || name == "now_ms"
         || name == "file_size" || name == "modified_ms"
+        || name == "at_x" || name == "at_y"
 
 is_bool_builtin(name: str) -> bool =>
     name == "assert" || name == "assert_eq" || name == "at_eof"
@@ -4227,6 +4232,11 @@ handler_kids(s: Stmt, xs: Expr[], i: int, acc: Diagnostic[]) -> Diagnostic[] {
 /** A quoted value is what HTML has always had, and it is text like any other
  * attribute.
  */
+/** The attributes that carry a function rather than text: a click, a pointer
+ * press, a drag, a release and a file let go.
+ */
+Handlers = ["click", "down", "move", "up", "drop"]
+
 is_dom_handler(a: Expr) -> bool {
     v = a.children.get(0)
 

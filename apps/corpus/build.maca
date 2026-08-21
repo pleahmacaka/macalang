@@ -100,8 +100,8 @@ run_suite(p: Package, scratch: str) -> Failure[] {
     }
 }
 
-failed(p: Package, stage: str, why: str) -> Failure =>
-    Failure { pkg = p.name, license = p.license, stage = stage, why = why }
+failed(p: Package, step: str, why: str) -> Failure =>
+    Failure { pkg = p.name, license = p.license, step = step, why = why }
 
 main(argv: str[]) -> int {
     if !file_exists(Collected) {
@@ -129,14 +129,14 @@ run_all(ps: Package[], i: int, kept: int, lost: int) -> int {
             err(ok("  " + p.name))
             run_all(ps, i + 1, kept + 1, lost)
         } else {
-            err(grey("  " + p.name + ": " + problems.get(0).stage))
+            err(grey("  " + p.name + ": " + problems.get(0).step))
             log_failures(problems, 0)
             run_all(ps, i + 1, kept, lost + 1)
         }
     }
 }
 
-/** One package end to end, appending its record when every stage answers. */
+/** One package end to end, appending its record when every step answers. */
 attempt(p: Package) -> Failure[] {
     if !permits(p.license) {
         one(failed(p, "licence", refusal(p.license)))

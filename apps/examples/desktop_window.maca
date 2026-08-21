@@ -1,0 +1,86 @@
+/* A desktop program, whole: a window with its own title bar, a pane whose
+ * edge is dragged to resize it, and a counter that answers clicks and keys.
+ *
+ * Nothing here opens a window, and nothing here is Rust. `start` gives the
+ * first state, `view` draws it, `key` answers the keyboard, and the compiler
+ * writes the rest.
+ */
+
+Desk = {
+    rail:  int
+    held:  bool
+    count: int
+}
+
+Ground = 2634036
+
+Card = 2172203
+
+Ink = 11252415
+
+Faint = 6055792
+
+Least = 160
+
+Most = 560
+
+start() -> Desk =>
+    Desk { rail = 256, held = false, count = 0 }
+
+view(d: Desk) -> Element =>
+    div(class="flex flex-col size-full", bg=Ground, fg=Ink,
+        up=(x => let_go(x)),
+        move=(x => dragged(x)),
+        bar(),
+        div(class="flex flex-row grow p-2 gap-2",
+            div(width=d.rail, class="p-3 rounded-md", bg=Card, "the list"),
+            grip(),
+            div(id="body", click=(x => bumped(x)),
+                class="grow p-3 rounded-md cursor-pointer", bg=Card,
+                "clicked {str(d.count)} times, r resets")))
+
+/** The bar the system would have drawn. A press on one of these does what it
+ * says, and nothing in this file explains how.
+ */
+bar() -> Element =>
+    div(class="flex flex-row items-center h-10 px-3 gap-1", bg=Card,
+        div(class="text-xs", fg=Faint, "desktop_window"),
+        div(id="drag", zone="drag", winop="drag", class="grow h-10", ""),
+        div(id="min", zone="min", winop="min",
+            class="w-11 h-10 cursor-pointer", "_"),
+        div(id="max", zone="max", winop="max",
+            class="w-11 h-10 cursor-pointer", "o"),
+        div(id="shut", zone="close", winop="close",
+            class="w-11 h-10 cursor-pointer", "x"))
+
+/** The edge between the panes. Pressing it takes hold; while it is held the
+ * pointer says how wide the list is.
+ */
+grip() -> Element =>
+    div(id="grip", class="w-1 cursor-col-resize", bg=Faint,
+        down=(x => take_hold(x)), "")
+
+take_hold(d: Desk) -> Desk =>
+    d with { held = true }
+
+let_go(d: Desk) -> Desk =>
+    d with { held = false }
+
+dragged(d: Desk) -> Desk =>
+    d.held ? d with { rail = held_between(at_x(), Least, Most) } : d
+
+bumped(d: Desk) -> Desk =>
+    d with { count = d.count + 1 }
+
+key(d: Desk, chord: str) -> Desk =>
+    chord == "r" ? d with { count = 0 } : d
+
+held_between(x: int, least: int, most: int) -> int {
+    if x < least {
+        least
+    } else if x > most {
+        most
+    } else {
+        x
+    }
+}

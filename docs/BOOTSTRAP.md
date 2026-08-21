@@ -4,9 +4,9 @@ Maca compiles itself. The seed it grows from is `bootstrap/maca.c`: the
 compiler as the compiler emitted it, one file, libc and nothing else.
 
 ```
-bootstrap/maca.c  ──cc──▶  a compiler  ──compiles──▶  stage-1 (modules/maca/*.maca)
+bootstrap/maca.c  ──cc──▶  a compiler  ──compiles──▶  the transpiler (modules/maca/*.maca)
                                                            │
-                                                           └──compiles──▶ stage-2
+                                                           └──compiles──▶ the transpiler it builds in turn
                                                                           (identical)
 ```
 
@@ -22,7 +22,7 @@ cmp one/maca two/maca                        # fixed point ⇒ self-hosted
 
 The seed replaces the Rust workspace, which used to hold this position and can
 no longer fill it: a compiler that the Rust workspace built from today's
-`modules/maca/*.maca` cannot lex a forty-byte program. Stage-0 was frozen while
+`modules/maca/*.maca` cannot lex a forty-byte program. The seed was frozen while
 the language it compiles kept moving, and the two finally parted. Regenerate the
 seed with `maca apps/maca1/main.maca bootstrap/maca.c` and check that the file it
 writes still reaches the fixed point above.
@@ -53,7 +53,7 @@ compiler builds is about fifty seconds; running it is
 
 Comparing the emitted C is still the half that catches a divergence early, and
 the demo equality is the half that matters most, because `cmp` alone can be
-silent while stage-1 and stage-2 are different programs that happen to agree on
+silent while the transpiler and the transpiler it builds in turn are different programs that happen to agree on
 one input.
 
 `apps/maca1` resolves an `import` the way the driver does: `import maca/token`
@@ -64,13 +64,13 @@ is lexed once, read once, and its tokens are spliced in ahead of the file that
 imported it, so a definition precedes its use and a file imported twice is
 emitted once. An import that resolves to no file is an error naming it and the
 file that asked. Feeding the concatenation of those nine files still works and
-`stage2_emits_the_c_it_was_built_from` still does it, which is worth keeping: the
+`the_rebuild_emits_the_c_it_was_built_from` still does it, which is worth keeping: the
 two paths emit the same 136152 bytes and differ only in the order the record and
 enum declarations come out in.
 
 ## Layout of `modules/maca/`
 
-| file | stage | role |
+| file | part | role |
 |---|---|---|
 | `token.maca` | 1 | token kinds (a nullary sum → C enum), `Token`, `keyword_kind` |
 | `ast.maca` | 1 | the recursive `Expr`/`Stmt`/`Module` AST (typed params/returns, records, sums, match, methods) + an AST pretty-printer |
@@ -86,7 +86,7 @@ through the package, or runs the demo the gate reads.
 
 ## How the gate works
 
-The stage-1 **front-end compiles and runs as a native binary, and emits
+The transpiler **front end runs as a binary the C route produced, and writes
 through two back ends written in Maca** (`emit_c.maca` and `emit_rust.maca`).
 The gate, `modules/maca/tests/selfhost.maca`, requires the first two of
 these, and the suites beside it (`bootstrap.maca`, `c.maca`, `rust.maca`)
@@ -99,7 +99,7 @@ the third:
    *emitted* program **two ways** (the C output with `cc`, the Rust output with
    `rustc`) and runs both.
 
-The parsed slice is well past a toy. stage-1 handles:
+The parsed slice is well past a toy. the transpiler handles:
 
 - the full primitive expression language: `int`/`float`(`1.5`)/`str`/`bool`
   literals; `+ - * / %`, comparison, `&& ||` (with a precedence ladder), unary
@@ -125,14 +125,14 @@ concat/equality, `str`, a `.length()` call, and an `info(…)`) through both bac
 ends: each prints `self-hosted!` and exits `42`, proving the Maca-written
 compiler produces a working executable in **C and Rust alike**.
 
-Getting the pipeline itself running grew the stage-0 backend two capabilities
+Getting the pipeline itself running grew the seed's back end two capabilities
 the rest of the language now shares: the **`std/str` scan primitives**
 (`chars`/`length`/`at`/`get`/`slice` + the `is_*` character classes) and
 **recursive record types** (`Expr { children: Expr[] }`, lowered with a C
-forward declaration that breaks the struct/array definition cycle). Every stage-1
+forward declaration that breaks the struct/array definition cycle). Every the transpiler
 feature since is added in Maca and gated by this dual-backend compile+run.
 
-## What stage-1 compiles
+## What the transpiler compiles
 
 Each entry below is exercised by the suites in `modules/maca/tests/`, which
 compiles the emitted program with both `cc` and `rustc` and runs it.
@@ -142,7 +142,7 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
   with a precedence ladder, function/record/sum declarations, and `import`
   statements, skipped by the parser because the driver resolved them first
 - **the recursive AST**: `ast.maca`, whose `Expr { children: Expr[] }` is what
-  drove recursive record types into the stage-0 backend
+  drove recursive record types into the seed's back end
 - **two back ends**: `emit_c.maca` and `emit_rust.maca`, each turning a module
   into a complete translation unit
 - **multi-file builds**: `apps/maca1` reads its entry file, follows every
@@ -204,7 +204,7 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
 - **`if` as an expression**: `if c { a } else if d { b } else { e }`, where an
   `else if` nests to the right, lowered to a C ternary chain and to a native
   Rust `if`. This is the construct the compiler's own source is written in, 315
-  branches of it, so it is the one that had to arrive before stage-1 could read
+  branches of it, so it is the one that had to arrive before the transpiler could read
   itself. Branches hold a single expression; the 26 places in
   `modules/maca/*.maca` that bind a local inside a branch still need their
   bindings hoisted above the `if`
@@ -247,18 +247,18 @@ compiles the emitted program with both `cc` and `rustc` and runs it.
 
 The bootstrap closes on a byte-identical rebuild. The check that gets you there,
 and the only one that can catch a divergence, is the step before it: compile
-one source with stage-0 and with stage-1, and require the two programs to
+one source with the seed and with the transpiler, and require the two programs to
 behave identically.
 
-`modules/maca/tests/selfhost.maca` does exactly that. stage-0 builds stage-1;
-stage-1 compiles a program covering the slice above; the emitted C is compiled
+`modules/maca/tests/selfhost.maca` does exactly that. the seed builds the transpiler;
+the transpiler compiles a program covering the slice above; the emitted C is compiled
 with `cc` and the emitted Rust with `rustc`; and all three runs must print the
 same thing and exit the same way. A difference there is a difference between
 two compilers, which is the whole risk the bootstrap carries.
 
-## Where stage-1 stops, and why that is the shape
+## Where the transpiler stops, and why that is the shape
 
-Stage-1 is a compiler for the subset of Maca that stage-1 is written in. That
+The transpiler is a compiler for the subset of Maca that the transpiler is written in. That
 is not a limitation to be worked around; it is the loop the bootstrap runs on.
 Each feature is added to `modules/maca/` when the self-hosted compiler needs it to
 compile itself, and the dual-backend compile-and-run gate is what says it
@@ -268,8 +268,8 @@ So the boundary moves by writing Maca, not by planning.
 
 ## Where the boundary is, measured
 
-Three sweeps say how far stage-1 has got, and they are worth re-running rather
-than reasoning about. Build stage-1, then over every `.maca` file under `apps/`
+Three sweeps say how far the transpiler has got, and they are worth re-running rather
+than reasoning about. Build the transpiler, then over every `.maca` file under `apps/`
 and `modules/` (excluding `bad/`):
 
 | sweep | what it runs | as of 2026-08-11 |
@@ -287,7 +287,7 @@ emitted `0`, so `modules/std/tests/list.maca` called through a null pointer.
 What the remaining failures are, in the order they block deletion:
 
 - **a library a link flag names.** `sqlite_open` and `py_call` are the two
-  builtins left with no stage-1 body, and unlike the http and mqtt ones they
+  builtins left with no the transpiler body, and unlike the http and mqtt ones they
   cannot simply be carried in the preamble: they need `-lsqlite3` and
   `-lpython3`, and `build_binary` runs `cc` with no flags at all. The manifest
   has to name them before the runtime can.
@@ -304,20 +304,20 @@ What the remaining failures are, in the order they block deletion:
   `lex → parse → check → emit` chain plus `interp.maca`, built with
   `--target wasm` and called as a wasi command rather than over a pointer ABI.
 
-The two stages own different halves of the type system, and the line between
+The seed and the transpiler own different halves of the type system, and the line between
 them has moved. The **type representation and unification are Maca now**:
 `ty.maca` is `modules/maca/ty.maca` rewritten, variables and all, so
 substitution, the occurs check, row unification over open and closed records,
 and `generalize`/`instantiate` are gated by `modules/maca/tests/ty.maca` rather
 than by Rust. What is still only in `maca-core` is the checker over the *whole*
-surface (`lib.rs`), the effect set, and generic monomorphization. Stage-0 is
+surface (`lib.rs`), the effect set, and generic monomorphization. The seed is
 retired when those are written in Maca as well, which is the same
 increment-and-gate loop as everything above it, run once more.
 
 ## Why the Rust side stays minimal
 
 Every feature added to the Rust compiler is a feature the Maca compiler must
-also implement to self-host. That is the whole argument for keeping stage-0
+also implement to self-host. That is the whole argument for keeping the seed
 small: type-system work that would otherwise grow `maca-core` (full HM over
 inferred bindings, row unification, generic monomorphization) belongs in
 `modules/maca/check.maca`, where it is written once, in Maca, instead of twice.
@@ -373,7 +373,7 @@ cmp one/maca two/maca                        # identical
 ```
 
 A compiler built from the committed C reaches the same fixed point as one
-built by stage-0. The seed is a real seed, not a plausible one.
+built by the seed. The seed is a real seed, not a plausible one.
 
 (The 136152-byte figure quoted earlier in this file is stale by roughly five
 times; the compiler has grown since it was written. 734,123 is the measurement
@@ -407,13 +407,13 @@ already is its replacement and already runs.
 ### What happens to `selfhost.rs`, and what is genuinely lost
 
 `modules/maca/tests/selfhost.maca` is a **differential** gate: it compiles one
-source with stage-0 and with stage-1 and requires the two programs to agree.
-Once stage-0 is gone there is no second implementation, so differential
+source with the seed and with the transpiler and requires the two programs to agree.
+Once the seed is gone there is no second implementation, so differential
 testing is not weakened, it is **impossible**. Saying otherwise would be the
 one dishonest sentence in this file.
 
-What is lost, precisely: an independent oracle. Today a bug that stage-1's
-checker and stage-1's emitter *share* is caught, because stage-0 disagrees.
+What is lost, precisely: an independent oracle. Today a bug that the transpiler's
+checker and the transpiler's emitter *share* is caught, because the seed disagrees.
 After the deletion, a compiler that is consistently wrong is consistently
 wrong in both rounds of the fixed point, and `cmp` says nothing.
 
@@ -432,15 +432,15 @@ What replaces it is weaker, and worth naming honestly:
    and comparing the output is a differential test against the compiler of
    the last regeneration. It is not independent, but it is not nothing: it
    catches a change that alters behaviour without anyone meaning to, which is
-   most of what the stage-0 diff catches in practice.
+   most of what the seed diff catches in practice.
 
 Point 3 is the honest answer to "what replaces the differential gate", and it
 costs nothing extra, because the seed has to be committed anyway.
 
-### What the memory tests checked, and what stage-1 delivers
+### What the memory tests checked, and what the transpiler delivers
 
 `memory.rs` and `list_edits.rs` are gone, and the honest accounting is that
-they ran stage-0, which is being deleted. What replaces them is
+they ran the seed, which is being deleted. What replaces them is
 `tests/memory.maca`: it builds a program with the shipping compiler and runs
 it under `valgrind -q`, so a block used after it was released is a failure
 wherever valgrind is installed. Two mutations prove it bites. Drop the bounds
@@ -448,11 +448,11 @@ check in `maca_list_set` and the out-of-range edit reports an invalid write;
 free the old buffer when a list grows and the name still holding it reports an
 invalid read.
 
-What is *not* checked, because stage-1 does not do it yet:
+What is *not* checked, because the transpiler does not do it yet:
 
 - **Nothing is ever freed.** `emit_c.maca` has no ownership pass, so
   `valgrind --leak-check=full` is loud and `reuse_count()` is 0 where the
-  stage-0 test asserted over 90%. The measured patch frees only the results of
+  the seed test asserted over 90%. The measured patch frees only the results of
   the runtime helpers that always allocate (hello world: 127 bytes in 6 blocks
   becomes 40 in 1). `tests/memory.maca` is the guard it needs before it lands,
   because a wrong drop is far worse than a leak.
@@ -464,8 +464,8 @@ What is *not* checked, because stage-1 does not do it yet:
   for those two reasons.
 - **`str(v)` of a nullary sum variant emits its tag number**, not its name,
   which is why `tests/json_typed.maca` asserts on `encode(back.layout)`.
-- **`MACA_POISON` was stage-0's**, and nothing in the emitted runtime reads it,
-  so a poison run proves nothing now that stage-0 is gone. `valgrind -q`
+- **`MACA_POISON` was the seed's**, and nothing in the emitted runtime reads it,
+  so a poison run proves nothing now that the seed is gone. `valgrind -q`
   replaces it, and is stronger.
 
 ### What is not settled

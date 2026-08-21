@@ -3,9 +3,11 @@
 Instructions for any assistant working in this repository. `CLAUDE.md` imports
 this file, so Claude Code and the editor's own assistant read one set of rules.
 
-One typed language for **programs and infrastructure config**. Programs compile
-to native (C-tier binary), JS, JVM, Rust, Elixir, or freestanding C; config
-compiles to Nix. Everything a user writes is `.maca` or `maca.toml`.
+One typed language for **programs and infrastructure config**, and a
+universal transpiler rather than a compiler: Maca is translated into C, JS,
+Java, Rust, Elixir, freestanding C or Nix, and that language's toolchain makes
+what runs. Maca emits no machine code of its own. Everything a user writes is
+`.maca` or `maca.toml`.
 
 **Read `docs/SPEC.md` before starting work.** It is the authority on the
 language; when it and the code disagree, it wins, and they change together.
@@ -73,13 +75,13 @@ fixed point. Regenerate it with `maca apps/maca1/main.maca bootstrap/maca.c`
 whenever the compiler changes, and check the fixed point before committing.
 See `docs/BOOTSTRAP.md`.
 
-The stage-1 **compiler pipeline already runs natively**: the Maca-written lexer
+The transpiler **compiler pipeline already runs natively**: the Maca-written lexer
 → recursive-descent parser → recursive-`Expr` AST + pretty-printer → type
 checker (`check.maca`, an `Env` of signatures / record fields / sum variants /
 locals: result types, arity, field types, declared returns) → **two back ends
 written in Maca**, `emit_c.maca` and
 `emit_rust.maca` (the `--target rust` backend, mirroring `maca-backend-rust` on
-the parsed slice). These compile through the stage-0 C backend and execute
+the parsed slice). These compile through the seed C backend and execute
 the whole `lex → parse → check → emit` chain (the `selfhost.rs` run gate
 builds it with the host `cc`, then compiles the *emitted* program two ways: the
 C capstone with `cc` and the Rust capstone with `rustc`, checking both exit
@@ -189,6 +191,21 @@ definition cycle resolves, with `MACA_ARRAY_STRUCT` before the body and
   `c ? x : y`; error-propagate is attached, `x?`. `main() -> int`.
 - **Absence is a named variant, never an optional.** There is no `null` and no
   `??`.
+- **A generated window must take focus, or `key` never fires.** gpui delivers
+  a key to the focused element, so the host tracks a `FocusHandle` and is
+  given it when the window opens. No suite sees this: it is found by driving
+  a real window, which is worth doing before any release that touches the
+  desktop runtime.
+- **Windows gives a program one megabyte of stack.** The native path asks the
+  linker for 64 MB and a generated Cargo project carries the same ask in
+  `.cargo/config.toml`; without it, anything that parses a few thousand lines
+  dies with `0xC00000FD` and no message. `write_file` does not make the
+  directory, so the `make_dir` before it is load-bearing.
+- **Windows: never hand a command to `cmd` through another layer's quoting,
+  and never read console output as UTF-8.** A capture spawns the program
+  itself (the Rust target uses `raw_arg` for `cmd`), and what comes back is
+  decoded with the console's own code page, which is how a Korean or Japanese
+  machine gets readable messages.
 
 ## Where the rest of this lives
 

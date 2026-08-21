@@ -532,3 +532,36 @@ test_the_gpui_example_still_emits_rust_a_compiler_reads() {
                    rustc_reads("{out}.rs"))
     }
 }
+
+test_a_desktop_program_needs_no_rust_of_its_own() {
+    src = read_file(example("desktop_window"))
+
+    assert(src.index_of("import \"") < 0,
+           "a desktop program imports no foreign name")
+    assert(src.index_of("\"\"\"") < 0, "and carries no raw block")
+
+    out = scratch("desk") + "/desktop_window"
+
+    remove_file("{out}.rs")
+    exec(maca_bin(), ["build", example("desktop_window"), "--target", "rust",
+                      "-o", out])
+
+    made = read_file("{out}.rs")
+
+    assert(made.index_of("fn main()") >= 0,
+           "the compiler wrote the program's main: {made.length()} bytes")
+    assert(made.index_of("gpui::Application::new().run") >= 0,
+           "and the event loop with it")
+    assert(made.index_of("impl gpui::Render for MacaHost") >= 0,
+           "and the view the window renders")
+    assert(made.index_of("maca_window_op") >= 0,
+           "and the title-bar controls that act")
+
+    if output("sh", ["-c", "rustc --version 2>/dev/null"]).trim() == "" {
+        assert(true, "reading it back needs rustc, which this host has not got")
+    } else {
+        assert(foreign_misses_only(rustc_reads("{out}.rs")),
+               "and rustc reads it whole, unresolved gpui imports aside: " +
+                   rustc_reads("{out}.rs"))
+    }
+}

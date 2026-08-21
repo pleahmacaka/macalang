@@ -36,7 +36,7 @@ attaches a handler, and `value=…` on a state name binds it two ways.
 maca build gen.maca -o gen
 ```
 
-builds a native binary, and there the same elements render to **text**:
+builds through C, and there the same elements render to **text**:
 
 ```maca
 main() -> int {

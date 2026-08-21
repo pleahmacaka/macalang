@@ -1,6 +1,6 @@
 # 타깃
 
-같은 소스가 아주 다른 것들로 컴파일됩니다. 둘러보기는
+같은 소스가 아주 다른 언어들로 번역됩니다. 둘러보기는
 [프로그램이 도착하는 곳](15-targets.md)이고, 이 장은 모든 타깃, 모든 플래그,
 그리고 각 타깃이 거부하는 것의 정확한 목록입니다.
 
@@ -8,7 +8,7 @@
 
 | 명령 | 만드는 것 |
 |---|---|
-| `maca build app.maca -o app` | C를 거친 정적 네이티브 바이너리 |
+| `maca build app.maca -o app` | C, 그리고 그것으로 만든 정적 바이너리 |
 | `maca build app.maca --target js -o out` | 자체 완결적인 페이지 |
 | `maca build app.maca --target jvm --cp …` | Java 소스 |
 | `maca build app.maca --target rust` | Rust 소스 |
@@ -132,7 +132,7 @@ maca build blink.maca --target embedded --mcu cortex-m0
 ## Tauri
 
 `--target tauri`는 데스크톱 애플리케이션을 스캐폴딩합니다. 인터페이스는
-JavaScript 백엔드로, 그 아래는 네이티브 바이너리로요.
+JavaScript 백엔드로, 그 아래는 C 경로로요.
 
 ## 각 타깃이 거부하는 것
 

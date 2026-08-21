@@ -1,5 +1,10 @@
 [package]
 name = "examples"
 
+[window]
+title = "Maca desktop"
+width = 1000
+height = 700
+
 [rust-dependencies]
 gpui = "0.2"

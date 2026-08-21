@@ -105,7 +105,7 @@ test_a_list_whose_element_is_unknown_is_still_a_list() {
            "it is certainly not a string")
 }
 
-test_an_int_is_the_width_stage_zero_gives_it() {
+test_an_int_is_the_width_the_seed_gives_it() {
     assert(c_for("f(n: int) -> int => n").index_of("long long f(long long n)") >= 0,
            "a Maca int is 64 bits, which C spells long long, because Windows makes long 32 bits")
     assert(c_for("f(t: str) -> int => int(t)").index_of("atol(t)") >= 0,

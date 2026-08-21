@@ -8,7 +8,7 @@ per-target subset of the language, and no separate standard library. The tour is
 
 | Command | Produces |
 |---|---|
-| `maca build app.maca -o app` | a static native binary, through C |
+| `maca build app.maca -o app` | C, and a static binary built from it |
 | `maca build app.maca --target js -o out` | a self-contained page |
 | `maca build app.maca --target jvm --cp …` | Java source |
 | `maca build app.maca --target rust` | Rust source |
@@ -17,7 +17,7 @@ per-target subset of the language, and no separate standard library. The tour is
 | `maca build app.maca --target tauri` | a desktop application scaffold |
 
 `--mcu` belongs to `embedded` and `--cp` to `jvm`. With no `--target` you get a
-native binary.
+binary the C route produced.
 
 ## Native, by way of C
 
@@ -129,7 +129,7 @@ the super-loop.
 ## Tauri
 
 `--target tauri` scaffolds a desktop application: the JavaScript backend for the
-interface, a native binary underneath it.
+interface, the C route underneath it.
 
 ## What each target refuses
 

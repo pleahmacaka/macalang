@@ -60,10 +60,12 @@ test_escaped_braces_stay_in_the_string() {
 }
 
 test_comments_and_doc_comments_differ() {
-    out = highlight("maca", "/// api\n// note\n")
+    out = highlight("maca", "/** api */\n// note\n/// three slashes\n")
 
-    assert(out.contains("<span class=\"tok-doc\">/// api</span>"), "doc")
+    assert(out.contains("<span class=\"tok-doc\">/** api */</span>"), "doc")
     assert(out.contains("<span class=\"tok-com\">// note</span>"), "plain")
+    assert(out.contains("<span class=\"tok-com\">/// three slashes</span>"),
+           "`///` stopped being a doc marker when docs became blocks")
 }
 
 test_raw_strings_are_one_token() {

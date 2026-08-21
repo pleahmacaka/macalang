@@ -850,7 +850,7 @@ test_a_subscript_reads_and_writes_through_the_lvalue() {
 }
 
 test_a_bracketless_comma_list_is_one_list_value() {
-    m = parse_module(lex("Stages = \"a\", \"b\", \"c\""), 0, [])
+    m = parse_module(lex("Marks = \"a\", \"b\", \"c\""), 0, [])
     assert_eq(str(m.items.length()), "1", "one binding, not three")
     assert_eq(str(m.errors.length()), "0", "and no stray comma is skipped")
     assert_eq(shown("[1, 2]"), "[1, 2]", "a bracketed list is unchanged")

@@ -1,9 +1,10 @@
 # Maca: the specification
 
 > One typed language for programs **and** infrastructure config, sharing one
-> syntax and one type system. General programs compile to native (C-tier
-> binary), JS, the JVM, Rust, Elixir, or freestanding C; infra config compiles
-> to Nix.
+> syntax and one type system. Maca is a universal transpiler: a program is
+> translated into C, JS, Java, Rust, Elixir or freestanding C, and infra
+> config into Nix. Maca never emits machine code itself; the language it
+> lands in owns that step, and that language's toolchain finishes the job.
 
 This file is the authoritative description of the language. When a design
 decision changes, this file and the code change together; the spec wins ties.
@@ -12,7 +13,7 @@ decision changes, this file and the code change together; the spec wins ties.
 
 ```
                           ┌─▶ C      ─▶ binary    CLI (C-tier), the default
-.maca ─▶ maca-compiler ───┼─▶ js     ─▶ browser   web / UI
+.maca ─▶ maca (transpiler)┼─▶ js     ─▶ browser   web / UI
                           ├─▶ java   ─▶ JVM       Minecraft / Maven interop
                           ├─▶ rust   ─▶ crate     crates.io interop
                           ├─▶ elixir ─▶ BEAM      many small waits at once
@@ -22,9 +23,12 @@ decision changes, this file and the code change together; the spec wins ties.
 
 - **Shared:** frontend, type checker, effect checker, core IR
 - **Split:** codegen, runtime
-- **Native = C:** `Maca → C → zig cc` (static musl) for every span, SIMD
-  included: `f32x8` is an `ext_vector_type` the C backend lowers, built with
-  `-mavx2`. There is no second native compiler to keep in step.
+- **Every arrow is source, not machine code.** Maca writes C, JavaScript,
+  Java, Rust, Elixir or Nix; the binary, the page, the JAR and the derivation
+  are made by `cc`, the browser, `javac`, `cargo` and `nix`. "Native" names
+  the C route (`Maca → C → zig cc`, static musl), SIMD included: `f32x8` is an
+  `ext_vector_type` the C back end lowers, built with `-mavx2`. There is no
+  second native compiler to keep in step, because there is no first one.
 
 ## Modes
 
@@ -163,7 +167,7 @@ and which manifest answers.
   are typed as functions (`Circle(10)`), payloads bind in patterns
   (`Circle(r) => r * r`). Native lowering is a tagged struct/union with a
   per-variant constructor; plain (nullary-only) enums are unchanged. Parses with
-  no stage-0 front-end change. (`apps/examples/payload_sum.maca`.) A payload may be a
+  no the seed front-end change. (`apps/examples/payload_sum.maca`.) A payload may be a
   record, in either declaration order. The C backend emits records and tagged
   sums in one combined dependency order, so the record struct is defined before a
   sum that carries it (and vice-versa). (`apps/examples/sum_record.maca`.) That
@@ -189,7 +193,7 @@ and which manifest answers.
   (`apps/examples/loops.maca`; `apps/examples/bad/while_cond.maca` is rejected.)
 - Half-open integer ranges `lo..hi` (counts `lo … hi - 1`, so `5..5` is empty),
   an `int[]` value. `for i in lo..hi` lowers to a counting loop in C (no array
-  materialized) in the frozen stage-0 backend; the Maca-written backend
+  materialized) in the seed's own back end; the Maca-written backend
   materializes it through `maca_range` in both positions, which `xs = 1..n`
   needs anyway. Endpoints must be `int`. (`apps/examples/range.maca`;
   `apps/examples/bad/range_end.maca` is rejected.)
@@ -227,6 +231,14 @@ and which manifest answers.
   A written line break is still `\n`, and `"""…"""` still carries text
   verbatim. A string left open at the end of the file is an error, as before.
   (`apps/quipu/view.maca` writes its dropdown classes this way.)
+- **A desktop program is three functions.** `start() -> T` gives the first
+  state, `view(T) -> Element` draws it, and `key(T, str) -> T` answers the
+  keyboard. On a target with a window the compiler writes the event loop, the
+  window, the title bar and the fold from a handler's `T -> T` to the next
+  state; the program writes none of it, and needs no foreign import to do so.
+  Handlers hang off elements as `click=`, `down=`, `move=`, `up=` and `drop=`;
+  the pointer is `at_x()`/`at_y()` and dropped files are `dropped_paths()`.
+  (`apps/quipu` is the whole editor written this way.)
 - **A string is indexed by byte.** `length`, `at`, `get`, `slice` and `chars`
   all count bytes, and `at(i)` is therefore the one-byte `str` at offset `i`,
   never a code point. That is what `maca_str_at` does and what `chr`/`ord`
@@ -509,8 +521,8 @@ There are no shell scripts left. Installing is a binary in the release,
 builds the toolchain, because it runs where there is no `maca` yet and on a
 Windows runner that has no C compiler to build one with.
 
-The Rust workspace is the frozen **stage-0 bootstrap**; compiler work is
-written in Maca under `modules/maca/` and gated by the stage-0 front-end (see
+The Rust workspace is the frozen **the seed bootstrap**; compiler work is
+written in Maca under `modules/maca/` and gated by the seed front-end (see
 `docs/BOOTSTRAP.md`). Prefer adding to `modules/maca/*.maca` over growing the Rust
 crates.
 

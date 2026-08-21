@@ -2,17 +2,17 @@
 
 Maca is being bootstrapped, and this is where new compiler work goes.
 
-## Two stages
+## The seed and the transpiler
 
-**Stage 0** is the Rust compiler under `crates/`. It is the bootstrap, and it is
+**The seed** is the Rust compiler under `crates/`. It is the bootstrap, and it is
 frozen: it changes only for genuine bootstrap bugs, such as a parser that hangs
 or a construct that mis-parses.
 
-**Stage 1** is the Maca compiler under `modules/maca/`, written in Maca. This
-is where new compiler work belongs. Stage 0 compiles it; a test gate
+**The transpiler** is the Maca compiler under `modules/maca/`, written in Maca. This
+is where new compiler work belongs. The seed compiles it; a test gate
 (`crates/driver/tests/selfhost.rs`) makes sure it keeps working.
 
-## What stage 1 does today
+## What the transpiler does today
 
 The whole front end runs, natively:
 
@@ -35,10 +35,10 @@ with `match` over binding patterns.
 
 ## How the gate works
 
-The test does not check that the stage-1 compiler produces the *expected*
+The test does not check that the transpiler compiler produces the *expected*
 output. It checks that the output **works**:
 
-1. Stage 0 compiles the stage-1 compiler to a native binary with the host `cc`.
+1. The seed writes the transpiler transpiler as C, and the host `cc` builds it.
 2. That binary is run over a Maca program, twice: once emitting C, once
    emitting Rust.
 3. The emitted C is compiled with `cc` and run. The emitted Rust is compiled
@@ -71,9 +71,9 @@ it lexes, parses, checks and emits a series of programs and reports on each.
 maca run apps/maca1/main.maca
 ```
 
-## Where the two stages differ
+## Where the two differ
 
-Stage 1 compiles a subset. Closures, generics, the effect rows and the module
-system live in stage 0 alone, so a program using them goes through the Rust
+The transpiler compiles a subset. Closures, generics, the effect rows and the module
+system live in the seed alone, so a program using them goes through the Rust
 compiler.
 

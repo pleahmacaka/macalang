@@ -35,7 +35,7 @@ not a permissive one.
 {"pkg": "…", "license": "…", "ts_source": "…", "maca_source": "…", "test_result": "…"}
 ```
 
-`failures.jsonl` gets everything else, with the stage that rejected it
+`failures.jsonl` gets everything else, with the step that rejected it
 (`licence`, `fetch`, `translate`, `compile`, `test`) and why. That file is the
 point as much as the first one: a pipeline that records only its successes
 cannot tell you what to fix next.

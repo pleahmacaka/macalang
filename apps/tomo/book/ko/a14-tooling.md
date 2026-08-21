@@ -7,7 +7,7 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `maca build FILE` | 네이티브 바이너리로 컴파일 |
+| `maca build FILE` | C로 번역하고 그것으로 바이너리 빌드 |
 | `maca run FILE` | 컴파일 후 실행 |
 | `maca test FILE` | 파일의 모든 `test_…` 함수 실행 |
 | `maca fmt FILE` | 소스 포매팅 |

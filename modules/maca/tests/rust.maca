@@ -486,9 +486,9 @@ test_a_trait_a_raw_block_declared_is_implemented_for_a_record() {
 test_what_a_function_returns_picks_between_gpui_and_text() {
     made = gpui_rust("view() -> Element =>\n    div(class=\"flex gap-2\", id=\"root\", span(\"hi\"))\n\nshell(body: str) -> str => div(class=\"wrap\", body)\n")
 
-    assert(made.index_of("fn view() -> gpui::AnyElement {{ gpui::IntoElement::into_any_element(div().flex().gap_2()") >= 0,
+    assert(made.index_of("fn view() -> gpui::AnyElement {{ gpui::IntoElement::into_any_element(gpui::div().flex().gap_2()") >= 0,
            "an Element is gpui's box, styled by the class it was written with: {made}")
-    assert(made.index_of(".child(gpui::IntoElement::into_any_element(div()") >= 0,
+    assert(made.index_of(".child(gpui::IntoElement::into_any_element(gpui::div()") >= 0,
            "and a child is a child, boxed the way every element is: {made}")
     assert(made.index_of("fn shell(body: String) -> String {{ maca_element") >= 0,
            "while a function that says it answers text still builds text, which is what the declared result is for: {made}")

@@ -22,7 +22,8 @@ shown_state() -> Ide =>
           thin = false, lang = "en", leaving = false, about = false,
           picking = false, spread = [], rows = [], term = false,
           cmd = "", shell = "", ran = [], undo_text = [],
-          undo_line = [], undo_col = [] }
+          undo_line = [], undo_col = [], finding = false, needle = "",
+          problems = [], controls = [], trusted = true, kind = "maca" }
 
 main() -> Element =>
     view(shown_state())

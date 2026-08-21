@@ -1,10 +1,14 @@
 # Maca
 
-One typed language for **programs and infrastructure config**.
+One typed language that becomes the others. Maca is a **universal
+transpiler**: what you write is translated into C, JavaScript, Java, Rust,
+Elixir, freestanding C or Nix, and that language's own toolchain takes it from
+there. Maca emits no machine code of its own, so every target is a language
+already at home on its platform.
 
-Programs compile to a native binary, JavaScript, the JVM, Rust, or bare-metal
-firmware. Config compiles to Nix. Everything you write is `.maca` or
-`maca.toml`.
+Programs become a binary through C, a page through JavaScript, a JAR through
+Java, a crate through Rust, firmware through freestanding C. Infrastructure
+config becomes Nix. Everything you write is `.maca` or `maca.toml`.
 
 ```maca
 import { lines } from std/text

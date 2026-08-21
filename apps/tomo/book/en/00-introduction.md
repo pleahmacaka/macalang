@@ -6,7 +6,9 @@ write to describe the machine it runs on: no second language, no YAML.
 
 ## What makes Maca different
 
-**One language, many targets.** A program compiles to a native binary through C,
+**One language, many targets.** Maca is a universal transpiler: it writes
+another language rather than machine code. A program is translated to C and
+built into a binary by `cc`,
 or to JavaScript, the JVM, Rust, or freestanding C for a microcontroller. Which
 one you get is a flag, not a dialect.
 

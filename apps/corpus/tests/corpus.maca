@@ -80,15 +80,15 @@ test_a_source_with_quotes_and_newlines_stays_one_line() {
     assert(line.contains("\\n"), "it is escaped rather than dropped")
 }
 
-test_a_failure_says_which_stage_rejected_it() {
+test_a_failure_says_which_step_rejected_it() {
     line = failure_line(Failure {
         pkg = "p",
         license = "GPL-3.0",
-        stage = "licence",
+        step = "licence",
         why = "not on the allowed list",
     })
 
-    assert(line.contains("\"stage\":\"licence\""), "the stage is the signal")
+    assert(line.contains("\"step\":\"licence\""), "the step is the signal")
     assert(line.contains("\"why\""), "and the reason is what improves the translator")
     assert(!line.contains("\n"), "one line")
 }

@@ -1,13 +1,13 @@
 # Where a Program Lands
 
-The same source compiles to a native binary, a browser page, the JVM, Rust, a
+The same source is translated into C and built into a binary, a browser page, the JVM, Rust, a
 microcontroller, and a machine's configuration. Which one you get is a flag: no
 `#ifdef`, no per-target subset, no separate standard library.
 
 ## Six flags
 
 ```
-maca build app.maca -o app                 # a native binary (the default)
+maca build app.maca -o app                 # C, built into a binary (the default)
 maca build app.maca --target js -o out     # a page
 maca build app.maca --target jvm           # Java source
 maca build app.maca --target rust          # Rust source

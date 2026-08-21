@@ -5,9 +5,10 @@
  */
 
 import { Ide, Line, Hit, Span, Row, window_lines, tail, panel_for, shown, face,
-         knobs, opened_file, chosen_at, sought, line_spans, tree_hit,
+         knobs, opened_file, chosen_at, sought, line_spans_in, tree_hit,
          row_label, sel_on, sel_from, sel_upto, bar_swung, menu_hit,
          closed_tab, setting_hit, t, about, keymap, ui_face, placed_click,
+         hit_at, hit_count, filled, read_only,
          listed_binds } from apps/quipu/model
 import { Tag, bound_name, bound_call } from maca/doc
 import { between } from std/text
@@ -59,6 +60,7 @@ drop_at_12(ide: Ide) -> Element =>
         keyed_item(ide, "folder", "folder", "Ctrl+O"),
         keyed_item(ide, "open", "open", "Ctrl+P"),
         keyed_item(ide, "save", "save", "Ctrl+S"),
+        menu_item(ide, "shut-all", "Close All     Ctrl+Shift+W"),
         menu_item(ide, "quit", "Quit          Ctrl+Q"))
 
 drop_at_24(ide: Ide) -> Element =>
@@ -134,12 +136,29 @@ tree_head(ide: Ide) -> str {
     "{word}   {str(ide.files.length())}"
 }
 
+restricted_said(ide: Ide) -> str {
+    word = t(ide, "restricted")
+
+    "{word}   {tail(ide.root)}"
+}
+
+/** Restricted mode says so, and says what to press. */
+trust_bar(ide: Ide) -> Element =>
+    div(class="flex flex-col gap-2 px-4 py-2 border-b-1", bg=Marked, edge=Edge,
+        div(class="text-xs", restricted_said(ide)),
+        div(class="text-xs", fg=Dim, t(ide, "trust-ask")),
+        div(id="trust", click=(i => menu_hit(i, "trust")),
+            class="px-3 py-1 rounded-md text-xs cursor-pointer",
+            bg=Cursor, fg=Paper, hover_bg=Hover,
+            t(ide, "trust")))
+
 tree(ide: Ide) -> Element =>
     div(id="tree",
         class="flex flex-col w-72 overflow-y-scroll border-r-1",
         bg=Shade, edge=Edge,
         div(class="px-4 py-2 text-xs", fg=Dim,
             tree_head(ide)),
+        ide.root != "" && read_only(ide) ? trust_bar(ide) : gone(),
         ide.rows.length() == 0 ? empty_tree(ide) : gone(),
         div(class="flex flex-col", ide.rows.map(r => tree_row(ide, r))))
 
@@ -212,11 +231,30 @@ setting_row(ide: Ide, act: str, label: str) -> Element =>
 script(ide: Ide) -> Element =>
     div(class="flex flex-col grow",
         tab_bar(ide),
+        ide.finding ? find_bar(ide) : gone(),
         div(id="lines", class="flex flex-col grow py-3 overflow-y-scroll
                                cursor-text",
             font=face(ide),
             window_lines(ide).map(l => line_row(ide, l))),
+        ide.problems.length() == 0 ? gone() : problems_strip(ide),
         asked_controls(ide))
+
+/** What the checker said about the buffer when it was last written. */
+problems_strip(ide: Ide) -> Element =>
+    div(id="problems",
+        class="flex flex-col max-h-32 px-4 py-2 overflow-y-scroll border-t-1",
+        bg=Shade, edge=Edge,
+        div(class="text-xs", fg=Dim,
+            "PROBLEMS   {str(ide.problems.length())}"),
+        div(class="flex flex-col", font=face(ide),
+            ide.problems.map(l => panel_line(l))))
+
+/** The find bar, which is the query and how many lines hold it. */
+find_bar(ide: Ide) -> Element =>
+    div(class="flex flex-row gap-4 px-4 py-2 border-b-1", bg=Shade, edge=Edge,
+        div(class="text-xs", font=face(ide), "find  {ide.needle}_"),
+        div(class="text-xs", fg=Dim,
+            "{str(hit_count(ide))} lines   Enter / Esc"))
 
 tab_bar(ide: Ide) -> Element =>
     div(class="flex flex-row overflow-hidden border-b-1", bg=Shade, edge=Edge,
@@ -255,7 +293,25 @@ picked_form(ide: Ide, l: Line) -> Element {
         return sel_row(ide, l)
     }
 
-    l.n - 1 == ide.line ? cursor_row(ide, l.said) : spans_row(l.said)
+    if hit_at(ide, l.said) >= 0 {
+        return hit_row_text(ide, l.said)
+    }
+
+    l.n - 1 == ide.line ? cursor_row(ide, l.said)
+                        : spans_row(ide, l.said)
+}
+
+/** A line the query matches wears the match, so the eye finds it without
+ * counting.
+ */
+hit_row_text(ide: Ide, said: str) -> Element {
+    from = hit_at(ide, said)
+    upto = from + ide.needle.length()
+
+    div(class="flex flex-row",
+        div(class="text-sm", said.slice(0, from)),
+        div(class="text-sm", bg=Cursor, fg=Paper, said.slice(from, upto)),
+        div(class="text-sm", said.slice(upto, said.length())))
 }
 
 sel_row(ide: Ide, l: Line) -> Element {
@@ -271,8 +327,9 @@ sel_row(ide: Ide, l: Line) -> Element {
 shaded(said: str, from: int, upto: int) -> str =>
     from == upto ? " " : said.slice(from, upto)
 
-spans_row(said: str) -> Element =>
-    div(class="flex flex-row", line_spans(said).map(sp => span_bit(sp)))
+spans_row(ide: Ide, said: str) -> Element =>
+    div(class="flex flex-row",
+        line_spans_in(ide.kind, said).map(sp => span_bit(sp)))
 
 span_bit(sp: Span) -> Element =>
     div(class="text-sm", fg=sp.hue, sp.said)
@@ -283,17 +340,17 @@ span_bit(sp: Span) -> Element =>
 cursor_row(ide: Ide, said: str) -> Element {
     if ide.thin {
         return div(class="flex flex-row",
-                   spans_row(said.slice(0, ide.col)),
+                   spans_row(ide, said.slice(0, ide.col)),
                    div(class="w-1", bg=Cursor, ""),
-                   spans_row(said.slice(ide.col, said.length())))
+                   spans_row(ide, said.slice(ide.col, said.length())))
     }
 
     div(class="flex flex-row",
-        spans_row(said.slice(0, ide.col)),
+        spans_row(ide, said.slice(0, ide.col)),
         div(class="text-sm", bg=Cursor, fg=Paper, under_cursor(ide, said)),
-        spans_row(ide.col < said.length()
-                      ? said.slice(ide.col + 1, said.length())
-                      : ""))
+        spans_row(ide, ide.col < said.length()
+                           ? said.slice(ide.col + 1, said.length())
+                           : ""))
 }
 
 under_cursor(ide: Ide, said: str) -> str =>
@@ -338,8 +395,17 @@ panel(ide: Ide) -> Element =>
     div(id="panel",
         class="flex flex-col w-80 overflow-y-scroll border-l-1",
         bg=Shade, edge=Edge,
-        div(class="px-3 py-2 border-b-1 text-xs", fg=Dim, edge=Edge,
-            "TARGET   {ide.target} via {panel_for(ide.target)}"),
+        div(class="flex flex-row items-center gap-2 px-3 py-2 border-b-1",
+            edge=Edge,
+            div(class="text-xs", fg=Dim,
+                "TARGET   {ide.target} via {panel_for(ide.target)}"),
+            div(id="panel-run", click=(i => filled(i)),
+                class="px-2 py-1 rounded-md text-xs cursor-pointer",
+                bg=Marked, hover_bg=Hover, "run")),
+        shown(ide) == ""
+            ? div(class="px-3 py-2 text-xs", fg=Dim,
+                  "press run to compile this file")
+            : gone(),
         div(class="flex flex-col px-3 py-2", font=face(ide),
             shown(ide).split("\n").map(s => panel_line(s))))
 
@@ -372,6 +438,8 @@ footer(ide: Ide) -> Element =>
                                         : tail(ide.open))),
         div(class="text-xs", fg=Dim,
             "ln {str(ide.line + 1)}, col {str(ide.col + 1)}"),
+        read_only(ide) ? div(class="text-xs", fg=Dim, t(ide, "restricted"))
+                       : gone(),
         div(class="text-xs", fg=Dim, files_said(ide)),
         div(class="text-xs", fg=Dim,
             "{ide.target} via {panel_for(ide.target)}"))

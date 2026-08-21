@@ -30,7 +30,7 @@ env:
 
 jobs:
   # The Maca suites are the compiler's own tests, so they need a working
-  # compiler and the frozen stage-0 can no longer build one. bootstrap/maca.c is
+  # compiler and the frozen seed can no longer build one. bootstrap/maca.c is
   # the compiler emitted by itself; any cc turns it back into a compiler.
   suites:
     name: maca suites

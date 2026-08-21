@@ -144,20 +144,22 @@ english() -> Copy =>
         endonym = "English",
         locale = "en_US",
         title = "Maca: one typed language for programs and infrastructure",
-        descr = "A statically typed, compiled language with no garbage" +
-            " collector. The same source builds a native binary, a browser" +
-            " UI, or the NixOS module for the machine it runs on.",
+        descr = "A statically typed language that becomes the others." +
+            " The same source is translated into C, JavaScript, Java, Rust," +
+            " Elixir or Nix, and their toolchains make the binary, the page" +
+            " and the machine it runs on.",
         nav_docs = "Handbook",
         nav_api = "API",
-        headline = "One language for machines",
-        sub = "Typed, compiled, no garbage collector. The language that writes" +
-            " your service also describes the machine it runs on.",
+        headline = "One language, every other one",
+        sub = "A universal transpiler. Typed, no garbage collector, no" +
+            " machine code of its own: what leaves Maca is C, JavaScript," +
+            " Java, Rust, Elixir or Nix.",
         cta_start = "Get started",
         cta_play = "Playground",
         box_title = "The language",
         box_sub = "The decisions that put a language in a box, stated plainly.",
         tgt_title = "Targets",
-        tgt_sub = "Native is the default. The rest are a flag.",
+        tgt_sub = "C is the default route. The rest are a flag.",
         install = "Install",
         install_more = "Full install instructions",
         bench_title = "Benchmarks",
@@ -208,7 +210,7 @@ en_fact(s: Spec) -> Fact =>
         Types  => Fact { label = "Types", value = "Static, inferred" }
         Memory => Fact { label = "Memory",
                          value = "Refcounted at compile time" }
-        Output => Fact { label = "Output", value = "A native binary" }
+        Output => Fact { label = "Output", value = "Source, in six languages" }
         Colour => Fact { label = "Async", value = "No function colour" }
     }
 
@@ -301,20 +303,21 @@ korean() -> Copy =>
         endonym = "한국어",
         locale = "ko_KR",
         title = "Maca: 프로그램과 인프라를 위한 하나의 타입 있는 언어",
-        descr = "정적 타입, 컴파일, 가비지 컬렉터 없음. 같은 소스가 네이티브" +
-            " 바이너리도, 브라우저 UI도, 그것이 돌아갈 기계의 NixOS 모듈도" +
-            " 만듭니다.",
+        descr = "다른 언어가 되는 타입 있는 언어입니다. 같은 소스가 C," +
+            " JavaScript, Java, Rust, Elixir, Nix로 번역되고, 바이너리와" +
+            " 페이지와 기계는 그 언어의 도구가 만듭니다.",
         nav_docs = "핸드북",
         nav_api = "API 문서",
-        headline = "기계를 위한 하나의 언어",
-        sub = "정적 타입, 네이티브 컴파일, GC 없음. 서비스를 쓰는 언어가 그" +
-            " 서비스가 도는 기계도 기술합니다.",
+        headline = "하나의 언어, 나머지 전부",
+        sub = "유니버설 트랜스파일러입니다. 타입이 있고, GC가 없고, 자기" +
+            " 기계어는 내지 않습니다: Maca에서 나오는 것은 C, JavaScript," +
+            " Java, Rust, Elixir, Nix입니다.",
         cta_start = "시작하기",
         cta_play = "플레이그라운드",
         box_title = "언어",
         box_sub = "언어를 어느 칸에 넣을지 정하는 결정들을, 돌려 말하지 않고.",
         tgt_title = "타깃",
-        tgt_sub = "네이티브가 기본입니다. 나머지는 플래그 하나입니다.",
+        tgt_sub = "C 경로가 기본입니다. 나머지는 플래그 하나입니다.",
         install = "설치",
         install_more = "설치 안내 전체 보기",
         bench_title = "얼마나 빠릅니까?",
@@ -363,7 +366,7 @@ ko_fact(s: Spec) -> Fact =>
     match s {
         Types  => Fact { label = "타입", value = "정적, 추론" }
         Memory => Fact { label = "메모리", value = "컴파일 타임 참조 카운트" }
-        Output => Fact { label = "결과물", value = "네이티브 바이너리" }
+        Output => Fact { label = "결과물", value = "여섯 언어의 소스" }
         Colour => Fact { label = "비동기", value = "함수 색칠 없음" }
     }
 

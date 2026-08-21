@@ -64,7 +64,7 @@ To publish or update the listing:
    [maca]
    submodule = "extensions/maca"          # a submodule pointing at this repo
    path = "editor/zed-maca"               # where extension.toml lives
-   version = "0.7.1"                       # matches extension.toml `version`
+   version = "0.8.0"                       # matches extension.toml `version`
    ```
    add the submodule (`git submodule add https://github.com/pleahmacaka/macalang extensions/maca`),
    and open a PR. The Zed team's CI validates the grammar builds and the

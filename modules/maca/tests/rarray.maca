@@ -147,14 +147,14 @@ test_a_plain_type_is_untouched_by_the_function_case() {
 
 test_a_constant_that_allocates_is_a_function_not_a_const() {
     one = ra_rust("Name = \"m\" use() -> str => Name")
-    many = ra_rust("Stages = \"a\", \"b\" use() -> str[] => Stages")
+    many = ra_rust("Marks = \"a\", \"b\" use() -> str[] => Marks")
     plain = ra_rust("Seed = 1000 use() -> int => Seed")
 
     assert(one.index_of("fn Name() -> String") >= 0,
            "a Rust const cannot allocate, and every String does")
     assert(one.index_of("Name()") >= 0,
            "so each mention of it becomes the call that builds it")
-    assert(many.index_of("fn Stages() -> Rc<Vec<String>>") >= 0,
+    assert(many.index_of("fn Marks() -> Rc<Vec<String>>") >= 0,
            "a list constant is the same story")
     assert(plain.index_of("const Seed: i64 = 1000i64;") >= 0,
            "an int allocates nothing, so it stays a const")

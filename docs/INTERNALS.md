@@ -1,7 +1,10 @@
 # Internals
 
-What the compiler does, and the invariants that are easy to break
-from inside it. The back ends have a page of their own, [BACKENDS.md](BACKENDS.md).
+What the transpiler does, and the invariants that are easy to break from
+inside it. Maca reads Maca and writes another language; it never writes
+machine code, so every back end's job ends at source a foreign toolchain
+accepts. The back ends have a page of their own,
+[BACKENDS.md](BACKENDS.md).
 
 The compiler is complete and every `.maca` suite is green. Whole
 programs (non-`main` functions, records→structs, sum types→tagged enums, lists,

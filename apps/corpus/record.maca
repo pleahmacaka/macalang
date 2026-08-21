@@ -17,7 +17,7 @@ Record = {
     test_result: str,
 }
 
-/** One rejected attempt, with the stage that rejected it.
+/** One rejected attempt, with the step that rejected it.
  *
  * Failures are the signal for improving the translator, so they are kept with
  * a reason rather than dropped. A pipeline that only records its successes
@@ -26,7 +26,7 @@ Record = {
 Failure = {
     pkg: str,
     license: str,
-    stage: str,
+    step: str,
     why: str,
 }
 
@@ -40,12 +40,12 @@ record_line(r: Record) -> str =>
 /** A failure as one JSONL line. */
 failure_line(f: Failure) -> str =>
     Open + field("pkg", f.pkg) + "," + field("license", f.license) + "," +
-        field("stage", f.stage) + "," + field("why", f.why) + Close
+        field("step", f.step) + "," + field("why", f.why) + Close
 
 field(key: str, value: str) -> str =>
     quote(key) + ":" + quote(value)
 
-/** Every stage a package can fall out at, named the same way in the log and in
+/** Every step a package can fall out at, named the same way in the log and in
  * the code.
  */
-Stages = "licence", "fetch", "translate", "compile", "test"
+Steps = "licence", "fetch", "translate", "compile", "test"

@@ -216,16 +216,16 @@ test_a_selective_import_binds_every_spelling_the_script_may_use() {
 }
 
 install(dir: str, name: str, manifest: str) {
-    put(dir, "maca_modules/{name}/package.json", manifest)
+    put(dir, "node_modules/{name}/package.json", manifest)
 }
 
 daisyui(dir: str) {
     install(dir, "daisyui",
             "\{ \"name\": \"daisyui\", \"version\": \"4.0.0\", " +
                 "\"main\": \"lib/index.js\", \"style\": \"dist/full.css\" \}")
-    put(dir, "maca_modules/daisyui/dist/full.css",
+    put(dir, "node_modules/daisyui/dist/full.css",
         ".daisy-marker \{ color: rebeccapurple \}\n")
-    put(dir, "maca_modules/daisyui/lib/index.js", "globalThis.daisyMarker = 1;\n")
+    put(dir, "node_modules/daisyui/lib/index.js", "globalThis.daisyMarker = 1;\n")
 }
 
 test_a_packages_own_entry_point_reaches_the_page() {
@@ -266,7 +266,7 @@ test_a_package_with_no_entry_of_that_kind_fails_the_build_naming_it() {
     dir = project("no-entry")
     install(dir, "typesonly",
             "\{ \"name\": \"typesonly\", \"types\": \"dist/index.d.ts\" \}")
-    put(dir, "maca_modules/typesonly/dist/index.d.ts", "export \{\};\n")
+    put(dir, "node_modules/typesonly/dist/index.d.ts", "export \{\};\n")
     app(dir, "import \"npm:typesonly\"\n")
 
     said = refused(dir)
@@ -282,9 +282,9 @@ test_a_package_that_states_several_entries_answers_with_the_first_listed() {
     install(dir, "many",
             "\{ \"name\": \"many\", \"main\": \"main.js\", " +
                 "\"module\": \"module.js\", \"browser\": \"browser.js\" \}")
-    put(dir, "maca_modules/many/main.js", "globalThis.pick = 'main';\n")
-    put(dir, "maca_modules/many/module.js", "globalThis.pick = 'module';\n")
-    put(dir, "maca_modules/many/browser.js", "globalThis.pick = 'browser';\n")
+    put(dir, "node_modules/many/main.js", "globalThis.pick = 'main';\n")
+    put(dir, "node_modules/many/module.js", "globalThis.pick = 'module';\n")
+    put(dir, "node_modules/many/browser.js", "globalThis.pick = 'browser';\n")
     app(dir, "import \"npm:many\"\n")
 
     page = page_of(dir)
@@ -298,7 +298,7 @@ test_a_package_that_states_several_entries_answers_with_the_first_listed() {
 test_a_file_inside_a_package_can_be_named() {
     dir = project("subpath")
     daisyui(dir)
-    put(dir, "maca_modules/daisyui/dist/themes.css",
+    put(dir, "node_modules/daisyui/dist/themes.css",
         ".theme-marker \{ color: teal \}\n")
     app(dir, "import \"npm:daisyui/dist/themes.css\"\n")
 
@@ -323,15 +323,15 @@ test_a_file_a_package_does_not_hold_fails_the_build_naming_it() {
 
 test_a_scoped_package_is_reached_under_the_name_it_was_installed_as() {
     dir = project("scoped")
-    install(dir, "starry-night",
+    install(dir, "@wooorm/starry-night",
             "\{ \"name\": \"@wooorm/starry-night\", " +
                 "\"style\": \"style/core.css\" \}")
-    put(dir, "maca_modules/starry-night/style/core.css",
+    put(dir, "node_modules/@wooorm/starry-night/style/core.css",
         ".starry-marker \{ color: navy \}\n")
     app(dir, "import \"npm:@wooorm/starry-night\"\n")
 
     carries(page_of(dir), ".starry-marker \{ color: navy \}",
-            "the scope is dropped, as `maca add` drops it")
+            "the scope is part of the name, as `maca add` keeps it")
 }
 
 test_a_path_beside_the_source_still_means_that_file() {
@@ -457,7 +457,7 @@ test_install_says_so_when_the_manifest_names_nothing() {
            "an empty manifest is said so, not installed: {said}")
 }
 
-/** A package already in `maca_modules` is left alone, so a second run costs
+/** A package already installed is left alone, so a second run costs
  * nothing and a vendored copy is not overwritten.
  */
 test_install_leaves_a_package_that_is_already_there() {
@@ -481,7 +481,7 @@ test_the_source_never_names_the_directory_maca_add_chose() {
     page_of(dir)
     source = read_file("{dir}/home.maca")
 
-    assert(source.index_of("maca_modules") < 0
+    assert(source.index_of("node_modules") < 0
                && source.index_of("dist/full.css") < 0,
            "the program names the package, not where it was installed")
 }

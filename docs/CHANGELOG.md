@@ -2,6 +2,59 @@
 
 Newest first. Versions are bare semver; the tag is the version.
 
+## 0.8.0
+
+- A desktop program is three functions. `start() -> T` gives the first state,
+  `view(T) -> Element` draws it and `key(T, str) -> T` answers the keyboard;
+  the compiler writes the event loop, the window, the holder for the state and
+  the fold that turns a handler's `T -> T` into the next one. A program that
+  wants a window writes no foreign import, no raw block and no Rust.
+- Elements take handlers and measurements: `click=`, `down=`, `move=`, `up=`
+  and `drop=` each fold a `T -> T`, `at_x()`/`at_y()` give the pointer and
+  `dropped_paths()` the files let go over the window. `width=`/`height=` are
+  pixels, `bg=`/`fg=`/`edge=` take `0xRRGGBB` or `0xAARRGGBB`, and
+  `zone="drag"|"min"|"max"|"close"` with `winop=` gives a title bar whose
+  buttons act rather than only marking a region.
+- The window's title and size come from `[window]` in `maca.toml`, and a
+  handler that runs past 100ms says so rather than freezing in silence.
+- Quipu's panel and terminal reach the toolchain on Windows. `cmd /c` drops
+  the first and last quote of the line it is handed, so a command that starts
+  at a quoted program path came apart in the middle; the line is wrapped so
+  it survives.
+- `maca add` works on a plain Windows machine. The digest is taken with
+  `certutil` where a POSIX box uses `sha512sum`, and the lock's base64 is read
+  by the compiler itself rather than through `base64` and `od`, neither of
+  which Windows has.
+- A window built for Windows asks for a stack it can work in. Windows hands a
+  program one megabyte, which a recursive descent parser reading a couple of
+  thousand lines runs off the end of, so Quipu died opening a large file. The
+  generated Cargo project now carries the same ask the native path already
+  made.
+- What another program said is read in the code page it wrote. A Windows
+  console answers in the machine's own code page, and reading those bytes as
+  UTF-8 turned every message on a Korean or Japanese machine into rubble.
+- Running another program works on Windows. A capture spawned the program
+  through a shell that re-read its quoting, so `cmd /c echo hi` came back as
+  a complaint about `'"echo hi`; the native target now spawns the program
+  itself over a pipe, and the Rust target hands `cmd` the line as written.
+  This is what Quipu's terminal runs on.
+- The window takes the keyboard. A generated host tracks focus and is given
+  it when the window opens, so `key(state, chord)` is reached at all; a space
+  arrives as a space rather than as the word for one.
+- Quipu is that language feature's first program: an editor with no Rust in
+  it, opening only a workspace the user chose and trusted, reading before it
+  writes, and highlighting by the file's own extension.
+- `maca add npm:` installs into `node_modules` under the whole name, scope
+  included, and brings the packages that package depends on with it, so an
+  install is usable without a second tool.
+- An empty list literal is a list on every back end. `xs = []` followed by
+  `xs.push(v)` had been typed by the name's length rather than its shape,
+  which the Rust and browser targets refused.
+- The handbook, the spec and the reference say what this is: Maca is
+  translated into C, JavaScript, Java, Rust, Elixir, freestanding C or Nix,
+  and that language's toolchain makes what runs. `bootstrap/maca.c` is the
+  seed, and the Maca-written compiler is the transpiler.
+
 ## 0.7.1
 
 - The C and JS back ends brace a `then` branch that is itself an `if`. Written

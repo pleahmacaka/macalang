@@ -2,7 +2,7 @@
 
 Where everything is, and why it is there rather than somewhere else.
 
-One package; the compiler is `apps/maca1`.
+One package; the transpiler is `apps/maca1`.
 
 | crate | role |
 |---|---|
@@ -25,7 +25,7 @@ One package; the compiler is `apps/maca1`.
 **The toolchain's own programs are applications, because that is what they
 are.** A runnable program lives under `apps/` whoever wrote it and whoever runs
 it, so `apps/bindgen/` is kept equivalent to its
-stage-0 Rust twin by `modules/maca/tests/tooling.maca`; `apps/lint/` is a
+the seed Rust twin by `modules/maca/tests/tooling.maca`; `apps/lint/` is a
 style linter that walks the tree recursively and checks line width /
 single-line `if` / trailing whitespace / hard tabs (width is measured with
 string literals collapsed, so a long C template or URL is exempt exactly as a
@@ -169,7 +169,7 @@ of hand-concatenated markup); `site`, the project's front page, `home.maca`,
 whose copy is keyed by sum types so a translation that drops a card is a
 NonExhaustive error rather than a shorter page; the four toolchain programs
 above (`bindgen`, `lint`, `macadoc`, `build_site`); `selfhost`, the Maca
-compiler written in Maca, stage 1; `npm`, the `macalang` npm package and the
+compiler written in Maca, the transpiler; `npm`, the `macalang` npm package and the
 `build.maca` that packs the wasm front-end into it; `editor`, the Zed
 extension, the tree-sitter grammar and the TextMate grammar, which are programs
 that run inside an editor rather than a terminal; and `examples`.

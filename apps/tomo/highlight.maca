@@ -86,14 +86,15 @@ line_end(cs: str[], i: int) -> int {
     }
 }
 
+/** Where the block closes, walked rather than recursed. */
 block_end(cs: str[], i: int) -> int {
-    if i >= cs.length() {
-        i
-    } else if starts(cs, i, "*/") {
-        i + 2
-    } else {
-        block_end(cs, i + 1)
+    j = i
+
+    while j < cs.length() && !starts(cs, j, "*/") {
+        j = j + 1
     }
+
+    j < cs.length() ? j + 2 : j
 }
 
 is_word_start(cur: str) -> bool =>
@@ -103,19 +104,23 @@ is_word_char(cur: str) -> bool =>
     is_word_start(cur) || cur.is_ascii_digit()
 
 word_run(cs: str[], i: int) -> int {
-    if is_word_char(ch(cs, i)) {
-        word_run(cs, i + 1)
-    } else {
-        i
+    j = i
+
+    while is_word_char(ch(cs, j)) {
+        j = j + 1
     }
+
+    j
 }
 
 digit_run(cs: str[], i: int) -> int {
-    if ch(cs, i) == "_" || ch(cs, i).is_ascii_digit() {
-        digit_run(cs, i + 1)
-    } else {
-        i
+    j = i
+
+    while ch(cs, j) == "_" || ch(cs, j).is_ascii_digit() {
+        j = j + 1
     }
+
+    j
 }
 
 is_hex(cur: str) -> bool =>
@@ -135,11 +140,13 @@ radix_opens(cs: str[], i: int, mark: str) -> bool =>
     ch(cs, i + 2) == "_" || is_radix_digit(ch(cs, i + 2), mark)
 
 radix_end(cs: str[], i: int, mark: str) -> int {
-    if ch(cs, i) == "_" || is_radix_digit(ch(cs, i), mark) {
-        radix_end(cs, i + 1, mark)
-    } else {
-        i
+    j = i
+
+    while ch(cs, j) == "_" || is_radix_digit(ch(cs, j), mark) {
+        j = j + 1
     }
+
+    j
 }
 
 is_radix_digit(cur: str, mark: str) -> bool {
@@ -173,14 +180,26 @@ scanned(out: str, at: int, operand: bool, depth: int) -> Scan =>
 hl_maca(src: str) -> str =>
     mc_run(src.chars(), 0, false, false, 0, "").out
 
+/** One token after another, in a loop rather than a call chain: a file the
+ * size of this compiler's own source is a hundred thousand tokens, and a
+ * recursion that deep is a segfault.
+ */
 mc_run(cs: str[], i: int, interp: bool, operand: bool, depth: int,
        out: str) -> Scan {
-    if i >= cs.length() || (interp && depth == 0 && mc_ends(ch(cs, i))) {
-        scanned(out, i, operand, depth)
-    } else {
-        one = mc_token(cs, i, interp, operand, depth)
-        mc_run(cs, one.at, interp, one.operand, one.depth, out + one.out)
+    at = i
+    on = operand
+    deep = depth
+    said: str[] = []
+
+    while at < cs.length() && !(interp && deep == 0 && mc_ends(ch(cs, at))) {
+        one = mc_token(cs, at, interp, on, deep)
+        said = said.push(one.out)
+        at = one.at
+        on = one.operand
+        deep = one.depth
     }
+
+    scanned(out + said.join(""), at, on, deep)
 }
 
 mc_ends(cur: str) -> bool =>
@@ -426,22 +445,43 @@ raw_end(cs: str[], i: int) -> int {
     }
 }
 
+/** A string, character by character in a loop: a literal can be as long as
+ * the file, and one call per character is a stack this machine does not have.
+ * The pieces are joined once for the same reason.
+ */
 mc_str(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {
-    cur = ch(cs, i)
+    at = i
+    said: str[] = [text]
 
-    if cur == "" || cur == "\n" {
-        scanned(out + tok("tok-str", text), i, true, depth)
-    } else if cur == "\"" {
-        scanned(out + tok("tok-str", text + cur), i + 1, true, depth)
-    } else if cur == "\\" && ch(cs, i + 1) != "" {
-        mc_str(cs, i + 2, text + cur + ch(cs, i + 1), out, depth)
-    } else if starts(cs, i, "\{\{") || starts(cs, i, "\}\}") {
-        mc_str(cs, i + 2, text + cur + cur, out, depth)
-    } else if cur == "\{" {
-        mc_interp(cs, i, text, out, depth)
-    } else {
-        mc_str(cs, i + 1, text + cur, out, depth)
+    while true {
+        cur = ch(cs, at)
+
+        if cur == "" || cur == "\n" {
+            return scanned(out + tok("tok-str", said.join("")), at, true, depth)
+        }
+
+        if cur == "\"" {
+            return scanned(out + tok("tok-str", said.join("") + cur), at + 1,
+                           true, depth)
+        }
+
+        if cur == "\{" && !starts(cs, at, "\{\{") {
+            return mc_interp(cs, at, said.join(""), out, depth)
+        }
+
+        if cur == "\\" && ch(cs, at + 1) != "" {
+            said = said.push(cur + ch(cs, at + 1))
+            at = at + 2
+        } else if starts(cs, at, "\{\{") || starts(cs, at, "\}\}") {
+            said = said.push(cur + cur)
+            at = at + 2
+        } else {
+            said = said.push(cur)
+            at = at + 1
+        }
     }
+
+    scanned(out + tok("tok-str", said.join("")), at, true, depth)
 }
 
 mc_interp(cs: str[], i: int, text: str, out: str, depth: int) -> Scan {

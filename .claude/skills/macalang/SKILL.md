@@ -5,7 +5,9 @@ description: Write and edit Maca (.maca / maca.toml). Use when creating or editi
 
 # Writing Maca
 
-Maca is one typed language for programs **and** infra config. Minimal,
+Maca is one typed language for programs **and** infra config, and a universal
+transpiler: it becomes C, JS, Java, Rust, Elixir, freestanding C or Nix, and
+that language's own toolchain takes it the rest of the way. Minimal,
 rule-based syntax, with no idioms to memorize. Verify with `maca.check` before
 finishing.
 

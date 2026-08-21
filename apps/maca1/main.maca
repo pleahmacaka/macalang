@@ -145,7 +145,7 @@ run_script(cmd: str) -> int {
     }
 }
 
-Version = "0.7.1"
+Version = "0.8.0"
 
 check_only(src: str, target: str) -> int {
     unit = unit_of(src)
@@ -889,6 +889,8 @@ cargo_built(src: str, rs: str, out: str, deps: str[]) -> int {
     write_file("{proj}/Cargo.toml",
                cargo_toml(chain, deps, manifest_keys(chain, "[rust-patch]",
                                                      0)))
+    make_dir(proj + "/.cargo")
+    write_file("{proj}/.cargo/config.toml", cargo_stack())
     write_file("{proj}/src/main.rs", read_file(rs))
 
     if !on_path("cargo") {
@@ -900,6 +902,17 @@ cargo_built(src: str, rs: str, out: str, deps: str[]) -> int {
         cargo_built_at(proj, out)
     }
 }
+
+/** Windows hands a program a stack of one megabyte, which a recursive
+ * descent parser reading a few thousand lines runs off the end of. The
+ * native path asks the linker for room at build time and this is the same
+ * ask, written where Cargo reads it.
+ */
+cargo_stack() -> str =>
+    "[target.x86_64-pc-windows-msvc]\n" +
+        "rustflags = [\"-C\", \"link-arg=/STACK:67108864\"]\n\n" +
+        "[target.x86_64-pc-windows-gnu]\n" +
+        "rustflags = [\"-C\", \"link-arg=-Wl,--stack,67108864\"]\n"
 
 cargo_built_at(proj: str, out: str) -> int {
     code = exec("cargo", ["build", "--release", "--quiet",
@@ -1343,9 +1356,12 @@ quoted_upto(cs: str[], i: int, acc: str[]) -> str {
  */
 installed_at(dir: str, name: str) -> str {
     at = "{dir}{DepsDir}/{name}"
+    node = "{dir}{NodeDir}/{name}"
 
     if is_dir(at) {
         at
+    } else if is_dir(node) {
+        node
     } else if dir == "" {
         ""
     } else {
@@ -1353,17 +1369,25 @@ installed_at(dir: str, name: str) -> str {
     }
 }
 
-/** A package is installed under the name `maca add` gave it, which drops the
- * scope.
+/** A package is installed under the whole name `maca add` gave it, scope
+ * included, so `@libsql/client` and `@types/client` are two directories.
  */
-package_name(spec: str) -> str =>
-    unscoped(spec).split("/").get(0)
+package_name(spec: str) -> str {
+    if !spec.starts_with("@") {
+        return spec.split("/").get(0)
+    }
+
+    parts = spec.split("/")
+
+    parts.length() < 2 ? parts.get(0) : "{parts.get(0)}/{parts.get(1)}"
+}
 
 package_sub(spec: str) -> str {
-    rest = unscoped(spec)
-    at = rest.index_of("/")
+    name = package_name(spec)
 
-    at < 0 ? "" : rest.slice(at + 1, rest.length())
+    spec.length() > name.length() + 1
+        ? spec.slice(name.length() + 1, spec.length())
+        : ""
 }
 
 unscoped(spec: str) -> str {
@@ -1994,7 +2018,14 @@ cc_run(args: str[]) -> int {
     named = env("MACA_CC")
     argv = named == "" ? ["cc"] : nonempty(named.split(" "), 0, [])
 
-    exec(argv.get(0), argv.slice(1, argv.length()) + args)
+    code = exec(argv.get(0), argv.slice(1, argv.length()) + args)
+
+    if code < 0 {
+        err("maca: could not run `{argv.get(0)}`, which is the C compiler" +
+            " this machine named. Install one, or name another in MACA_CC.")
+    }
+
+    code
 }
 
 /** `[build] cflags` in the manifest here, the flags a program needs to link. */
@@ -2554,6 +2585,28 @@ here_chain() -> str[] =>
 chain_of(src: str) -> str[] =>
     manifest_chain(dir_of(src))
 
+/** What the manifest says the window is called, or the package's own name,
+ * so a program never writes a title into its own source.
+ */
+window_title(src: str) -> str {
+    chain = chain_of(src)
+    said = chain_value(chain, 0, "[window]", "title")
+
+    said != "" ? said : chain_package(chain)
+}
+
+chain_package(chain: str[]) -> str {
+    said = chain_value(chain, 0, "[package]", "name")
+
+    said == "" ? "Maca" : said
+}
+
+window_size(src: str, key: str, dflt: int) -> int {
+    said = chain_value(chain_of(src), 0, "[window]", key)
+
+    said == "" ? dflt : int(said)
+}
+
 /** One key, off the nearest manifest on the chain that states it. */
 chain_value(chain: str[], i: int, table: str, key: str) -> str {
     if i >= chain.length() {
@@ -2875,9 +2928,17 @@ toml_key(line: str) -> str {
     if t.starts_with("#") || t.index_of("=") < 0 {
         ""
     } else {
-        t.slice(0, t.index_of("=")).trim()
+        key_inside(t.slice(0, t.index_of("=")).trim())
     }
 }
+
+/** A key TOML has to see quoted, such as a scoped package name, is the name
+ * inside the quotes.
+ */
+key_inside(key: str) -> str =>
+    key.starts_with("\"") && key.ends_with("\"") && key.length() > 1
+        ? key.slice(1, key.length() - 1)
+        : key
 
 toml_val(line: str) -> str {
     t = line.trim()
@@ -3029,7 +3090,10 @@ compile_file(args: str[]) -> int {
                                asked),
                   unit.toks)
     emitted = if asked == "rust" {
-        rust_prelude(unit.toks, 0, "") + remit_module(rust_borrows(m))
+        rust_prelude(unit.toks, 0, "") +
+            remit_window(rust_borrows(m), window_title(args.get(0)),
+                         window_size(args.get(0), "width", 1200),
+                         window_size(args.get(0), "height", 800))
     } else if asked == "" || asked == "native" || asked == "c" {
         emit_module(m) + c_prelude_blocks(read_file(args.get(0)), unit.toks,
                                            0, "")
@@ -4346,13 +4410,13 @@ sep_after(cs: str[], i: int) -> int {
     }
 }
 
-report_all(stage: str, msgs: str[], i: int) -> int {
+report_all(step: str, msgs: str[], i: int) -> int {
     if i >= msgs.length() {
         msgs.length()
     } else {
-        info("{stage} error: {msgs.get(i)}")
+        info("{step} error: {msgs.get(i)}")
 
-        report_all(stage, msgs, i + 1)
+        report_all(step, msgs, i + 1)
     }
 }
 
@@ -5166,6 +5230,14 @@ flake_text(name: str, shell: str) -> str =>
         "        \};\n      \});\n    \};\n\}\n"
 
 DepsDir = "maca_modules"
+
+/** An npm package lands where node itself looks, so what it imports resolves
+ * the way node resolves it and nothing has to be rewritten.
+ */
+NodeDir = "node_modules"
+
+deps_dir_for(kind: str) -> str =>
+    kind == "npm" ? NodeDir : DepsDir
 LockFile = "maca.lock"
 NpmRegistry = "https://registry.npmjs.org"
 MacaRegistry = "https://registry.maca.dev"
@@ -5242,11 +5314,171 @@ add_one(spec: str, registry: str) -> int {
         1
     } else {
         manifest_put(s.name, spec)
-        info("added {s.name}@{p.version} -> {DepsDir}/{s.name}")
+        info("added {s.name}@{p.version} -> {deps_dir_for(s.kind)}/{s.name}")
+        brought_needs(s, registry)
 
         0
     }
 }
+
+/** A package is no use without what it imports, so what its own manifest
+ * names is fetched beside it, and so is what those name, until nothing new
+ * is left. Only the package asked for is written to this project's manifest;
+ * the rest are its own business.
+ */
+Deep = 200
+
+brought_needs(s: Spec, registry: str) -> int {
+    if s.kind != "npm" {
+        return 0
+    }
+
+    fetched_deps(npm_needs("{NodeDir}/{s.name}"), 0, registry, 0)
+}
+
+fetched_deps(want: str[], i: int, registry: str, done: int) -> int {
+    if i >= want.length() || done >= Deep {
+        done
+    } else {
+        fetched_deps(want, i + 1, registry,
+                     done + one_need(want.get(i), registry))
+    }
+}
+
+one_need(spec: str, registry: str) -> int {
+    s = parse_spec(spec)
+
+    if is_dir("{deps_dir_for(s.kind)}/{s.name}") {
+        return 0
+    }
+
+    p = brought(s, spec, registry, unpinned())
+
+    if p.why != "" {
+        err("maca add: {s.name} is needed by what you asked for: {p.why}")
+
+        0
+    } else {
+        info("  brought {s.name}@{p.version}")
+
+        1 + brought_needs(s, registry)
+    }
+}
+
+/** What a package's own `package.json` says it needs, as specs `maca add`
+ * understands. A range npm writes and this resolver cannot read is asked for
+ * as `latest`, which is what a fresh install would have taken anyway.
+ */
+npm_needs(dir: str) -> str[] {
+    doc = read_file("{dir}/package.json")
+
+    if doc == "" {
+        return []
+    }
+
+    deps_object(doc, "\"dependencies\"")
+}
+
+deps_object(doc: str, key: str) -> str[] {
+    at = doc.index_of(key)
+
+    if at < 0 {
+        return []
+    }
+
+    rest = doc.slice(at, doc.length())
+    opened = rest.index_of("{{")
+
+    opened < 0 ? [] : dep_pairs(rest.chars(), opened + 1, [])
+}
+
+/** The pairs of one JSON object, read as `name: range` and stopping at the
+ * brace that closes it. A value carrying a quote of its own is why this
+ * walks the string rather than searching for the next quote.
+ */
+dep_pairs(cs: str[], i: int, acc: str[]) -> str[] {
+    out = acc
+    at = i
+
+    while at < cs.length() && cs.get(at) != "}}" {
+        if cs.get(at) != "\"" {
+            at = at + 1
+        } else {
+            name = json_word(cs, at + 1)
+            after = json_word_end(cs, at + 1)
+            colon = json_colon(cs, after)
+
+            if colon < 0 {
+                return out
+            }
+
+            range = json_word(cs, colon + 1)
+
+            out = out.push(dep_spec(name, range))
+            at = json_word_end(cs, colon + 1) + 1
+        }
+    }
+
+    out
+}
+
+/** The text of a quoted word, with `\\"` inside it kept whole. */
+json_word(cs: str[], i: int) -> str {
+    said: str[] = []
+    j = i
+
+    while j < cs.length() && cs.get(j) != "\"" {
+        if cs.get(j) == "\\" && j + 1 < cs.length() {
+            said = said.push(cs.get(j + 1))
+            j = j + 2
+        } else {
+            said = said.push(cs.get(j))
+            j = j + 1
+        }
+    }
+
+    said.join("")
+}
+
+json_word_end(cs: str[], i: int) -> int {
+    j = i
+
+    while j < cs.length() && cs.get(j) != "\"" {
+        j = cs.get(j) == "\\" ? j + 2 : j + 1
+    }
+
+    j
+}
+
+/** The quote that opens the value after a key, or -1 when the object ended
+ * first.
+ */
+json_colon(cs: str[], i: int) -> int {
+    j = i + 1
+
+    while j < cs.length() && cs.get(j) != "\"" {
+        if cs.get(j) == "}}" {
+            return 0 - 1
+        }
+
+        j = j + 1
+    }
+
+    j < cs.length() ? j : 0 - 1
+}
+
+dep_spec(name: str, range: str) -> str =>
+    "npm:{name}@{npm_range(range)}"
+
+npm_range(range: str) -> str {
+    if range == "" || range == "*" || range.starts_with("workspace:") {
+        return "latest"
+    }
+
+    ver_of(range).ok ? range : "latest"
+}
+
+
 
 /** `maca install`: put every dependency the manifest names where the compiler
  * looks for it, at the version the lock pinned.
@@ -5273,7 +5505,7 @@ install_all(deps: Dep[], i: int, registry: str, bad: int) -> int {
 }
 
 install_one(d: Dep, registry: str) -> int {
-    if is_dir("{DepsDir}/{d.name}") {
+    if is_dir("{deps_dir_for(parse_spec(d.spec).kind)}/{d.name}") {
         info("{d.name} is already there")
 
         0
@@ -5289,7 +5521,8 @@ installed(d: Dep, p: Pin) -> int {
 
         1
     } else {
-        info("installed {d.name}@{p.version} -> {DepsDir}/{d.name}")
+        info("installed {d.name}@{p.version} -> " +
+             "{deps_dir_for(parse_spec(d.spec).kind)}/{d.name}")
 
         0
     }
@@ -5501,11 +5734,15 @@ parse_spec(spec: str) -> Spec {
     }
 }
 
+/** A scoped package keeps its scope: `@libsql/client` is a directory pair,
+ * not a `client` that collides with every other package of that last
+ * segment.
+ */
 npm_spec(rest: str) -> Spec {
     cut = version_cut(rest)
     pkg = cut < 0 ? rest : rest.slice(0, cut)
 
-    Spec { name = seg_after(pkg, "/"), kind = "npm", pkg = pkg,
+    Spec { name = pkg, kind = "npm", pkg = pkg,
            req = cut < 0 ? "latest" : rest.slice(cut + 1, rest.length()) }
 }
 
@@ -5557,8 +5794,23 @@ git_name(url: str) -> str {
 /** A dependency is unpacked into a directory of its own, so its name has to be
  * one path segment.
  */
-bad_name(name: str) -> bool =>
-    name == "" || name == "." || name == ".." || name.index_of("/") >= 0
+/** A name has to be a path a directory can be made at: one segment, or a
+ * scope and a segment, and never a walk upwards.
+ */
+bad_name(name: str) -> bool {
+    if name == "" || name == "." || name == ".." || name.contains("..") {
+        return true
+    }
+
+    parts = name.split("/")
+
+    if parts.length() == 1 {
+        return false
+    }
+
+    parts.length() != 2 || !parts.get(0).starts_with("@")
+        || parts.get(1) == ""
+}
 
 ver_of(text: str) -> Ver {
     t = text.trim()
@@ -5774,8 +6026,32 @@ registry_pin(base: str, pkg: str, req: str) -> Pin {
 }
 
 pin_of(doc: str) -> Pin =>
-    Pin { version = json_str(doc, "version"), tarball = json_str(doc, "tarball"),
+    Pin { version = doc_version(doc), tarball = json_str(doc, "tarball"),
           integrity = json_str(doc, "integrity"), commit = "", why = "" }
+
+/** The version a registry document states. A package may also carry a
+ * `version` script, and the first match in the text is sometimes that one, so
+ * the first match that reads as a version is the answer.
+ */
+doc_version(doc: str) -> str =>
+    version_seen(doc, 0, 0)
+
+version_seen(doc: str, from: int, tries: int) -> str {
+    if tries > 8 || from >= doc.length() {
+        return ""
+    }
+
+    rest = doc.slice(from, doc.length())
+    at = rest.index_of("\"version\"")
+
+    if at < 0 {
+        return ""
+    }
+
+    said = json_str(rest.slice(at, rest.length()), "version")
+
+    ver_of(said).ok ? said : version_seen(doc, from + at + 9, tries + 1)
+}
 
 http_get(url: str) -> str =>
     capture("curl", ["-fsSL", "-A", "maca-cli", url])
@@ -5787,9 +6063,16 @@ unpinned() -> Pin =>
     failed("")
 
 fetch(s: Spec, p: Pin) -> str {
-    dir = "{DepsDir}/{s.name}"
+    root = deps_dir_for(s.kind)
+    dir = "{root}/{s.name}"
 
     remove_dir(dir)
+    make_dir(root)
+
+    if s.name.contains("/") {
+        make_dir("{root}/{s.name.split("/").get(0)}")
+    }
+
     make_dir(dir)
 
     if s.kind == "git" {
@@ -5872,8 +6155,20 @@ digested(file: str, want: str) -> str {
     }
 }
 
-/** A sha512 in hex, out of whichever of the three tools this machine has. */
-digest_of(file: str) -> str {
+/** A sha512 in hex, out of whichever tool this machine keeps for the job:
+ * `certutil` is the one Windows ships, and the three POSIX names cover the
+ * rest.
+ */
+/** Whether this is Windows, told by what the system itself puts in the
+ * environment.
+ */
+on_windows() -> bool =>
+    env("OS") == "Windows_NT" || env("SystemRoot") != ""
+
+digest_of(file: str) -> str =>
+    on_windows() ? certutil_digest(file) : posix_digest(file)
+
+posix_digest(file: str) -> str {
     tools = "if command -v sha512sum >/dev/null; then sha512sum -b \"$0\";" +
         " elif command -v shasum >/dev/null; then shasum -a 512 -b \"$0\";" +
         " else openssl dgst -sha512 -r \"$0\"; fi"
@@ -5881,11 +6176,86 @@ digest_of(file: str) -> str {
     capture("sh", ["-c", "{tools} | cut -d\" \" -f1", file]).trim()
 }
 
-/** The base64 digest the lock wrote, in the hex those tools print. */
-hex_of(b64: str) -> str =>
-    capture("sh", ["-c", "printf %s \"$0\" | base64 -d 2>/dev/null" +
-                             " | od -An -tx1 | tr -d \"[:space:]\"",
-                   b64]).trim()
+/** `certutil` prints a heading, the digest, and a line saying it worked, and
+ * older builds space the digest out in pairs.
+ */
+certutil_digest(file: str) -> str {
+    said = capture("certutil", ["-hashfile", file, "SHA512"])
+
+    hex_line(said.split(chr(10)), 0)
+}
+
+hex_line(rows: str[], i: int) -> str {
+    if i >= rows.length() {
+        ""
+    } else {
+        bare = rows.get(i).replace(" ", "").replace(chr(13), "").trim()
+
+        bare.length() == 128 && all_hex(bare, 0)
+            ? bare.lower()
+            : hex_line(rows, i + 1)
+    }
+}
+
+all_hex(s: str, i: int) -> bool {
+    if i >= s.length() {
+        true
+    } else if Hexes.index_of(s.at(i).lower()) < 0 {
+        false
+    } else {
+        all_hex(s, i + 1)
+    }
+}
+
+Hexes = "0123456789abcdef"
+
+Base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+    "abcdefghijklmnopqrstuvwxyz0123456789+/"
+
+/** The base64 digest the lock wrote, in the hex a digest tool prints. Done
+ * here rather than through `base64` and `od`, which a machine may not have.
+ */
+hex_of(b64: str) -> str {
+    bytes = unbase64(b64.trim(), 0, [])
+
+    bytes.length() == 0 ? "" : hex_of_bytes(bytes, 0, "")
+}
+
+unbase64(s: str, i: int, acc: int[]) -> int[] {
+    if i + 3 >= s.length() {
+        return acc
+    }
+
+    a = Base64Digits.index_of(s.at(i))
+    b = Base64Digits.index_of(s.at(i + 1))
+    c = Base64Digits.index_of(s.at(i + 2))
+    d = Base64Digits.index_of(s.at(i + 3))
+
+    if a < 0 || b < 0 {
+        return []
+    }
+
+    acc = acc.push(a * 4 + b / 16)
+
+    if c >= 0 {
+        acc = acc.push((b % 16) * 16 + c / 4)
+    }
+
+    if c >= 0 && d >= 0 {
+        acc = acc.push((c % 4) * 64 + d)
+    }
+
+    unbase64(s, i + 4, acc)
+}
+
+hex_of_bytes(bs: int[], i: int, acc: str) -> str {
+    if i >= bs.length() {
+        acc
+    } else {
+        hex_of_bytes(bs, i + 1,
+                     acc + Hexes.at(bs.get(i) / 16) + Hexes.at(bs.get(i) % 16))
+    }
+}
 
 /** Every `name = "spec"` under `[dependencies]`, which is what `install` and
  * `update` are about.
@@ -5914,9 +6284,21 @@ deps_in(lines: str[], i: int, end: int, acc: Dep[]) -> Dep[] {
  */
 manifest_put(name: str, spec: str) -> bool {
     lines = read_file(Manifest).split("\n")
+    key = plain_key(name) ? name : "\"{name}\""
 
     write_file(Manifest,
-               put_line(lines, name, "{name} = \"{spec}\"").join("\n"))
+               put_line(lines, name, "{key} = \"{spec}\"").join("\n"))
+}
+
+/** A name TOML takes as a bare key: letters, digits, `_` and `-`. */
+plain_key(name: str) -> bool {
+    for c in name.chars() {
+        if !c.is_alpha() && !c.is_ascii_digit() && c != "_" && c != "-" {
+            return false
+        }
+    }
+
+    name != ""
 }
 
 put_line(lines: str[], name: str, line: str) -> str[] {

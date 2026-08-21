@@ -14,7 +14,7 @@ js_str(s: str) -> str =>
     "\"{s}\""
 
 js_list(ty: str) -> bool =>
-    ty.length() > 2 && ty.slice(ty.length() - 2, ty.length()) == "[]"
+    ty.ends_with("[]")
 
 js_scalar_ty(ty: str) -> bool =>
     ty == "int" || ty == "float" || ty == "bool" || ty == "str"

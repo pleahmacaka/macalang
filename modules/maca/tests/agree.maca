@@ -40,10 +40,14 @@ Same = "main() -> int {{\n" +
     "        n = 2\n" +
     "    }}\n" +
     "    info(\"else={{str(n)}}\")\n" +
+    "    out = []\n" +
+    "    out = out.push(1)\n" +
+    "    out = out.push(2)\n" +
+    "    info(\"grown={{str(out.length())}}\")\n" +
     "    0\n" +
     "}}\n"
 
-Wanted = "range=3,2\nfor=3\nslice=1\ncut=[ab]\nhas=1\nelse=0"
+Wanted = "range=3,2\nfor=3\nslice=1\ncut=[ab]\nhas=1\nelse=0\ngrown=2"
 
 written(name: str) -> str {
     at = "{scratch()}/{name}.maca"
@@ -65,7 +69,14 @@ said_by(target: str, name: str) -> str {
         exec(maca_bin(), ["build", at, "--target", target, "-o", out])
     }
 
-    target == "js" ? capture("node", ["{out}.js"]) : capture(out, [])
+    target == "js" ? capture("node", [js_file(out)]) : capture(out, [])
+}
+
+/** The js target writes a page when the program draws one and a file when it
+ * does not, so the suite asks for whichever is there.
+ */
+js_file(out: str) -> str {
+    file_exists("{out}.js") ? "{out}.js" : "{out}/app.js"
 }
 
 test_every_target_answers_the_same_program_the_same_way() {
